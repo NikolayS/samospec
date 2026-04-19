@@ -101,9 +101,11 @@ function scenarioLabel(s: Scenario): string {
  * optionally dirty it up. Returns the protected branch name and the user
  * config object.
  */
-function setupProtectedRepo(
-  scn: Scenario,
-): { repo: TempRepo; protectedBranch: string; userConfig: unknown } {
+function setupProtectedRepo(scn: Scenario): {
+  repo: TempRepo;
+  protectedBranch: string;
+  userConfig: unknown;
+} {
   let repo: TempRepo;
   let protectedBranch: string;
   let userConfig: unknown = {};
@@ -164,10 +166,7 @@ function runScenario(
           }
         : { mode: scn.mode };
     const decision = decideDirtyTree(snap, modeOpts);
-    if (
-      decision.outcome === "halt" ||
-      decision.outcome === "abort"
-    ) {
+    if (decision.outcome === "halt" || decision.outcome === "abort") {
       return { threw: false };
     }
     if (decision.outcome === "stash-then-proceed") {
@@ -181,7 +180,13 @@ function runScenario(
     // Emulate branch flags.
     const userConfigOpt =
       (userConfig as { readonly git?: unknown }).git !== undefined
-        ? { userConfig: userConfig as Parameters<typeof createSpecBranch>[1] extends infer _ ? Parameters<typeof specCommit>[0]["userConfig"] : never }
+        ? {
+            userConfig: userConfig as Parameters<
+              typeof createSpecBranch
+            >[1] extends infer _
+              ? Parameters<typeof specCommit>[0]["userConfig"]
+              : never,
+          }
         : {};
 
     if (scn.branchFlag === "no-commit") {
@@ -262,8 +267,7 @@ describe("SPEC §13 test 2 — branch-safety invariant (table-driven)", () => {
         ) {
           // The default / here paths must throw when the branch is protected —
           // UNLESS the dirty-tree decision shortcut already halted/aborted.
-          const aborted =
-            scn.mode === "guided" && scn.dirtyState !== "clean";
+          const aborted = scn.mode === "guided" && scn.dirtyState !== "clean";
           const engineerAbort =
             scn.mode === "engineer" && scn.engineerChoice === "abort";
           if (!aborted && !engineerAbort) {
