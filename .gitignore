@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# samospec runtime artefacts (per SPEC §9)
+.samospec/transcripts/
+.samospec/cache/
+.samospec/.lock
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Test / coverage output
+coverage/
+.tsbuildinfo
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Ephemeral PR body drafts used by gh pr create
+PR_BODY.md
