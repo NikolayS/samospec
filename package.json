@@ -1,0 +1,35 @@
+{
+  "name": "samospec",
+  "version": "0.0.1",
+  "description": "Git-native CLI that turns a rough idea into a reviewed, versioned specification document.",
+  "type": "module",
+  "bin": {
+    "samospec": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "package.json",
+    "README.md"
+  ],
+  "scripts": {
+    "samospec": "bun run src/cli.ts",
+    "test": "bun test"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "license": "UNLICENSED",
+  "author": "Nikolay Samokhvalov",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NikolayS/samospec.git"
+  },
+  "bugs": {
+    "url": "https://github.com/NikolayS/samospec/issues"
+  },
+  "homepage": "https://github.com/NikolayS/samospec#readme",
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.6.0"
+  }
+}
