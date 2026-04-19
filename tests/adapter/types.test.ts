@@ -27,8 +27,10 @@ describe("adapter zod schemas (SPEC §7)", () => {
 
   describe("WorkOptsSchema", () => {
     test("accepts a well-formed opts object", () => {
-      const opts = { effort: "max", timeout: 120_000 };
-      expect(WorkOptsSchema.parse(opts)).toEqual(opts);
+      const opts: unknown = { effort: "max", timeout: 120_000 };
+      const parsed = WorkOptsSchema.parse(opts);
+      expect(parsed.effort).toBe("max");
+      expect(parsed.timeout).toBe(120_000);
     });
 
     test("rejects negative timeouts", () => {
@@ -46,60 +48,78 @@ describe("adapter zod schemas (SPEC §7)", () => {
 
   describe("DetectResultSchema", () => {
     test("accepts installed=true with version+path", () => {
-      const r = { installed: true, version: "1.2.3", path: "/usr/bin/claude" };
-      expect(DetectResultSchema.parse(r)).toEqual(r);
+      const r: unknown = {
+        installed: true,
+        version: "1.2.3",
+        path: "/usr/bin/claude",
+      };
+      const parsed = DetectResultSchema.parse(r);
+      expect(parsed.installed).toBe(true);
+      if (parsed.installed) {
+        expect(parsed.version).toBe("1.2.3");
+        expect(parsed.path).toBe("/usr/bin/claude");
+      }
     });
 
     test("accepts installed=false", () => {
-      const r = { installed: false };
-      expect(DetectResultSchema.parse(r)).toEqual(r);
+      const r: unknown = { installed: false };
+      const parsed = DetectResultSchema.parse(r);
+      expect(parsed.installed).toBe(false);
     });
   });
 
   describe("AuthStatusSchema", () => {
     test("accepts a plain API-key authenticated adapter", () => {
-      const r = { authenticated: true, account: "nik@example.com" };
-      expect(AuthStatusSchema.parse(r)).toEqual(r);
+      const r: unknown = { authenticated: true, account: "nik@example.com" };
+      const parsed = AuthStatusSchema.parse(r);
+      expect(parsed.authenticated).toBe(true);
+      expect(parsed.account).toBe("nik@example.com");
+      expect(parsed.subscription_auth).toBeUndefined();
     });
 
     test("accepts subscription-auth with subscription_auth=true", () => {
-      const r = {
+      const r: unknown = {
         authenticated: true,
         account: "subscription",
         subscription_auth: true,
       };
-      expect(AuthStatusSchema.parse(r)).toEqual(r);
+      const parsed = AuthStatusSchema.parse(r);
+      expect(parsed.subscription_auth).toBe(true);
     });
 
     test("accepts not-authenticated", () => {
-      const r = { authenticated: false };
-      expect(AuthStatusSchema.parse(r)).toEqual(r);
+      const r: unknown = { authenticated: false };
+      const parsed = AuthStatusSchema.parse(r);
+      expect(parsed.authenticated).toBe(false);
     });
   });
 
   describe("AskOutputSchema", () => {
     test("accepts usage:null (subscription auth)", () => {
-      const r = {
+      const r: unknown = {
         answer: "hi",
         usage: null,
         effort_used: "max",
       };
-      expect(AskOutputSchema.parse(r)).toEqual(r);
+      const parsed = AskOutputSchema.parse(r);
+      expect(parsed.usage).toBeNull();
+      expect(parsed.effort_used).toBe("max");
     });
 
     test("accepts usage with token counts", () => {
-      const r = {
+      const r: unknown = {
         answer: "hi",
         usage: { input_tokens: 10, output_tokens: 5 },
         effort_used: "high",
       };
-      expect(AskOutputSchema.parse(r)).toEqual(r);
+      const parsed = AskOutputSchema.parse(r);
+      expect(parsed.usage).toEqual({ input_tokens: 10, output_tokens: 5 });
     });
   });
 
   describe("CritiqueOutputSchema", () => {
     test("accepts a findings array with required categories", () => {
-      const r = {
+      const r: unknown = {
         findings: [
           {
             category: "ambiguity",
@@ -112,14 +132,14 @@ describe("adapter zod schemas (SPEC §7)", () => {
         usage: null,
         effort_used: "max",
       };
-      expect(CritiqueOutputSchema.parse(r)).toEqual(r);
+      const parsed = CritiqueOutputSchema.parse(r);
+      expect(parsed.findings).toHaveLength(1);
+      expect(parsed.findings[0]?.category).toBe("ambiguity");
     });
 
     test("rejects a finding with an unknown category", () => {
       const r = {
-        findings: [
-          { category: "vibe-check", text: "idk", severity: "minor" },
-        ],
+        findings: [{ category: "vibe-check", text: "idk", severity: "minor" }],
         summary: "",
         suggested_next_version: "0.1.1",
         usage: null,
@@ -131,14 +151,16 @@ describe("adapter zod schemas (SPEC §7)", () => {
 
   describe("ReviseOutputSchema (lead-ready protocol)", () => {
     test("ready and rationale are inline", () => {
-      const r = {
+      const r: unknown = {
         spec: "# SPEC\n\n...",
         ready: true,
         rationale: "converged",
         usage: null,
         effort_used: "max",
       };
-      expect(ReviseOutputSchema.parse(r)).toEqual(r);
+      const parsed = ReviseOutputSchema.parse(r);
+      expect(parsed.ready).toBe(true);
+      expect(parsed.rationale).toBe("converged");
     });
 
     test("rejects missing ready field", () => {

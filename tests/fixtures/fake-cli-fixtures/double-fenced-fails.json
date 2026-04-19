@@ -1,0 +1,9 @@
+{
+  "script": [
+    {
+      "type": "stdout",
+      "text": "```\n```json\n{\"a\":1}\n```\n```"
+    },
+    { "type": "exit", "code": 0 }
+  ]
+}

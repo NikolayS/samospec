@@ -40,10 +40,10 @@ describe("runWithCappedRetry (SPEC §7)", () => {
   test("first attempt succeeds: returns result, no retries", async () => {
     const calls: number[] = [];
     const result = await runWithCappedRetry(
-      async ({ timeout, attempt }) => {
+      ({ timeout, attempt }) => {
         calls.push(timeout);
         expect(attempt).toBe(0);
-        return { ok: true as const, value: "fine" };
+        return Promise.resolve({ ok: true as const, value: "fine" });
       },
       { baseTimeoutMs: 100 },
     );
@@ -55,10 +55,15 @@ describe("runWithCappedRetry (SPEC §7)", () => {
   test("timeout -> +50% retry succeeds: two attempts", async () => {
     const calls: number[] = [];
     const result = await runWithCappedRetry(
-      async ({ timeout, attempt }) => {
+      ({ timeout, attempt }) => {
         calls.push(timeout);
-        if (attempt === 0) return { ok: false as const, reason: "timeout" };
-        return { ok: true as const, value: "fine" };
+        if (attempt === 0) {
+          return Promise.resolve({
+            ok: false as const,
+            reason: "timeout" as const,
+          });
+        }
+        return Promise.resolve({ ok: true as const, value: "fine" });
       },
       { baseTimeoutMs: 100 },
     );
@@ -70,10 +75,15 @@ describe("runWithCappedRetry (SPEC §7)", () => {
   test("two timeouts -> third attempt at ORIGINAL timeout succeeds", async () => {
     const calls: number[] = [];
     const result = await runWithCappedRetry(
-      async ({ timeout, attempt }) => {
+      ({ timeout, attempt }) => {
         calls.push(timeout);
-        if (attempt < 2) return { ok: false as const, reason: "timeout" };
-        return { ok: true as const, value: "fine" };
+        if (attempt < 2) {
+          return Promise.resolve({
+            ok: false as const,
+            reason: "timeout" as const,
+          });
+        }
+        return Promise.resolve({ ok: true as const, value: "fine" });
       },
       { baseTimeoutMs: 100 },
     );
@@ -85,9 +95,12 @@ describe("runWithCappedRetry (SPEC §7)", () => {
   test("three timeouts -> terminal, never exceeds 3.5x base", async () => {
     const calls: number[] = [];
     const result = await runWithCappedRetry(
-      async ({ timeout }) => {
+      ({ timeout }) => {
         calls.push(timeout);
-        return { ok: false as const, reason: "timeout" };
+        return Promise.resolve({
+          ok: false as const,
+          reason: "timeout" as const,
+        });
       },
       { baseTimeoutMs: 200 },
     );
@@ -107,9 +120,12 @@ describe("runWithCappedRetry (SPEC §7)", () => {
     // as terminal immediately; caller decides what to do.
     let calls = 0;
     const result = await runWithCappedRetry(
-      async () => {
+      () => {
         calls += 1;
-        return { ok: false as const, reason: "schema_violation" };
+        return Promise.resolve({
+          ok: false as const,
+          reason: "schema_violation" as const,
+        });
       },
       { baseTimeoutMs: 100 },
     );
@@ -125,9 +141,12 @@ describe("runWithCappedRetry (SPEC §7)", () => {
   test("is NOT unbounded: never does a fourth attempt on continuous timeouts", async () => {
     let calls = 0;
     await runWithCappedRetry(
-      async () => {
+      () => {
         calls += 1;
-        return { ok: false as const, reason: "timeout" };
+        return Promise.resolve({
+          ok: false as const,
+          reason: "timeout" as const,
+        });
       },
       { baseTimeoutMs: 10 },
     );

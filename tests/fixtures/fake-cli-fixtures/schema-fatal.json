@@ -1,0 +1,6 @@
+{
+  "script": [
+    { "type": "stdout", "text": "not json at all -- never a repair" },
+    { "type": "exit", "code": 0 }
+  ]
+}

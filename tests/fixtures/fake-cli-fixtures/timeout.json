@@ -1,0 +1,7 @@
+{
+  "script": [
+    { "type": "sleep", "ms": 10000 },
+    { "type": "stdout", "text": "never" },
+    { "type": "exit", "code": 0 }
+  ]
+}

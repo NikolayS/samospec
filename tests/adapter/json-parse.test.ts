@@ -100,7 +100,7 @@ describe("preParseJson (SPEC §7 deterministic three-step)", () => {
   });
 
   test("step 3: malformed JSON without fences -> schema_violation", () => {
-    const raw = '{not json at all';
+    const raw = "{not json at all";
 
     const result = preParseJson(raw);
 
@@ -111,7 +111,7 @@ describe("preParseJson (SPEC §7 deterministic three-step)", () => {
   });
 
   test("step 3: malformed JSON inside fences -> schema_violation", () => {
-    const raw = '```json\n{not,: json}\n```';
+    const raw = "```json\n{not,: json}\n```";
 
     const result = preParseJson(raw);
 

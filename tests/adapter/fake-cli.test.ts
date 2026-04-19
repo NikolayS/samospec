@@ -123,7 +123,9 @@ describe("fake-cli harness (SPEC §7)", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(() => JSON.parse(result.stdout)).toThrow();
+      expect(() => {
+        JSON.parse(result.stdout);
+      }).toThrow();
     }
   });
 });
