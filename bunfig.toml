@@ -1,0 +1,9 @@
+# Copyright 2026 Nikolay Samokhvalov.
+
+[test]
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true
+# SPEC §13: 80% line overall. Tighter gates (state/git/loop/context/adapter
+# at 90%) are added in later sprints once those modules exist.
+coverageThreshold = { line = 0.80, function = 0.80, statement = 0.80 }
