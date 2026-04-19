@@ -13,12 +13,12 @@ import path from "node:path";
 
 import {
   LockContendedError,
-  LockStaleReason,
-  StaleLockInfo,
   acquireLock,
   isLockStale,
   readLock,
   releaseLock,
+  type LockStaleReason,
+  type StaleLockInfo,
 } from "../../src/state/lock.ts";
 
 const MINUTE = 60_000;
@@ -81,27 +81,27 @@ describe("state/lock — acquire + release", () => {
   });
 
   test("a second acquire while held throws LockContendedError with PID message", () => {
+    // Simulate a second invocation by using a distinct pid + alive probe.
+    const firstPid = process.pid;
     const first = acquireLock({
       lockPath,
       slug: "demo",
       now: Date.now(),
       maxWallClockMinutes: 240,
+      pid: firstPid,
     });
-    expect(() =>
-      acquireLock({
-        lockPath,
-        slug: "demo",
-        now: Date.now(),
-        maxWallClockMinutes: 240,
-      }),
-    ).toThrow(LockContendedError);
+    const secondArgs = {
+      lockPath,
+      slug: "demo",
+      now: Date.now(),
+      maxWallClockMinutes: 240,
+      pid: firstPid + 1,
+      // Treat the first-PID holder as alive even from the second caller.
+      isPidAlive: () => true,
+    };
+    expect(() => acquireLock(secondArgs)).toThrow(LockContendedError);
     try {
-      acquireLock({
-        lockPath,
-        slug: "demo",
-        now: Date.now(),
-        maxWallClockMinutes: 240,
-      });
+      acquireLock(secondArgs);
     } catch (err) {
       expect((err as Error).message).toContain(String(first.pid));
     }
