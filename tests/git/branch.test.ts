@@ -57,9 +57,7 @@ describe("createSpecBranch — refuses on protected branches", () => {
       caught = err;
     }
     expect(caught).toBeDefined();
-    expect(
-      (caught as { readonly exitCode?: unknown }).exitCode,
-    ).toBe(2);
+    expect((caught as { readonly exitCode?: unknown }).exitCode).toBe(2);
   });
 
   test("does not create the spec branch when the current branch is protected", () => {
@@ -111,9 +109,9 @@ describe("createSpecBranch — slug validation and idempotency", () => {
     expect(() =>
       createSpecBranch("bad slug", { repoPath: repo.dir }),
     ).toThrowError(/slug/i);
-    expect(() =>
-      createSpecBranch("a/b", { repoPath: repo.dir }),
-    ).toThrowError(/slug/i);
+    expect(() => createSpecBranch("a/b", { repoPath: repo.dir })).toThrowError(
+      /slug/i,
+    );
   });
 
   test("rejects re-creating an existing samospec/<slug> branch", () => {
