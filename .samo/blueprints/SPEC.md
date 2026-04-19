@@ -1,8 +1,8 @@
 # SamoSpec — Product Spec
 
-**Version:** v0.4
-**Status:** build-ready draft
-**Scope:** CLI only, TypeScript on Bun
+- **Version:** v0.4
+- **Status:** build-ready draft
+- **Scope:** CLI only, TypeScript on Bun
 
 ---
 
