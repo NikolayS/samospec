@@ -1,0 +1,6 @@
+{
+  "script": [
+    { "type": "stdout", "text": "pong" },
+    { "type": "exit", "code": 0 }
+  ]
+}

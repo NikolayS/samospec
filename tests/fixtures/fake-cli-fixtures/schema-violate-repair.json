@@ -1,0 +1,19 @@
+{
+  "branches": {
+    "0": {
+      "script": [
+        { "type": "stdout", "text": "garbage first attempt" },
+        { "type": "exit", "code": 0 }
+      ]
+    },
+    "default": {
+      "script": [
+        {
+          "type": "stdout",
+          "text": "{\"ok\":true,\"answer\":\"fine\",\"effort_used\":\"max\",\"usage\":null}"
+        },
+        { "type": "exit", "code": 0 }
+      ]
+    }
+  }
+}

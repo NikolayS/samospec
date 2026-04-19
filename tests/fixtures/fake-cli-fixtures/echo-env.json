@@ -1,0 +1,6 @@
+{
+  "script": [
+    { "type": "env_keys", "filter_prefix": "" },
+    { "type": "exit", "code": 0 }
+  ]
+}
