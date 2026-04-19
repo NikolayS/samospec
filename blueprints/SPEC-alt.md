@@ -1,6 +1,6 @@
 # SamoSpec — Alternative Product Spec
 
-**Version:** v0.2 (alt)
+**Version:** v0.3 (alt)
 **Status:** candidate spec, parallel to `SPEC.md`
 **Scope:** CLI only
 
@@ -119,8 +119,10 @@ flowchart TD
 | `reviewer` | reviewer-expert orchestration: parallel critique |
 | `loop` | review-round scheduling, convergence detection |
 | `adapter` | uniform interface over `claude`, `codex`, `opencode`, `gemini` |
+| `policy` | budget/model-policy guard: enforces reviewer count, iteration cap, token/$ budgets, Gemini opt-in |
 | `render` | TL;DR, status, changelog formatting |
 | `publish` | promote to `blueprints/`, open PR |
+| `doctor` | diagnostics: CLI availability, auth, git/remote health, config sanity |
 
 ### Model roles
 
@@ -130,7 +132,43 @@ flowchart TD
 
 ### Adapter contract
 
-Each adapter exposes three operations: `ask(prompt, context) → text`, `critique(spec, guidelines) → review`, `revise(spec, reviews) → spec`. Adapters are thin shells over the vendor CLI and are mocked in tests.
+Each adapter is a thin shell over a vendor CLI. The contract has two layers.
+
+**Lifecycle operations:**
+
+- `detect() → { installed, version, path }` — is the CLI present at all.
+- `auth_status() → { authenticated, account, expires_at? }` — can it actually run.
+- `accounting() → { tokens_supported, cost_supported }` — does this adapter report usage.
+
+**Work operations:**
+
+- `ask(prompt, context) → { text, usage }` — general-purpose call, used by the interview and the lead.
+- `critique(spec, guidelines) → { review, usage }` — structured critique, returns a review keyed by the taxonomy in §7.5.
+- `revise(spec, reviews) → { spec, usage }` — lead-only operation.
+
+**Cross-cutting:**
+
+- **Structured output mode** is preferred when the vendor supports it (JSON schema, tool-use, etc.); adapters must expose a `supports_structured_output()` probe and fall back to parsed Markdown when false.
+- **Failure classification** is required on every call: returned errors are tagged `retryable` (transient: rate-limit, network, 5xx) or `terminal` (bad auth, quota exhausted, invalid input, model refusal). The loop retries `retryable` with backoff and aborts on `terminal`.
+- **Token/cost accounting** is reported per call when `accounting.tokens_supported` is true; the `policy` component sums these against the configured budget.
+
+Adapters are mocked in tests via a fake-CLI harness that replays recorded transcripts and injects scripted failures.
+
+### Review taxonomy
+
+Reviewers must categorize each finding into one of the following buckets. The lead uses these categories to prioritize revisions and the `render` component uses them to summarize rounds.
+
+| Category | What it flags |
+|---|---|
+| `ambiguity` | wording that admits multiple reasonable interpretations |
+| `contradiction` | two parts of the spec that cannot both be true |
+| `missing-requirement` | a needed behavior, constraint, or edge case that is not addressed |
+| `weak-testing` | test plan gaps: missing scenarios, untestable assertions, no red-green hook |
+| `weak-implementation` | architecture or plan too hand-wavy to act on |
+| `missing-risk` | unstated assumption, security/ops/cost risk, or dependency |
+| `unnecessary-scope` | content that should be cut — gold-plating, premature abstraction, out-of-scope |
+
+Each review file is a structured Markdown document with one section per category, plus a final `summary` and a `suggested-next-version` hint. Lead decisions on each finding (`accepted` / `rejected` / `deferred`) are appended to `decisions.md`.
 
 ## 8. Git behavior and branch strategy
 
@@ -146,6 +184,39 @@ Each adapter exposes three operations: `ask(prompt, context) → text`, `critiqu
 
 **Why this is safe for non-engineers:** the user's existing work on `main` is never touched. The worst-case outcome is an orphan branch they can delete. The best case is a clean PR they can merge or ignore.
 
+### Dirty working tree
+
+If the working tree is dirty when `samo spec new` starts, the tool pauses and offers three options in a plain-English prompt:
+
+1. **Stash and continue** (default): `git stash push -u -m "samo: auto-stash before spec"` on the original branch, then create `samo/spec/<slug>`. A clear message tells the user how to get their changes back (`git stash pop` after switching branches).
+2. **Continue anyway**: create the branch from the current dirty state. Useful when the dirty files are the input to the spec.
+3. **Abort**: exit with code 1 and no side effects.
+
+`samo spec resume` on a dirty branch never auto-stashes — it surfaces the conflict and stops.
+
+### Branch-selection options
+
+Advertised to the user in the first-run prompt and settable via flags:
+
+| Option | Flag | Behavior |
+|---|---|---|
+| Safe separate branch | *(default)* | Auto-creates `samo/spec/<slug>` |
+| Use current branch | `--here` | Commits on the current branch (refused on protected branches) |
+| Local-only | `--no-push` | Auto-commits but never pushes, even with a remote |
+| Dry run | `--no-commit` | Writes files, skips all git operations |
+
+The choice is stored in `state.json` and honored on `resume`.
+
+### Non-engineer plain-English mode
+
+When `samo` detects that it is likely talking to a non-engineer — no prior `samo` config in the repo, a fresh `git init`, or an explicit `--explain` flag — prompts switch to plain-English phrasing:
+
+- "I'm going to make a safe copy of your work on a branch called `samo/spec/my-idea`. Your main work is not affected." instead of "Creating branch `samo/spec/my-idea` from `main`."
+- "I saved a new version and uploaded it." instead of "Committed `<sha>` and pushed to `origin`."
+- A `doctor`-style recap at the end: which branch you're on, where the spec lives, how to see it on the web.
+
+The content of the actions is identical — only the surface copy changes. This mode is toggleable via `samo config set ux.plain_english true`.
+
 ## 9. Storage layout
 
 Working artifacts are hidden under `.samo/spec/`. The promoted spec lives under `blueprints/`.
@@ -156,9 +227,10 @@ Working artifacts are hidden under `.samo/spec/`. The promoted spec lives under 
   spec/
     <slug>/
       SPEC.md                     # working copy of the spec (canonical during iteration)
+      TLDR.md                     # regenerated on every version bump, committed alongside SPEC.md
       state.json                  # phase, version, persona, iteration count
       interview.json              # questions + answers
-      decisions.md                # append-only log of lead decisions
+      decisions.md                # append-only log of lead decisions on each review finding
       changelog.md                # version history, mirrored into SPEC.md §Changelog
       transcripts/
         author.log                # lead model raw I/O (truncated)
@@ -180,6 +252,7 @@ blueprints/
 
 - `.samo/spec/<slug>/SPEC.md` is the source of truth during iteration.
 - `blueprints/<slug>/SPEC.md` is a promoted snapshot; never hand-edited.
+- `TLDR.md` is always committed alongside `SPEC.md`. It is cheap to regenerate and expensive to reconstruct from history — keeping it in git means any viewer (PR reviewer, teammate, future self) sees the current summary without running the tool.
 - Transcripts are trimmed (first + last N tokens) to keep the repo small; full logs can be opted in via config.
 - Everything under `.samo/spec/` is committed. Nothing is gitignored by default — the audit trail is the point.
 
@@ -195,6 +268,10 @@ samo spec iterate                      # one round of review + revise
 samo spec ready                        # mark spec as ready, stop auto-refinement
 samo spec publish [<slug>]             # promote to blueprints/, open PR
 samo spec diff [<version>]             # show diff vs a prior version
+samo spec compare <slugA> <slugB>      # side-by-side compare two specs in this repo
+samo spec export <slug> [--format md|pdf|html] [--out <path>]
+samo spec tldr [<slug>]                # print the TL;DR of the current or named spec
+samo doctor                            # diagnose CLI availability, auth, git/remote health, config
 samo experts list                      # show available AI CLIs and which are enabled
 samo experts set lead claude           # set lead model
 samo experts set reviewers claude,codex
@@ -211,9 +288,27 @@ samo version
 - **Lead default:** Claude Code with the strongest available model.
 - **Reviewers default:** Claude + Codex (N=2, M=10).
 - **OpenCode:** available if installed, not enabled by default.
-- **Gemini:** hidden until `samo config set models.gemini.enabled true`. Requires explicit per-invocation confirmation for the first three uses.
-- **Budget guardrails:** optional `budget.max_tokens_per_round` and `budget.max_total_tokens`. Exceeding either stops the loop with exit code 4 and a clear message.
 - **Tool availability detection:** run once per invocation; cached in `.samo/config.json`.
+
+### Budget guardrails
+
+Enforced by the `policy` component on every adapter call:
+
+- `budget.max_tokens_per_round` — soft stop at round boundary.
+- `budget.max_total_tokens_per_session` — hard stop mid-round, exit code 4.
+- `budget.max_cost_usd` — optional, requires cost-aware adapter; see fail-closed rule below.
+- `budget.max_reviewers` and `budget.max_iterations` — mirror the `N`/`M` defaults.
+
+### Gemini policy (fail-closed)
+
+Gemini is disabled by default and additionally gated:
+
+1. **Explicit opt-in** required: `samo config set models.gemini.enabled true`.
+2. **Per-invocation confirmation** for the first three uses, then a repo-wide acknowledgement.
+3. **Per-run hard limit** and **per-session total limit** are mandatory when Gemini is enabled — there is no "unlimited" mode.
+4. **Fail-closed**: if the Gemini adapter cannot report token or cost accounting (`accounting.tokens_supported == false`), any call is refused with a terminal error. The loop does not silently proceed without budget visibility.
+
+The same fail-closed principle applies to any future adapter: no accounting → no use inside budget-guarded loops.
 
 ## 12. Stopping conditions for the review loop
 
