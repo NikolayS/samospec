@@ -1,52 +1,53 @@
 # SamoSpec
 
-Version: 0.1
+Version: 0.2
 
 ## Goal
 
 Create a git-native CLI for multi-AI spec creation and iterative refinement.
 
-The tool helps a user turn an idea into a strong, versioned `SPEC.md` using:
+SamoSpec helps a user turn an idea into a strong, versioned spec using:
 - one lead AI expert
 - optional review experts
 - git commits after each material change
+- a persistent hidden working area inside the repo
 
 Primary use case:
 - software/product specs
 
 Secondary use cases:
-- broader strategic/operational specs
+- broader strategic, operational, research, marketing, and planning specs
+
+## Product thesis
+
+SamoSpec is **not** just a spec generator.
+
+It is a **git-native spec authoring and review workflow** with:
+- one lead expert who owns the draft
+- multiple reviewer experts who critique it
+- the user as final authority
+
+The system must avoid multi-model consensus mush.
+One model owns the draft. Other models review. The lead decides what to accept.
 
 ## Why it's needed
 
 People can generate first-draft specs quickly with AI, but:
-- first drafts are usually shallow
+- first drafts are shallow
 - model output is inconsistent
 - iterative refinement is messy
 - reviews are lost in chat
 - decisions are not versioned
-- there is no clean git-native loop
+- git history is missing
+- multiple models often create contradictory mush instead of stronger specs
 
-This CLI makes spec creation:
+SamoSpec makes spec creation:
 - structured
 - iterative
 - reviewable
 - reproducible
 - stored in git
-
-## Key product idea
-
-Use a **lead expert** to author the spec and **review experts** to critique it.
-
-The lead expert owns:
-- questioning the user
-- writing `SPEC.md`
-- deciding which review feedback to accept
-
-Review experts:
-- critique
-- find ambiguity, contradictions, missing cases, weak tests, weak planning
-- do not directly own the main spec
+- safe enough for both engineers and non-engineers
 
 ## Core workflow
 
@@ -55,7 +56,7 @@ Assume these CLIs may be installed and authenticated:
 - Claude Code
 - Codex
 - OpenCode (optional)
-- Gemini CLI / equivalent (optional, off by default unless explicitly enabled)
+- Gemini CLI / equivalent (optional, disabled by default unless explicitly enabled)
 
 ### Step 1 — input idea
 User provides:
@@ -67,10 +68,11 @@ Possible contexts:
 - existing GitHub/GitLab repo with code
 - fresh repo with no code
 - standalone local git repo
+- no repo yet (SamoSpec can initialize one)
 
 ### Step 2 — choose lead expert
-Default:
-- Claude infers recommended lead expert
+Default behavior:
+- Claude infers the recommended lead expert skill
 
 User sees:
 > Your assistant is: Veteran `"software engineer"` expert
@@ -93,6 +95,7 @@ Questions should be:
 - high-signal
 - mostly multiple-choice
 - minimal but enough to shape the spec
+- strategic, not implementation trivia
 
 Each question supports:
 - standard choices
@@ -101,14 +104,32 @@ Each question supports:
 - **custom answer**
 
 ### Step 4 — create v0.1 spec
-Lead expert creates:
-- `./blueprints/<feature-name>/SPEC.md`
+Lead expert creates the initial spec.
 
-Immediately commits it to git.
+Working files are stored under:
+
+```text
+.samo/spec/
+```
+
+Suggested structure:
+
+```text
+.samo/
+  spec/
+    SPEC.md
+    TLDR.md
+    DECISIONS.md
+    REVIEWS/
+      review-claude-r1.md
+      review-codex-r1.md
+```
+
+The initial draft is committed to git immediately.
 
 Initial spec includes:
 - goal and why it’s needed
-- a few user stories
+- user stories
 - architecture
 - implementation details
 - CI/tests and red/green TDD plan
@@ -130,24 +151,24 @@ If enabled:
 - choose `N` review experts, default `2`
 - choose max `M` iterations, default `10`
 
-Default review experts:
+Default reviewers:
 - Claude strongest available model
 - GPT strongest available model
 
-Optional:
+Optional reviewers:
 - OpenCode
-- Gemini (off by default unless explicitly enabled / budget-approved)
+- Gemini (off by default unless explicitly enabled and budget-approved)
 
 Loop:
-1. reviewers review current spec
-2. lead expert reads reviews
+1. reviewers critique current spec
+2. lead expert reads all reviews
 3. lead updates spec
-4. bump version + changelog
+4. version bumps + changelog updates
 5. commit to git
 6. repeat until:
    - `M` reached
-   - or convergence
-   - or lead marks ready
+   - convergence
+   - or lead marks ready for human review
 
 ### Step 7 — present result
 Show:
@@ -163,19 +184,22 @@ Show:
 ## User stories
 
 ### Story 1 — new software idea
-As a developer, I want to describe a rough idea and get a proper `SPEC.md` in git, so I can move into implementation without hand-writing the whole thing from scratch.
+As a developer, I want to describe a rough idea and get a proper versioned spec in git, so I can move into implementation without hand-writing the whole thing from scratch.
 
 ### Story 2 — existing repo
 As a maintainer, I want to generate a spec in the context of an existing repo, so the spec reflects real codebase constraints.
 
-### Story 3 — multi-model review
+### Story 3 — broad non-software use
+As a user, I want to create a strategic or operational spec outside software, so the tool is useful for broader planning work too.
+
+### Story 4 — multi-model review
 As a spec owner, I want multiple AI reviewers to critique a draft, so blind spots are caught before implementation starts.
 
-### Story 4 — human control
+### Story 5 — human control
 As a user, I want to confirm the lead expert and review the result at checkpoints, so the process stays useful and not fully autonomous nonsense.
 
-### Story 5 — audit trail
-As a user, I want every material spec revision committed to git, so changes are inspectable and reversible.
+### Story 6 — audit trail
+As a user, I want every material revision and review artifact committed to git, so changes are inspectable and reversible.
 
 ## Architecture
 
@@ -186,33 +210,79 @@ As a user, I want every material spec revision committed to git, so changes are 
 - interview/question engine
 - spec generator
 - review orchestrator
-- git commit manager
+- git commit/push manager
 - TL;DR renderer
 - model adapter layer
+- budget/policy guard
 
 ### Model roles
 - **Lead model**: writes and revises the spec
 - **Review models**: critique and suggest changes
 - **User**: final authority
 
+### Model adapter contract
+Each model adapter should support:
+- availability detection
+- auth detection
+- prompt execution
+- structured output mode when possible
+- token/cost accounting when available
+- failure classification (retryable vs terminal)
+
+Initial adapters:
+- Claude Code
+- Codex
+- OpenCode (optional)
+- Gemini (optional, disabled by default)
+
+### Review taxonomy
+Reviewers should categorize findings into:
+- ambiguity
+- contradictions
+- missing requirements
+- weak testing
+- weak implementation details
+- missing risks / assumptions
+- unnecessary scope
+
 ### Storage
-In git:
+In git under `.samo/spec/`:
 - `SPEC.md`
-- review artifacts
-- changelog
-- optional decisions file
+- `TLDR.md`
+- `DECISIONS.md`
+- `REVIEWS/*.md`
+- version/changelog history inside the main spec
 
-## Repo/file layout
+## Git behavior
 
-```text
-blueprints/
-  <feature-name>/
-    SPEC.md
-    REVIEWS/
-      review-claude-r1.md
-      review-codex-r1.md
-    DECISIONS.md
-```
+### Default behavior
+SamoSpec should commit automatically after each material step.
+
+Recommended commits:
+- `spec: create v0.1 for <topic>`
+- `spec: refine to v0.2 after review round 1`
+- `spec: refine to v0.3 after review round 2`
+
+### Push behavior
+Default behavior:
+- push automatically after each commit
+
+### Branch behavior
+This needs to be safe for both engineers and non-engineers.
+
+Default proposed behavior:
+- if repo is clean, create a dedicated branch automatically
+- if repo is dirty, ask user what to do
+- if user is clearly non-technical, describe branch creation in simple English
+
+Provisional branch naming:
+- `samospec/<topic>`
+
+User options should include:
+- use safe separate branch (default)
+- use current branch
+- local-only / do not push
+- dry run / no commit
 
 ## Model policy
 Default:
@@ -225,21 +295,18 @@ Need support for:
 - model selection
 - tool availability detection
 - per-model enable/disable
-- budget guardrails
-- max iterations
 - max reviewer count
+- max iteration count
+- budget guardrails
+- failure handling when one reviewer flakes out
 
-## Git behavior
-Every material step must be committable.
-
-Recommended commits:
-- `spec: create v0.1 for <feature>`
-- `spec: refine to v0.2 after review round 1`
-- `spec: refine to v0.3 after review round 2`
-
-Possible option:
-- dry-run mode with no commit
-- default should still encourage real git history
+### Gemini budget policy
+Gemini is optional and off by default until budget handling is strong enough.
+Needed controls:
+- explicit opt-in
+- per-run hard limit
+- max total spend/tokens per refinement session
+- fail closed if budget tracking is unavailable
 
 ## Stopping conditions
 Stop refinement when any of:
@@ -247,6 +314,18 @@ Stop refinement when any of:
 - lead expert marks ready
 - two consecutive rounds produce no substantial improvements
 - user interrupts / takes over
+
+## Commands (provisional)
+- `samospec new`
+- `samospec refine`
+- `samospec review`
+- `samospec tldr`
+- `samospec status`
+
+Possible future:
+- `samospec export`
+- `samospec doctor`
+- `samospec compare`
 
 ## Tests / CI / red-green TDD
 Need tests for:
@@ -256,6 +335,7 @@ Need tests for:
 - empty repo vs populated repo
 - missing model tool detection
 - invalid user input paths
+- `.samo/spec/` layout creation
 
 ### Workflow behavior
 - lead expert confirmation flow
@@ -266,6 +346,8 @@ Need tests for:
 - review loop respects N and M
 - convergence / stop rules work
 - git commits happen at expected steps
+- push behavior works as configured
+- branch selection behavior works safely
 
 ### Integration tests
 - mocked Claude/Codex/OpenCode/Gemini adapters
@@ -273,12 +355,14 @@ Need tests for:
 - failure handling when one reviewer fails
 - Gemini disabled-by-default policy
 - budget cap enforcement hooks
+- all review artifacts written into git
 
-### Red/green TDD
+### Red/green TDD focus
 Use red/green for:
 - workflow-state transitions
 - loop stopping logic
 - git commit behavior
+- branch safety behavior
 - multi-review orchestration
 - budget guard enforcement
 
@@ -294,44 +378,55 @@ For implementation, I’d hire:
 
 ### Sprint 1 — MVP
 - CLI skeleton
-- detect repo / create blueprint path
+- detect/init repo
+- create `.samo/spec/`
 - lead expert selection
 - up-to-5 interview questions
-- generate v0.1 `SPEC.md`
-- commit to git
+- generate v0.1 spec
+- commit + push
 
 ### Sprint 2 — review loop
-- review expert orchestration
+- reviewer orchestration
 - version bumping
 - changelog updates
 - iterative commits
 - TL;DR output
+- review artifact persistence
 
-### Sprint 3 — model policy / controls
-- optional Gemini integration
-- budget / reviewer limits
+### Sprint 3 — policy + safety
+- Gemini gating
+- budget controls
 - convergence logic
-- failure handling / retries
+- branch behavior polish
+- retry/failure handling
 
 ### Sprint 4 — polish
-- cleaner prompts
-- review artifact storage
+- better prompts
+- better non-engineer UX
 - stronger tests
 - docs/examples
 
 Parallelization:
-- model adapter layer can be built in parallel with git/layout logic
-- review loop can be built in parallel with TL;DR / formatting
+- model adapters can be built in parallel with git/layout logic
+- review loop can be built in parallel with TL;DR rendering
 
 ## Open questions
-- exact CLI name / repo name (`samospec`, `spec.doctor`, etc.)
-- command shape
-- whether reviews live in git by default
-- whether specs are always under `blueprints/`
-- exact budget policy for Gemini
-- whether OpenCode is first-class or optional plugin
+- exact UX for branch selection in non-engineer mode
+- whether `TLDR.md` should always be committed or generated on demand
+- whether review artifacts should ever be pruned automatically
+- whether topic names determine `.samo/spec/` subdirectories later
+- whether OpenCode stays optional or becomes a first-class default reviewer
 
 ## Changelog
+
+### v0.2
+- dogfooded product spec rewrite
+- switched storage model to `.samo/spec/`
+- broadened scope beyond software-only use
+- made automatic commit/push behavior explicit
+- set default review count to 2
+- required all review artifacts to be stored in git
+- added branch-safety and budget-policy sections
 
 ### v0.1
 - initial concept spec created
