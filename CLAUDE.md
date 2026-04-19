@@ -2,15 +2,16 @@
 
 ## Project
 
-samospec — git-native CLI (`samo`) that turns a rough idea into a reviewed, versioned specification document through a lead AI expert and a panel of reviewer experts, with every material step captured in git. Repo: NikolayS/samospec.
+samospec — git-native CLI (`samospec`) that turns a rough idea into a reviewed, versioned specification document through a lead AI expert and a panel of reviewer experts, with every material step captured in git. Repo: NikolayS/samospec.
 
-See `.samo/blueprints/SPEC.md` for the full specification.
+See `.samospec/blueprints/SPEC.md` for the full specification.
 
 ## Naming
 
-- `samo` — always lowercase (binary name, config keys, prose)
-- `samospec` — lowercase for the repo / package name
+- `samospec` — always lowercase (binary name, repo/package name, config keys, prose)
 - `SamoSpec` — the product name in titles and user-facing copy
+- No middle `spec` in subcommands: `samospec new`, `samospec resume`, `samospec publish` (not `samospec spec new`)
+- Config directory: `.samospec/`. Branch prefix: `samospec/<slug>`.
 
 ## Stack
 
@@ -64,9 +65,9 @@ IFS=$'\n\t'
 ### Security
 
 - **Never put real API keys, tokens, or secrets** in code, comments, commits, issues, PRs, or committed transcripts. Not even for testing or demo.
-- Secrets belong in environment variables or `~/.config/samo/` — never in the repo.
+- Secrets belong in environment variables or `~/.config/samospec/` — never in the repo.
 - If a key is accidentally exposed, rotate it immediately and delete/minimize the comment.
-- `.samo/spec/<slug>/transcripts/` is **not committed by default** (see SPEC §9) and runs through a redaction pass even when opted in. Do not bypass the redaction pass.
+- `.samospec/spec/<slug>/transcripts/` is **not committed by default** (see SPEC §9) and runs through a redaction pass even when opted in. Do not bypass the redaction pass.
 - Hard-coded no-read list for credential files (see SPEC §7 context) cannot be overridden.
 
 ## Red-green TDD
