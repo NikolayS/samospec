@@ -5,8 +5,8 @@ import { describe, expect, test } from "bun:test";
 import { runCli } from "../src/cli.ts";
 
 describe("samospec CLI error paths", () => {
-  test("exits 1 with usage on stderr when no command is given", () => {
-    const result = runCli([]);
+  test("exits 1 with usage on stderr when no command is given", async () => {
+    const result = await runCli([]);
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
@@ -14,8 +14,8 @@ describe("samospec CLI error paths", () => {
     expect(result.stderr).toContain("version");
   });
 
-  test("exits 1 with an unknown-command message on stderr", () => {
-    const result = runCli(["frobnicate"]);
+  test("exits 1 with an unknown-command message on stderr", async () => {
+    const result = await runCli(["frobnicate"]);
 
     expect(result.exitCode).toBe(1);
     expect(result.stdout).toBe("");
@@ -23,8 +23,8 @@ describe("samospec CLI error paths", () => {
     expect(result.stderr).toContain("Usage: samospec");
   });
 
-  test("unknown-command handling is case-sensitive", () => {
-    const result = runCli(["VERSION"]);
+  test("unknown-command handling is case-sensitive", async () => {
+    const result = await runCli(["VERSION"]);
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("unknown command 'VERSION'");
