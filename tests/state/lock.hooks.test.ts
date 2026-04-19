@@ -35,22 +35,22 @@ describe("state/lock — installReleaseHooks (SPEC §8)", () => {
 
     // Collected via a spy emitter so we never install real signal handlers
     // into the Bun test runner (which would leak across tests).
-    const listeners: Record<string, () => void> = {};
+    const listeners = new Map<string, () => void>();
     const detach = installReleaseHooks(handle, {
       onSignal: (sig, cb) => {
-        listeners[sig] = cb;
+        listeners.set(sig, cb);
       },
       onExit: (cb) => {
-        listeners.exit = cb;
+        listeners.set("exit", cb);
       },
     });
 
-    expect(listeners.SIGINT).toBeDefined();
-    expect(listeners.SIGTERM).toBeDefined();
-    expect(listeners.exit).toBeDefined();
+    expect(listeners.get("SIGINT")).toBeDefined();
+    expect(listeners.get("SIGTERM")).toBeDefined();
+    expect(listeners.get("exit")).toBeDefined();
 
     // Simulate an exit firing the hook.
-    listeners.exit?.();
+    listeners.get("exit")?.();
     expect(existsSync(lockPath)).toBe(false);
 
     detach();

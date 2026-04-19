@@ -186,6 +186,72 @@ export function releaseLock(handle: LockHandle): void {
   }
 }
 
+/**
+ * Signals we release the lock on. SIGKILL is intentionally omitted —
+ * it cannot be intercepted; the stale-lock path handles that case.
+ */
+export const RELEASE_SIGNALS = ["SIGINT", "SIGTERM"] as const;
+export type ReleaseSignal = (typeof RELEASE_SIGNALS)[number];
+
+type SignalRegister = (sig: ReleaseSignal, cb: () => void) => void;
+type ExitRegister = (cb: () => void) => void;
+
+export interface ReleaseHookEmitter {
+  readonly onSignal: SignalRegister;
+  readonly onExit: ExitRegister;
+  readonly offSignal?: SignalRegister;
+  readonly offExit?: ExitRegister;
+}
+
+const defaultEmitter: ReleaseHookEmitter = {
+  onSignal: (sig, cb) => {
+    process.on(sig, cb);
+  },
+  onExit: (cb) => {
+    process.on("exit", cb);
+  },
+  offSignal: (sig, cb) => {
+    process.off(sig, cb);
+  },
+  offExit: (cb) => {
+    process.off("exit", cb);
+  },
+};
+
+/**
+ * Install SIGINT / SIGTERM / exit listeners that release `handle`. The
+ * returned detach function removes them — call it in tests and on any
+ * replace-handle path so listeners do not accumulate.
+ *
+ * Per SPEC §8 the lock must be released on "normal + SIGINT + SIGTERM"
+ * exits. SIGKILL and power loss are absorbed by the stale-lock rule.
+ */
+export function installReleaseHooks(
+  handle: LockHandle,
+  emitter: ReleaseHookEmitter = defaultEmitter,
+): () => void {
+  const onExit = (): void => {
+    releaseLock(handle);
+  };
+  const signalHandlers: Partial<Record<ReleaseSignal, () => void>> = {};
+  for (const sig of RELEASE_SIGNALS) {
+    const h = (): void => {
+      releaseLock(handle);
+    };
+    signalHandlers[sig] = h;
+    emitter.onSignal(sig, h);
+  }
+  emitter.onExit(onExit);
+
+  return (): void => {
+    for (const sig of RELEASE_SIGNALS) {
+      const h = signalHandlers[sig];
+      if (h !== undefined) emitter.offSignal?.(sig, h);
+    }
+    emitter.offExit?.(onExit);
+  };
+}
+
 function writeLockFile(file: string, lock: Lock): void {
   const validated = lockSchema.parse(lock);
   const dir = path.dirname(file);
