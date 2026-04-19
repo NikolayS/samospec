@@ -12,10 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { runDoctor } from "../../src/cli/doctor.ts";
-import {
-  CheckStatus,
-  formatStatusLine,
-} from "../../src/cli/doctor-format.ts";
+import { CheckStatus, formatStatusLine } from "../../src/cli/doctor-format.ts";
 import { checkCliAvailability } from "../../src/cli/doctor-checks/availability.ts";
 import { checkAuthStatus } from "../../src/cli/doctor-checks/auth.ts";
 import { checkGitHealth } from "../../src/cli/doctor-checks/git.ts";

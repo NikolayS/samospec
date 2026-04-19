@@ -12,7 +12,11 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { runInit, DEFAULT_CONFIG, CONFIG_SCHEMA_VERSION } from "../../src/cli/init.ts";
+import {
+  runInit,
+  DEFAULT_CONFIG,
+  CONFIG_SCHEMA_VERSION,
+} from "../../src/cli/init.ts";
 
 let tmp: string;
 
@@ -180,7 +184,9 @@ describe("samospec init — idempotent re-run", () => {
     runInit({ cwd: tmp });
     const result = runInit({ cwd: tmp });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.toLowerCase()).toMatch(/no changes|up to date|unchanged/);
+    expect(result.stdout.toLowerCase()).toMatch(
+      /no changes|up to date|unchanged/,
+    );
   });
 });
 

@@ -2,15 +2,13 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdtempSync,
-  rmSync,
-} from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-const CLI_PATH = path.resolve(import.meta.dir, "..", "..", "src", "cli.ts");
+// Use main.ts — it's the actual CLI entrypoint that calls runCli.
+// src/cli.ts is a library module that only exports runCli.
+const CLI_PATH = path.resolve(import.meta.dir, "..", "..", "src", "main.ts");
 
 let tmp: string;
 let fakeHome: string;
@@ -35,15 +33,14 @@ function runSamospec(
     NO_COLOR: "1",
     ...(opts.env ?? {}),
   };
-  const result = spawnSync(
-    process.execPath,
-    ["run", CLI_PATH, ...(args as string[])],
-    {
-      cwd: opts.cwd,
-      encoding: "utf8",
-      env,
-    },
-  );
+  // Prefer the running Bun interpreter so tests work regardless of whether
+  // `bun` is on PATH (Bun.argv[0] is the absolute binary path).
+  const bun = Bun.argv[0];
+  const result = spawnSync(bun, ["run", CLI_PATH, ...(args as string[])], {
+    cwd: opts.cwd,
+    encoding: "utf8",
+    env,
+  });
   return {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
