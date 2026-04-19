@@ -1,7 +1,7 @@
 # SamoSpec — Product Spec
 
-- **Version:** v0.6 (v1 lock candidate)
-- **Status:** round-3 blockers resolved; implementation can start
+- **Version:** v1.0 (locked)
+- **Status:** implementation-ready; four review rounds applied, v1 scope frozen
 - **Scope:** CLI only, TypeScript on Bun
 
 ---
@@ -10,7 +10,7 @@
 
 Build a **git-native CLI** (`samospec`) that turns a rough idea into a strong, versioned specification document through a structured dialogue between the user, one **lead AI expert**, and a small panel of **AI review experts** — with every material step automatically captured in git.
 
-The tool runs locally, ships as a single binary via `bun build --compile`, and orchestrates multiple AI CLIs (Claude Code, Codex; OpenCode and Gemini opt-in only, post-v1) behind one opinionated workflow.
+The tool runs locally, ships to the npm registry and is invoked via `bunx samospec` (or `bun install -g samospec` + `samospec`), and orchestrates multiple AI CLIs (Claude Code, Codex; OpenCode and Gemini opt-in only, post-v1) behind one opinionated workflow.
 
 ## 2. Why it's needed
 
@@ -120,7 +120,7 @@ Before any paid lead call, run the **preflight cost estimate** (§11). Uses scaf
 ## 6. User stories
 
 1. **New idea, new repo.** As a technical founder with a napkin sketch, I run `samospec new "marketplace for X"` in an empty folder; the tool creates the repo, the spec branch, gathers minimal context, shows a preflight estimate, and produces a reviewed v0.3 spec.
-2. **Existing repo, fresh feature.** As an engineer, I run `samospec new payment-refunds`; the context subsystem pulls in `README.md`, manifests, `docs/`, and selected source dirs — tracked and staged — with provenance and risk flags, without blowing the token budget.
+2. **Existing repo, fresh feature.** As an engineer, I run `samospec new payment-refunds`; the context subsystem pulls in `README.md`, manifests, `docs/`, and selected source dirs — **tracked files plus untracked-but-unignored files** (staged edits to tracked files visible through the working tree) — with provenance and risk flags, without blowing the token budget.
 3. **Multi-model review.** As a spec owner, I want a security/ops reviewer and a QA/pedant reviewer critiquing in parallel so blind spots are caught before engineering effort goes in.
 4. **Resume later.** As a part-time contributor, I close my laptop mid-iteration and run `samospec resume` three days later. It reads `state.json`, reconciles with the remote if reachable (or continues offline with `remote_stale`), and continues from the exact round state.
 5. **Consent-gated push.** As a developer in a corporate repo, the first time `samospec` would push, I see the remote name, target branch, and PR capability; I say no, and `samospec` keeps working locally without asking again.
@@ -268,7 +268,7 @@ Return shape: `{ ..., usage?, effort_used }`. `usage: null` means the adapter ca
 
 Partial outputs on disk are preserved for post-mortem but never read as complete critiques — only a `status: complete` round contributes to lead revision.
 
-**Manual-edit detection** runs at the start of `samospec iterate` and on `samospec resume` before the next round enters `running`. Scope: `git diff HEAD -- .samospec/spec/<slug>/` — detects edits to any committed artifact, but:
+**Manual-edit detection** runs at the start of `samospec iterate` and on `samospec resume` before the next round enters `running`. Scope: `git status --porcelain -- .samospec/spec/<slug>/` — detects edits to committed artifacts **and** new untracked files under the spec directory (e.g., a `NOTES.md` the user dropped in between rounds). Plain `git diff HEAD` would miss the latter and violate user story 8's "never silently loses work" claim.
 
 - `SPEC.md` edits trigger the three-option prompt (`incorporate`/`overwrite`/`abort`; default `incorporate`). On `incorporate`, the next `revise()` call gets an explicit directive: *"The user has manually edited sections {N} of the spec since the last round. Treat their exact wording as final for those sections; do not rewrite them."*
 - Edits to other committed artifacts (`decisions.md`, `changelog.md`, `TLDR.md`, `interview.json`) trigger a **warn-and-confirm** prompt: "you edited X; the next round will regenerate these files and lose your changes — continue?" `samospec` is the owner of these derived artifacts.
@@ -326,7 +326,7 @@ Reviewer system prompts bias emphasis (see Model roles) but do not forbid any ca
 
 ### Manual edits between rounds
 
-`samospec iterate` and `samospec resume` detect uncommitted changes to `.samospec/spec/<slug>/SPEC.md` via `git diff HEAD`. Three options:
+`samospec iterate` and `samospec resume` detect uncommitted or newly-created files under `.samospec/spec/<slug>/` via `git status --porcelain`. Three options (for `SPEC.md`; other artifacts use the warn-and-confirm path — see §7 manual-edit detection):
 
 1. **Incorporate** (default) — commit the edits as a version bump with a `user-edit` changelog entry, then run the round.
 2. **Overwrite** — discard the edits, run the round.
@@ -428,9 +428,7 @@ samospec version
 
 **`samospec iterate` preconditions**: exits with code 1 if no spec exists; suggests `samospec new <slug>`.
 
-**Deferred:** `experts set`, `spec compare`, `spec diff`, `spec export` (md/pdf/html), `spec review --rounds N`, `spec ready`, `--sandbox`, non-software persona packs, OpenCode/Gemini adapters. `experts set` is deferred because with only two adapter families in v1, the one bit of meaningful user choice (swap lead/reviewer between Claude and Codex) can be done by editing `.samospec/config.json`; the command earns its keep when v1.1 ships Gemini/OpenCode. PDF/HTML drags in pandoc or Chromium headless — disproportionate dependency footprint for v1.
-
-**Deferred:** `spec compare`, `spec diff`, `spec export` (md/pdf/html), `spec review --rounds N`, `spec ready`, non-software persona packs, OpenCode/Gemini adapters. PDF/HTML drags in pandoc or Chromium headless — disproportionate dependency footprint for v1.
+**Deferred to v1.1+:** `experts set`, `spec compare`, `spec diff`, `spec export` (md/pdf/html), `spec review --rounds N`, `spec ready`, `--sandbox`, non-software persona packs, OpenCode/Gemini adapters, Homebrew/apt/standalone-binary distribution. `experts set` is deferred because v1 ships only two adapter families — the one meaningful user choice (swap lead/reviewer between Claude and Codex) can be done by editing `.samospec/config.json`; the command earns its keep once v1.1 ships Gemini/OpenCode. PDF/HTML drags in pandoc or Chromium headless — disproportionate dependency footprint for v1.
 
 **Interactive prompts** use plain numbered menus. Every prompt has a default in brackets; `Enter` does the safe, obvious thing.
 
@@ -454,7 +452,17 @@ The resolved `{ adapter, model_id, effort_requested, effort_used }` for each rol
 ### Resume policy on model resolution change
 
 - **Same family, patch/minor bump** (e.g. `claude-opus-4-7 → claude-opus-4-8`): record the new resolution, continue, note in changelog.
-- **Major family change** (e.g. `claude-opus-* → claude-haiku-*`): halt and ask. User can accept, revert via `experts set`, or abort.
+- **Major family change** (e.g. `claude-opus-* → claude-haiku-*`): halt and ask. User can accept, abort, or manually edit `.samospec/config.json` (since `experts set` is deferred to v1.1).
+
+### Degraded-resolution visibility
+
+Any non-default resolution — lead fallback to Sonnet, Codex fallback to `gpt-5.1-codex`, or Reviewer B in `coupled_fallback: true` — is surfaced to the user:
+
+- `samospec status` prints a `running with degraded model resolution: <summary>` line whenever `state.json` records a fallback.
+- On the **first round** to enter a degraded resolution mid-session, the loop prompts once at round-start: `[accept / abort]`.
+- The degraded resolution is also written to `changelog.md` so it's visible in the PR and audit trail.
+
+This prevents the "silent thesis drift" case where lead + Reviewer B both degrade to Sonnet and Codex degrades to its smaller model, leaving the review panel materially weaker than the spec defaults promise.
 
 ### Effort levels
 
@@ -487,7 +495,7 @@ Enforced on every adapter call. Lead revision passes count equally with reviewer
 - `budget.max_tokens_per_round` — default **250K** (max effort includes thinking).
 - `budget.max_total_tokens_per_session` — default **2M**, hard stop mid-round, exit 4.
 - `budget.max_cost_usd` — optional, fail-closed when accounting unsupported, except under subscription-auth escape.
-- `budget.max_wall_clock_minutes` — default **240**. **Checked at round boundaries only**, never interrupts a call mid-flight. Derivation: 10 rounds × (`revise` 600s + ½ of the `critique` timeout, since critiques parallelize) + retry headroom ≈ 4h of realistic worst-case runtime at max effort. Hits exit with reason `wall-clock`.
+- `budget.max_wall_clock_minutes` — default **240**. **Checked at round boundaries only**, never interrupts a call mid-flight. Derivation: 10 rounds × (`revise` 600s + ½ of the `critique` timeout, since critiques parallelize) + retry headroom ≈ 4h of realistic worst-case runtime at max effort. Hits exit with reason `wall-clock`. **Overrun rule:** at each round boundary, the remaining budget is compared against the worst-case duration of one more round (sum of configured timeouts plus retries). If remaining < worst-case, the loop halts without starting another round rather than overrunning by a retry tail. Explicit derivation surfaced in `samospec status` so a user watching the clock is never surprised.
 - `budget.preflight_confirm_usd` — default **$20**. If preflight estimate exceeds, prompt for consent.
 - `budget.max_reviewers`, `budget.max_iterations` — mirror `N`/`M`.
 
@@ -495,17 +503,19 @@ Budget defaults are deliberately generous. `samospec status` shows running cost;
 
 ### Preflight cost estimate
 
-Runs at the end of Phase 1 (before any paid lead call). Uses scaffold-only inputs — no interview or context pass required first. Calibration data from prior runs in the same repo (`.samospec/config.json` `calibration.{mean_tokens_per_round, mean_rounds_to_converge}`) tightens the estimate over time; the first run in a repo uses per-vendor coefficients from release metadata.
+Runs at the end of Phase 1 (before any paid lead call). Uses scaffold-only inputs — no interview or context pass required first.
+
+**First-run preflight is inherently weak.** The scaffold is identical across users of the same repo until the persona and interview run; the first estimate is primarily a **consent ceremony** around order-of-magnitude cost awareness. Estimate quality emerges from run 2 onward.
+
+**Calibration.** Each completed session writes actual token/cost counts to `.samospec/config.json` `calibration.{sample_count, tokens_per_round[], rounds_to_converge[]}`. Calibration only influences the estimate **after `sample_count ≥ 3`** — fewer samples are noisy. Below the floor, preflight uses per-vendor release-metadata coefficients and shows "first runs; estimate is approximate" inline. Between 3 and 10 samples, calibration is blended 50/50 with defaults; above 10, calibration dominates.
 
 Formula:
 
 - v0.1 draft: scaffold size × lead token coefficient.
-- Loop: `M_likely × (reviewer_pair_tokens + revision_tokens)` where `M_likely` = calibrated mean rounds for this repo (first-run default: `M/2`).
+- Loop: `M_likely × (reviewer_pair_tokens + revision_tokens)` where `M_likely` = calibrated mean rounds for this repo (below the floor: `M/2`).
 - Context overhead: sum of per-phase budgets (assumes budgets are fully used).
 
 Output: `estimated range: $X–$Y, likely $Z`. `$Z` is defined as the **P50 (midpoint) assuming convergence at `M_likely` rounds** — not the arithmetic midpoint of `$X` and `$Y`. Per-adapter breakdown. When one or more adapters are under subscription-auth escape, their cost is shown as `unknown — subscription auth` and `$Z` reflects only the priced adapters. Over `preflight_confirm_usd` → prompt with `[accept / downshift / abort]`.
-
-After each session, actual token/cost counts are written to `.samospec/config.json` `calibration.*` keys so the next preflight anchors on empirical data, not static coefficients.
 
 ## 12. Stopping conditions
 
@@ -534,7 +544,7 @@ Every exit is recorded in `state.json` with a reason string and round index.
 1. **Phase machine (property-based).** `fast-check` generates random legal and illegal action sequences. Invariants: `state.json` always parseable; phase never goes backwards; version monotonically non-decreasing; round state transitions match §7. The protected-branch invariant is tested via a **mocked detector** — when the mock says a branch is protected, no commit ever lands on it. Real detection has its own integration test.
 2. **Git branch safety (integration).** Real local bare repo + scripted `gh` stub. Every dirty-tree option × every branch-selection flag × every protected-branch source (hardcoded / `git config` / user config / remote API).
 3. **Stopping conditions.** One test per exit reason. Condition 4 uses a trigram-Jaccard fixture with designed overlaps.
-4. **Adapter contract.** Shared contract test every adapter must pass. Fake-CLI harness (Bun script). Covers: schema-violation path (one retry then terminal), timeout (two retries with doubled timeout), Markdown-code-fence wrapping stripped, `usage: null` path, `subscription_auth` detection.
+4. **Adapter contract.** Shared contract test every adapter must pass. Fake-CLI harness (Bun script). Covers: schema-violation path (one repair retry then terminal), **capped timeout retry** (original → +50% retry → original-timeout retry, then terminal), Markdown-code-fence wrapping stripped, `usage: null` path, `subscription_auth` detection, non-interactive spawn verification.
 5. **Resume idempotency (formally defined).** Equality between an uninterrupted run and a kill+resume run is: identical phase sequence, identical version count, identical decision-category distribution, identical file set under `.samospec/spec/<slug>/`, identical `state.json` keys. **Exclusion list** (nondeterministic): `context.json.usage.*`, `round.json.started_at`, `round.json.completed_at`, `state.json.remote_stale`, timestamps in commit metadata. Spec prose is not required to match.
 6. **Remote reconciliation.** FF success, non-FF halt, fetch-timeout → local-only + `remote_stale` flag, HEAD-mismatch halt.
 7. **Redaction regex corpus — two-directional.** Direction A (positive): strings matching each pattern from `tests/fixtures/redaction/known.txt` (sourced from gitleaks / truffleHog) are redacted. Direction B (negative): strings *not* matching any pattern satisfy `redact(s) === s` — no false positives. Direction B is where the over-broad v0.4 JWT regex would have been caught.
@@ -585,7 +595,7 @@ v1 ships lead + two reviewers + local commits + consent-gated push. No Gemini, n
 
 ### Sprint 1 — skeleton and safety (1 week)
 
-- Bun project scaffolding; `bun build --compile` single-binary targets for Linux and macOS.
+- Bun project scaffolding; npm package metadata (`package.json` with `bin` entry); test local install via `bunx` against a file:// path.
 - `samospec init`, `samospec version`, `samospec doctor` (basic).
 - Phase machine + `state.json`; round state machine skeleton including `lead_terminal`.
 - Git layer: protected-branch detection (local precedence + remote API probe w/ 2s timeout), commit, refusal, dirty-tree defaults.
@@ -635,17 +645,27 @@ v1 ships lead + two reviewers + local commits + consent-gated push. No Gemini, n
 
 **TypeScript on Bun.** Rationale:
 
-- `bun build --compile` produces a single static binary per platform; matches the distribution story with no runtime install.
 - `Bun.spawn` is first-class and ergonomic for CLI-over-CLI orchestration with structured stream handling.
 - Fast startup (critical for a CLI invoked interactively).
 - Zod + JSON Schema ecosystem for structured-output validation.
 - Strong types keep the adapter contract honest.
 
-**Binary size is 50–100 MB per platform** because the compile bundles the JavaScriptCore runtime. This is acceptable for Homebrew and apt. Distribution channels with strict size caps (some internal artifact stores) can use `bunx` entry point instead.
+### v1 distribution: npm only
+
+`samospec` ships as an npm package. Users install and run via:
+
+- `bunx samospec <args>` — no install, runs the latest published version (requires Bun locally).
+- `bun install -g samospec` — global install, then `samospec <args>` on `$PATH`.
+
+**Bun is a hard requirement in v1.** The codebase uses `Bun.spawn` and Bun-specific APIs; it does not run on Node without a compatibility layer. `npx samospec` is therefore **not supported in v1** — attempting it fails with a clear error pointing the user to `bunx` or `bun install -g`.
+
+**Homebrew, apt, and `bun build --compile` standalone binaries are deferred to v1.1+.** Rationale: shipping a 50–100 MB compiled binary per platform plus tap/PPA tooling is a meaningful scope addition with low marginal value while `samospec` is a Bun-installed tool and early users already have Bun. When v1.1 broadens the user base beyond Bun owners, standalone binaries become worth the work.
+
+Release flow in v1: version bump → `npm publish` → tag → GitHub release notes. No binary uploads, no package managers beyond npm.
 
 ## 17. Dogfooding
 
-v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh repo with a seed prompt of comparable ambition and asserts the version-agnostic scorecard in §13 item 11. If v1 cannot produce a v0.6-grade spec for itself, v1 is not done.
+v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh repo with a seed prompt of comparable ambition and asserts the version-agnostic scorecard in §13 item 11 — the generated spec must pass the *current* frozen template. If v1 cannot clear the scorecard against its own frozen template, v1 is not done.
 
 ## 18. Risks and open questions
 
@@ -663,18 +683,23 @@ v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh rep
 - Global vendor-config contamination → minimal-env spawn + `doctor` detection; `--sandbox` post-v1.
 - `gh api` audit entries → disclosed in `doctor`; opt-out via config.
 
-**Open questions:**
+**Open questions (v1.1+ decisions, not v1 blockers):**
 
 - Should `samospec publish` tag `spec/<slug>/v0.3`? Lean yes once `publish` stabilizes in v1.1.
 - Should Reviewer B auto-promote to Gemini/OpenCode on v1.1 install, or require explicit opt-in? Lean auto-promote with a one-time notice.
 - Dogfood structural scorecard vs a golden-diff-with-human-approval gate: scorecard covers v1; reconsider golden-diff after a few real users.
 - Guided-mode graduation past `--explain`: decide after v1 telemetry.
+- **`lead_terminal` recovery after v0.1 draft refusal.** Phase 5 can enter `lead_terminal` before any round exists. `iterate` is a review-round command; there's nothing to review. Either `iterate` learns to re-trigger `revise()` when no reviews exist yet, or a dedicated `samospec draft` command lands in v1.1. For now, the recovery path is: user writes v0.1 manually, then `iterate`.
+- **Single-file context budget overflow.** A `README.md` >30K tokens can blow the draft budget on its own. Current behavior: large-file truncation (>1000 lines) handles the common case, but shorter files with heavy prose can still overrun. Decide v1.1 whether to: excluded-and-gisted, hard-truncate with a risk flag, or error.
+- **`--context` vs `.samospec-ignore` precedence.** v1 intent: explicit `--context` wins. Document and test in Sprint 3.
+- **Redaction scope.** Currently covers transcripts and prompts. Paths in `context.json` and text in `decisions.md` are committed and not redacted. Low-risk but uncovered; revisit if the field shows real leakage.
+- **`samospec doctor` auto-run.** Currently only runs on explicit invocation. Consider a minimal `doctor` check on first `new` in a repo so warnings aren't missed. Decide after first-user telemetry.
 
 ## 19. Comparison with v0.5
 
-| Dimension | v0.5 | v0.6 |
+| Dimension | v0.5 | v1.0 |
 |---|---|---|
-| Status | round-2 blockers resolved | round-3 blockers resolved; v1 lock candidate |
+| Status | round-2 blockers resolved | rounds 3 & 4 applied; v1 locked |
 | Preflight placement | After interview (after paid lead calls) | End of Phase 1 (before any paid call); calibrated after first run |
 | Wall-clock budget | 120 min | 240 min; checked at round boundaries only |
 | Timeout retry escalation | Doubled-backoff, unbounded (up to 2) | Capped: original + 1.5× + 1× (max 3.5× base) |
@@ -708,6 +733,12 @@ v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh rep
 | Fixture regeneration | Committed raw | Runs redaction pass before commit |
 | Rate-limit sharing (lead + Reviewer B) | Not addressed | Known constraint; soft-degrade on limit; serialization post-v1 |
 | Per-round cost summary | Emitted | Dropped (redundant with preflight + `status`) |
+| Distribution | Homebrew + apt + `bun build --compile` | **npm only** (`bunx` / `bun install -g`); Homebrew, apt, standalone binaries deferred to v1.1+ |
+| Manual-edit detection | `git diff HEAD` | `git status --porcelain` (catches new untracked files under spec dir) |
+| Degraded-resolution visibility | Silent in `state.json` | `samospec status` line + first-round prompt + changelog entry |
+| Preflight calibration floor | Influences from run 2 | `sample_count ≥ 3` required; blended 3–10; full above 10 |
+| First-run preflight | Presented as calibrated | Acknowledged as consent ceremony; "approximate" inline |
+| Wall-clock overrun | Implicit round-boundary halt | Explicit: skip next round if remaining < worst-case round |
 
 ## 19a. Comparison with v0.4 (earlier deltas, abridged)
 
@@ -749,9 +780,13 @@ v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh rep
 
 ## 20. Changelog
 
-### v0.6 — 2026-04-19 (v1 lock candidate)
+### v1.0 — 2026-04-19 (locked)
 
-Round-3 review findings applied. Full per-change deltas: see §19 (v0.5→v0.6 table). Summary: preflight moved before any paid lead call; wall-clock raised to 240 min and clarified as boundary-only; Codex pin finalized (no hedge); Reviewer B fallback coupled to lead; stale-lockfile detection rule specified; non-interactive adapter spawn flags mandated; JSON pre-parser made deterministic; trigram Jaccard normalization + floor added; `lead_terminal` promoted to general state; manual-edit scope expanded with explicit lead directive; envelope uses content-unique delimiters + suffix reminder; `revise()` specified as full rewrite; `git.remote_probe` defaults to off; publish lint split hard/soft + `$PATH` trust removed; dogfood scorecard version-agnostic; preflight calibrated from prior runs; `experts set` deferred to v1.1; `samospec new <existing-slug>` and `init` idempotency clarified.
+Four review rounds applied; v1 scope frozen; implementation can start.
+
+Rounds 3–4 deltas over v0.5 (full per-change table: see §19). Round-3: preflight moved before any paid lead call; wall-clock raised to 240 min, boundary-only; Codex pin finalized; Reviewer B fallback coupled to lead; stale-lockfile detection rule; non-interactive adapter spawn flags; deterministic JSON pre-parser; trigram Jaccard normalization + ≥5 floor; `lead_terminal` as general state; manual-edit scope expanded + lead directive; envelope uses content-unique delimiters + recency-bias suffix; `revise()` specified as full rewrite; `git.remote_probe` off by default; publish lint split hard/soft + `$PATH` trust removed; dogfood scorecard version-agnostic; preflight calibrated from prior runs; `experts set` deferred to v1.1; `new <existing-slug>` and `init` idempotency clarified.
+
+Round-4 editorial pass: **v1 distribution scoped to npm** (`bunx` / `bun install -g`); Homebrew, apt, and `bun build --compile` deferred to v1.1+. Manual-edit detection switched to `git status --porcelain` (catches new untracked files). Degraded-resolution visibility surfaced via status line + first-round prompt. Preflight calibration requires `sample_count ≥ 3`; first-run preflight acknowledged as consent ceremony. Wall-clock overrun rule added. Stale §13 test-4 text updated. User story 2 wording corrected. Duplicate `Deferred:` paragraph removed. Open questions extended (`lead_terminal`-after-draft, single-file budget overflow, `--context` vs ignore, redaction scope, `doctor` auto-run).
 
 ### v0.5 — 2026-04-19
 
