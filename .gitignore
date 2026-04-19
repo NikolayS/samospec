@@ -26,3 +26,6 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Ephemeral PR body drafts used by gh pr create
+PR_BODY.md
