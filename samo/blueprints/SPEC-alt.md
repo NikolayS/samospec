@@ -143,7 +143,7 @@ Each adapter is a thin shell over a vendor CLI. The contract has two layers.
 **Work operations:**
 
 - `ask(prompt, context) → { text, usage }` — general-purpose call, used by the interview and the lead.
-- `critique(spec, guidelines) → { review, usage }` — structured critique, returns a review keyed by the taxonomy in §7.5.
+- `critique(spec, guidelines) → { review, usage }` — structured critique, returns a review keyed by the review taxonomy below.
 - `revise(spec, reviews) → { spec, usage }` — lead-only operation.
 
 **Cross-cutting:**
@@ -352,7 +352,20 @@ The codebase is built test-first. Every feature lands as: failing test → minim
 - Lint + format gate required before merge.
 - A separate opt-in "live" workflow runs weekly against real CLIs with small fixed prompts to catch adapter drift.
 
-## 14. Implementation plan
+## 14. Expert team to hire
+
+If I were staffing this from scratch, I'd want:
+
+- Veteran `"CLI software engineer"` expert — command surface, interactive prompts, cross-platform quirks.
+- Veteran `"AI orchestration engineer"` expert — adapter contract, parallel review loop, convergence logic.
+- Veteran `"git workflow"` expert — branch safety, protected-branch detection, PR-open flow, dirty-tree handling.
+- Veteran `"tooling/reliability engineer"` expert — CI, recorded-fixture test harness, adapter drift detection.
+- Veteran `"UX writer"` expert — plain-English mode copy, question phrasing, TL;DR style.
+- Veteran `"developer advocate"` expert (part-time) — non-software persona packs, examples, docs.
+
+The first three are load-bearing for v0.3 and should overlap in Sprint 1; the rest come online in Sprints 2–4.
+
+## 15. Implementation plan
 
 ### Sprint 1 — skeleton and safety (1 week)
 
@@ -401,7 +414,7 @@ The codebase is built test-first. Every feature lands as: failing test → minim
 - Renderers and CLI-UX polish run parallel to loop logic in Sprint 3.
 - Non-software persona prompts can be developed without touching core code.
 
-## 15. Risks and open questions
+## 16. Risks and open questions
 
 **Risks.**
 
@@ -417,20 +430,40 @@ The codebase is built test-first. Every feature lands as: failing test → minim
 - Should we support multiple active specs per repo in parallel? Yes structurally (slug-scoped), but UX needs work.
 - How to surface cost estimates pre-loop. Not in v0.2 — revisit once budget guardrails ship.
 
-## 16. Comparison with `SPEC.md` (v0.1)
+## 17. Comparison with `SPEC.md` (v0.2)
 
-| Dimension | SPEC.md (v0.1) | SPEC-alt.md (v0.2) |
+| Dimension | SPEC.md (v0.2) | SPEC-alt.md (v0.3) |
 |---|---|---|
-| Working storage | `blueprints/<feature>/` | `.samo/spec/<slug>/` (hidden), `blueprints/` only on publish |
-| Branch strategy | Not specified | Auto-branch `samo/spec/<slug>`, never commits to default branch |
-| Push behavior | Not specified | Auto-push by default; safe defaults for non-engineers |
-| Review artifacts | Mentioned | Required in git; structured per-round layout |
-| CLI UX | Not specified | Full subcommand surface defined |
-| Publish step | Not specified | Explicit `publish` with PR open |
-| Scope | Software-primary, broader secondary | Broad from day one; software is the primary *tuning*, not the boundary |
+| Working storage | `.samo/spec/` (flat, one spec per repo implied) | `.samo/spec/<slug>/` (multi-spec, hidden) + `blueprints/` only on publish |
+| Branch strategy | Default proposed; dirty-repo asks user | Opinionated: protected-branch refusal, auto-branch, dirty-tree prompt with stash-and-continue default |
+| Push behavior | Auto-push proposed | Auto-push with `--no-push`/`--no-commit` escape hatches baked into state |
+| Review artifacts | Required in git, flat `REVIEWS/` | Required in git, per-round `reviews/rNN/` with structured taxonomy and lead `summary.md` |
+| Review taxonomy | Listed as a concept | Fixed seven-category schema used by adapters and `render` |
+| CLI UX | Provisional command list | Full subcommand surface + exit codes + plain-English mode |
+| Adapter contract | Listed requirements | Formal lifecycle + work + cross-cutting operations, with retryable/terminal failure tagging |
+| Publish step | Not defined | Explicit `publish` → `blueprints/` + PR open via `gh`/`glab` |
+| TL;DR | Open question (commit vs on-demand) | First-class `TLDR.md`, always committed |
+| Gemini policy | Budget controls listed | Fail-closed: no accounting → refuse call |
+| Scope | Software-primary, broader secondary | Broad from day one via persona packs |
+| State/resume | Not defined | `state.json` drives a resumable phase machine with idempotency tests |
 | Reviewer default | 2 | 2 (kept) |
 
-## 17. Changelog
+## 18. Changelog
+
+### v0.3 (alt) — 2026-04-19
+
+Enriched with ideas from `SPEC.md` (v0.2):
+
+- Added review taxonomy (seven categories) used by adapters and the lead's decision log.
+- Expanded adapter contract: lifecycle (`detect`, `auth_status`, `accounting`) + work (`ask`, `critique`, `revise`) + structured output probe + retryable/terminal failure classification.
+- Added dirty-working-tree handling with stash-and-continue default.
+- Exposed branch-selection options (`--here`, `--no-push`, `--no-commit`) and recorded the choice in state.
+- Named and defined non-engineer plain-English mode.
+- Added `samo doctor`, `samo spec compare`, `samo spec export`, `samo spec tldr` to the CLI surface.
+- Added `TLDR.md` as a first-class, always-committed artifact.
+- Promoted `policy` to a named architectural component; strengthened Gemini policy to fail-closed without accounting.
+- Added "Expert team to hire" section.
+- Renumbered sections to accommodate the new content.
 
 ### v0.2 (alt) — 2026-04-19
 
