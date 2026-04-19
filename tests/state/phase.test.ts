@@ -19,8 +19,9 @@ describe("state/phase — phase table (SPEC §5)", () => {
 describe("state/phase — legality predicate", () => {
   test("forward-by-one transitions are legal", () => {
     for (let i = 0; i < PHASE_ORDER.length - 1; i++) {
-      const from = PHASE_ORDER[i] as Phase;
-      const to = PHASE_ORDER[i + 1] as Phase;
+      const from = PHASE_ORDER[i];
+      const to = PHASE_ORDER[i + 1];
+      if (from === undefined || to === undefined) continue;
       expect(isLegalPhaseTransition(from, to)).toBe(true);
     }
   });
@@ -34,8 +35,9 @@ describe("state/phase — legality predicate", () => {
   test("backward transitions are always illegal", () => {
     for (let i = 1; i < PHASE_ORDER.length; i++) {
       for (let j = 0; j < i; j++) {
-        const from = PHASE_ORDER[i] as Phase;
-        const to = PHASE_ORDER[j] as Phase;
+        const from = PHASE_ORDER[i];
+        const to = PHASE_ORDER[j];
+        if (from === undefined || to === undefined) continue;
         expect(isLegalPhaseTransition(from, to)).toBe(false);
       }
     }
