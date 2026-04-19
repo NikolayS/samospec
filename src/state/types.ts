@@ -1,0 +1,162 @@
+// Copyright 2026 Nikolay Samokhvalov.
+
+import { z } from "zod";
+
+// SPEC §5 — eight phases in canonical order.
+export const PHASES = [
+  "detect",
+  "branch_lock_preflight",
+  "persona",
+  "context",
+  "interview",
+  "draft",
+  "review_loop",
+  "publish",
+] as const;
+export type Phase = (typeof PHASES)[number];
+export const phaseSchema = z.enum(PHASES);
+
+// SPEC §7 — six round states including lead_terminal.
+export const ROUND_STATES = [
+  "planned",
+  "running",
+  "reviews_collected",
+  "lead_revised",
+  "committed",
+  "lead_terminal",
+] as const;
+export type RoundState = (typeof ROUND_STATES)[number];
+export const roundStateSchema = z.enum(ROUND_STATES);
+
+// SPEC §7 — reviewer seat status set.
+export const SEAT_STATES = [
+  "pending",
+  "ok",
+  "failed",
+  "schema_violation",
+  "timeout",
+] as const;
+export type SeatState = (typeof SEAT_STATES)[number];
+export const seatStateSchema = z.enum(SEAT_STATES);
+
+// SPEC §7 — round.json top-level status set.
+export const ROUND_STATUSES = [
+  "planned",
+  "running",
+  "complete",
+  "partial",
+  "abandoned",
+] as const;
+export type RoundStatus = (typeof ROUND_STATUSES)[number];
+export const roundStatusSchema = z.enum(ROUND_STATUSES);
+
+// ISO 8601 timestamp ending in Z. Kept narrow so malformed writes are caught.
+const isoTimestampSchema = z
+  .string()
+  .regex(
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/,
+    "must be an ISO 8601 UTC timestamp ending in 'Z'",
+  );
+
+// SemVer, SPEC uses `X.Y.Z` version format (no pre-release tags for now).
+const semverSchema = z
+  .string()
+  .regex(/^\d+\.\d+\.\d+$/, "must match X.Y.Z SemVer");
+
+const personaSchema = z
+  .object({
+    skill: z.string().min(1),
+    accepted: z.boolean(),
+  })
+  .strict();
+
+const calibrationSchema = z
+  .object({
+    // Per SPEC §11: preflight coefficients tightened from prior runs.
+    prior_runs: z.number().int().nonnegative(),
+    midpoint_usd: z.number().nonnegative(),
+  })
+  .strict();
+
+const pushConsentSchema = z
+  .object({
+    remote: z.string().min(1),
+    granted: z.boolean(),
+    recorded_at: isoTimestampSchema,
+  })
+  .strict();
+
+// SPEC §12 — exit is recorded with reason string and round_index.
+const exitSchema = z
+  .object({
+    code: z.number().int().nonnegative(),
+    reason: z.string().min(1),
+    round_index: z.number().int().nonnegative(),
+  })
+  .strict();
+
+// SPEC §7 + §11 — resolved adapter snapshot recorded at round start.
+const adapterResolutionSchema = z
+  .object({
+    adapter: z.string().min(1),
+    model_id: z.string().min(1),
+    effort_requested: z.string().min(1),
+    effort_used: z.string().min(1),
+  })
+  .strict();
+
+export const stateSchema = z
+  .object({
+    slug: z.string().min(1),
+    phase: phaseSchema,
+    round_index: z.number().int().nonnegative(),
+    version: semverSchema,
+    persona: personaSchema.nullable(),
+    push_consent: pushConsentSchema.nullable(),
+    calibration: calibrationSchema.nullable(),
+    remote_stale: z.boolean(),
+    coupled_fallback: z.boolean(),
+    round_state: roundStateSchema,
+    exit: exitSchema.nullable(),
+    adapters: z
+      .object({
+        lead: adapterResolutionSchema,
+        reviewer_a: adapterResolutionSchema,
+        reviewer_b: adapterResolutionSchema,
+      })
+      .partial()
+      .strict()
+      .optional(),
+    created_at: isoTimestampSchema,
+    updated_at: isoTimestampSchema,
+  })
+  .strict();
+
+export type State = z.infer<typeof stateSchema>;
+
+export const roundSchema = z
+  .object({
+    round: z.number().int().positive(),
+    status: roundStatusSchema,
+    seats: z
+      .object({
+        reviewer_a: seatStateSchema,
+        reviewer_b: seatStateSchema,
+      })
+      .strict(),
+    started_at: isoTimestampSchema,
+    completed_at: isoTimestampSchema.optional(),
+  })
+  .strict();
+
+export type Round = z.infer<typeof roundSchema>;
+
+export const lockSchema = z
+  .object({
+    pid: z.number().int().positive(),
+    started_at: isoTimestampSchema,
+    slug: z.string().min(1),
+  })
+  .strict();
+
+export type Lock = z.infer<typeof lockSchema>;
