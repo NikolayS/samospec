@@ -46,17 +46,18 @@ describe("state/round — transition table (SPEC §7)", () => {
     // lead_revised -> committed | lead_terminal
     // committed -> planned (start next round)
     // lead_terminal is terminal (no outgoing)
-    expect(ROUND_TRANSITIONS.planned.sort()).toEqual(["running"]);
-    expect(ROUND_TRANSITIONS.running.sort()).toEqual(
-      ["lead_terminal", "reviews_collected", "running"].sort(),
+    const asSet = (xs: readonly RoundState[]): Set<RoundState> => new Set(xs);
+    expect(asSet(ROUND_TRANSITIONS.planned)).toEqual(asSet(["running"]));
+    expect(asSet(ROUND_TRANSITIONS.running)).toEqual(
+      asSet(["reviews_collected", "lead_terminal", "running"]),
     );
-    expect(ROUND_TRANSITIONS.reviews_collected.sort()).toEqual(
-      ["lead_revised", "lead_terminal"].sort(),
+    expect(asSet(ROUND_TRANSITIONS.reviews_collected)).toEqual(
+      asSet(["lead_revised", "lead_terminal"]),
     );
-    expect(ROUND_TRANSITIONS.lead_revised.sort()).toEqual(
-      ["committed", "lead_terminal"].sort(),
+    expect(asSet(ROUND_TRANSITIONS.lead_revised)).toEqual(
+      asSet(["committed", "lead_terminal"]),
     );
-    expect(ROUND_TRANSITIONS.committed.sort()).toEqual(["planned"]);
+    expect(asSet(ROUND_TRANSITIONS.committed)).toEqual(asSet(["planned"]));
     expect(ROUND_TRANSITIONS.lead_terminal).toEqual([]);
   });
 
@@ -185,11 +186,7 @@ describe("state/round — round.json sidecar (SPEC §7)", () => {
 
   test("readRound throws on schema violation", () => {
     const file = path.join(tmp, "round.json");
-    writeFileSync(
-      file,
-      JSON.stringify({ round: 1, status: "???" }),
-      "utf8",
-    );
+    writeFileSync(file, JSON.stringify({ round: 1, status: "???" }), "utf8");
     expect(() => readRound(file)).toThrow(/round\.json/);
   });
 
