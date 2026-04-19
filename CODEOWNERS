@@ -1,0 +1,7 @@
+# Copyright 2026 Nikolay Samokhvalov.
+#
+# Default owner for everything in the repo. GitHub uses the LAST matching
+# pattern, so add more-specific rules below this line as subsystems grow
+# (e.g. /src/adapter/ owned by a different reviewer set).
+
+* @NikolayS
