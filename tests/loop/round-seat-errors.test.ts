@@ -65,170 +65,163 @@ function makeFailingAdapter(errorMessage: string): Adapter {
   };
 }
 
-describe(
-  "round-seat-errors — round.json records error detail on failure (Issue #52)",
-  () => {
-    test("abandoned round.json carries error object per seat when both fail", async () => {
-      const lead = createFakeAdapter({ revise: READY_REVISE });
-      const revA = makeFailingAdapter(
-        "exit 1: unexpected argument '--reasoning_effort' found",
-      );
-      const revB = makeFailingAdapter("no response after 300s (timeout)");
+describe("round-seat-errors — round.json records error detail on failure (Issue #52)", () => {
+  test("abandoned round.json carries error object per seat when both fail", async () => {
+    const lead = createFakeAdapter({ revise: READY_REVISE });
+    const revA = makeFailingAdapter(
+      "exit 1: unexpected argument '--reasoning_effort' found",
+    );
+    const revB = makeFailingAdapter("no response after 300s (timeout)");
 
-      const dirs = roundDirsFor(tmp, 1);
-      const outcome = await runRound({
-        now: "2026-04-19T12:00:00Z",
-        roundNumber: 1,
-        dirs,
-        specText: "# SPEC\n\nbody",
-        decisionsHistory: [],
-        adapters: { lead, reviewerA: revA, reviewerB: revB },
-      });
-
-      expect(outcome.roundStopReason).toBe(
-        "both_seats_failed_even_after_retry",
-      );
-
-      // round.json must record error objects per seat, not just the state string
-      const sidecar = readRoundJson(dirs.roundJson);
-      expect(sidecar).not.toBeNull();
-      expect(sidecar?.status).toBe("abandoned");
-
-      // reviewer_a seat must carry error detail
-      const seatA = sidecar?.seats.reviewer_a;
-      expect(typeof seatA).toBe("object");
-      if (typeof seatA === "object" && seatA !== null) {
-        const a = seatA as { status: string; error: { reason: string; message: string } };
-        expect(a.status).not.toBeUndefined();
-        expect(a.error).not.toBeUndefined();
-        expect(typeof a.error.reason).toBe("string");
-        expect(typeof a.error.message).toBe("string");
-        // The message should contain relevant part of the original error
-        expect(a.error.message.length).toBeGreaterThan(0);
-        expect(a.error.message.length).toBeLessThanOrEqual(500);
-      }
-
-      // reviewer_b seat must carry error detail
-      const seatB = sidecar?.seats.reviewer_b;
-      expect(typeof seatB).toBe("object");
-      if (typeof seatB === "object" && seatB !== null) {
-        const b = seatB as { status: string; error: { reason: string; message: string } };
-        expect(b.status).not.toBeUndefined();
-        expect(b.error).not.toBeUndefined();
-        expect(typeof b.error.reason).toBe("string");
-        expect(typeof b.error.message).toBe("string");
-      }
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
     });
 
-    test("SeatOutcome.error carries full error message from failing adapter", async () => {
-      const lead = createFakeAdapter({ revise: READY_REVISE });
-      const errMsg = "exit 1: unexpected argument '--reasoning_effort' found";
-      const revA = makeFailingAdapter(errMsg);
-      const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+    expect(outcome.roundStopReason).toBe("both_seats_failed_even_after_retry");
 
-      const dirs = roundDirsFor(tmp, 1);
-      const outcome = await runRound({
-        now: "2026-04-19T12:00:00Z",
-        roundNumber: 1,
-        dirs,
-        specText: "# SPEC\n\nbody",
-        decisionsHistory: [],
-        adapters: { lead, reviewerA: revA, reviewerB: revB },
-      });
+    // round.json must record error objects per seat, not just the state string
+    const sidecar = readRoundJson(dirs.roundJson);
+    expect(sidecar).not.toBeNull();
+    expect(sidecar?.status).toBe("abandoned");
 
-      // reviewer_a failed, reviewer_b ok — round proceeds
-      expect(outcome.roundStopReason).toBe("ok");
-      expect(outcome.seats.reviewer_a.state).not.toBe("ok");
+    // reviewer_a seat must carry error detail
+    const seatA = sidecar?.seats.reviewer_a;
+    expect(typeof seatA).toBe("object");
+    if (typeof seatA === "object" && seatA !== null) {
+      const a = seatA as {
+        status: string;
+        error: { reason: string; message: string };
+      };
+      expect(a.status).not.toBeUndefined();
+      expect(a.error).not.toBeUndefined();
+      expect(typeof a.error.reason).toBe("string");
+      expect(typeof a.error.message).toBe("string");
+      // The message should contain relevant part of the original error
+      expect(a.error.message.length).toBeGreaterThan(0);
+      expect(a.error.message.length).toBeLessThanOrEqual(500);
+    }
 
-      // The SeatOutcome in the RunRoundOutcome must carry an error detail object
-      const seatAOutcome = outcome.seats.reviewer_a;
-      expect(seatAOutcome.errorDetail).toBeDefined();
-      if (seatAOutcome.errorDetail !== undefined) {
-        expect(typeof seatAOutcome.errorDetail.reason).toBe("string");
-        expect(seatAOutcome.errorDetail.message).toContain(
-          "unexpected argument",
-        );
-        expect(seatAOutcome.errorDetail.message.length).toBeLessThanOrEqual(
-          500,
-        );
-      }
+    // reviewer_b seat must carry error detail
+    const seatB = sidecar?.seats.reviewer_b;
+    expect(typeof seatB).toBe("object");
+    if (typeof seatB === "object" && seatB !== null) {
+      const b = seatB as {
+        status: string;
+        error: { reason: string; message: string };
+      };
+      expect(b.status).not.toBeUndefined();
+      expect(b.error).not.toBeUndefined();
+      expect(typeof b.error.reason).toBe("string");
+      expect(typeof b.error.message).toBe("string");
+    }
+  });
+
+  test("SeatOutcome.error carries full error message from failing adapter", async () => {
+    const lead = createFakeAdapter({ revise: READY_REVISE });
+    const errMsg = "exit 1: unexpected argument '--reasoning_effort' found";
+    const revA = makeFailingAdapter(errMsg);
+    const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
     });
 
-    test("ANSI codes are stripped from error message", async () => {
-      const lead = createFakeAdapter({ revise: READY_REVISE });
-      // Simulate a message with ANSI escape sequences
-      const ansiMsg =
-        "\x1b[31merror\x1b[0m: unexpected argument '--reasoning_effort' found";
-      const revA = makeFailingAdapter(ansiMsg);
-      const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+    // reviewer_a failed, reviewer_b ok — round proceeds
+    expect(outcome.roundStopReason).toBe("ok");
+    expect(outcome.seats.reviewer_a.state).not.toBe("ok");
 
-      const dirs = roundDirsFor(tmp, 1);
-      const outcome = await runRound({
-        now: "2026-04-19T12:00:00Z",
-        roundNumber: 1,
-        dirs,
-        specText: "# SPEC\n\nbody",
-        decisionsHistory: [],
-        adapters: { lead, reviewerA: revA, reviewerB: revB },
-      });
+    // The SeatOutcome in the RunRoundOutcome must carry an error detail object
+    const seatAOutcome = outcome.seats.reviewer_a;
+    expect(seatAOutcome.errorDetail).toBeDefined();
+    if (seatAOutcome.errorDetail !== undefined) {
+      expect(typeof seatAOutcome.errorDetail.reason).toBe("string");
+      expect(seatAOutcome.errorDetail.message).toContain("unexpected argument");
+      expect(seatAOutcome.errorDetail.message.length).toBeLessThanOrEqual(500);
+    }
+  });
 
-      const seatAOutcome = outcome.seats.reviewer_a;
-      expect(seatAOutcome.errorDetail).toBeDefined();
-      if (seatAOutcome.errorDetail !== undefined) {
-        // ANSI codes must be stripped
-        expect(seatAOutcome.errorDetail.message).not.toContain("\x1b[");
-        // But the textual content must remain
-        expect(seatAOutcome.errorDetail.message).toContain(
-          "unexpected argument",
-        );
-      }
+  test("ANSI codes are stripped from error message", async () => {
+    const lead = createFakeAdapter({ revise: READY_REVISE });
+    // Simulate a message with ANSI escape sequences
+    const ansiMsg =
+      "\x1b[31merror\x1b[0m: unexpected argument '--reasoning_effort' found";
+    const revA = makeFailingAdapter(ansiMsg);
+    const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
     });
 
-    test("cli_error reason is classified when error message contains exit code text", async () => {
-      const lead = createFakeAdapter({ revise: READY_REVISE });
-      const revA = makeFailingAdapter(
-        "cli_error: exit 1: unexpected argument '--reasoning_effort' found",
-      );
-      const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+    const seatAOutcome = outcome.seats.reviewer_a;
+    expect(seatAOutcome.errorDetail).toBeDefined();
+    if (seatAOutcome.errorDetail !== undefined) {
+      // ANSI codes must be stripped
+      expect(seatAOutcome.errorDetail.message).not.toContain("\x1b[");
+      // But the textual content must remain
+      expect(seatAOutcome.errorDetail.message).toContain("unexpected argument");
+    }
+  });
 
-      const dirs = roundDirsFor(tmp, 1);
-      const outcome = await runRound({
-        now: "2026-04-19T12:00:00Z",
-        roundNumber: 1,
-        dirs,
-        specText: "# SPEC\n\nbody",
-        decisionsHistory: [],
-        adapters: { lead, reviewerA: revA, reviewerB: revB },
-      });
+  test("cli_error reason is classified when error message contains exit code text", async () => {
+    const lead = createFakeAdapter({ revise: READY_REVISE });
+    const revA = makeFailingAdapter(
+      "cli_error: exit 1: unexpected argument '--reasoning_effort' found",
+    );
+    const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
 
-      const seatAOutcome = outcome.seats.reviewer_a;
-      if (seatAOutcome.errorDetail !== undefined) {
-        expect(seatAOutcome.errorDetail.reason).toBe("cli_error");
-      }
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
     });
 
-    test("message is truncated to 500 chars", async () => {
-      const lead = createFakeAdapter({ revise: READY_REVISE });
-      const longMsg = "x".repeat(1000);
-      const revA = makeFailingAdapter(longMsg);
-      const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+    const seatAOutcome = outcome.seats.reviewer_a;
+    if (seatAOutcome.errorDetail !== undefined) {
+      expect(seatAOutcome.errorDetail.reason).toBe("cli_error");
+    }
+  });
 
-      const dirs = roundDirsFor(tmp, 1);
-      const outcome = await runRound({
-        now: "2026-04-19T12:00:00Z",
-        roundNumber: 1,
-        dirs,
-        specText: "# SPEC\n\nbody",
-        decisionsHistory: [],
-        adapters: { lead, reviewerA: revA, reviewerB: revB },
-      });
+  test("message is truncated to 500 chars", async () => {
+    const lead = createFakeAdapter({ revise: READY_REVISE });
+    const longMsg = "x".repeat(1000);
+    const revA = makeFailingAdapter(longMsg);
+    const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
 
-      const seatAOutcome = outcome.seats.reviewer_a;
-      if (seatAOutcome.errorDetail !== undefined) {
-        expect(seatAOutcome.errorDetail.message.length).toBeLessThanOrEqual(
-          500,
-        );
-      }
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
     });
-  },
-);
+
+    const seatAOutcome = outcome.seats.reviewer_a;
+    if (seatAOutcome.errorDetail !== undefined) {
+      expect(seatAOutcome.errorDetail.message.length).toBeLessThanOrEqual(500);
+    }
+  });
+});

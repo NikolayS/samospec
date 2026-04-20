@@ -70,40 +70,37 @@ function sampleAsk(level: EffortLevel): AskInput {
   };
 }
 
-describe(
-  "codex spawn flags — -c model_reasoning_effort=<level> (Issue #52)",
-  () => {
-    const cases: readonly [EffortLevel, string][] = [
-      ["max", "high"],
-      ["high", "high"],
-      ["medium", "medium"],
-      ["low", "low"],
-      ["off", "minimal"],
-    ];
+describe("codex spawn flags — -c model_reasoning_effort=<level> (Issue #52)", () => {
+  const cases: readonly [EffortLevel, string][] = [
+    ["max", "high"],
+    ["high", "high"],
+    ["medium", "medium"],
+    ["low", "low"],
+    ["off", "minimal"],
+  ];
 
-    for (const [level, expected] of cases) {
-      test(`logical '${level}' -> -c model_reasoning_effort=${expected}`, async () => {
-        const spy = makespy();
-        const { dir } = makeFakeBinaryDir();
-        const adapter = new CodexAdapter({
-          host: { PATH: dir, HOME: "/tmp", ...FAKE_API_HOST },
-          spawn: spy.spawn,
-        });
-
-        await adapter.ask(sampleAsk(level));
-
-        const work = spy.calls[0];
-        expect(work).toBeDefined();
-        if (work === undefined) return;
-
-        // MUST have `-c` followed by `model_reasoning_effort=<expected>`
-        const idx = work.cmd.findIndex((c) => c === "-c");
-        expect(idx).toBeGreaterThan(-1);
-        expect(work.cmd[idx + 1]).toBe(`model_reasoning_effort=${expected}`);
-
-        // MUST NOT have the old invalid flag `--reasoning_effort`
-        expect(work.cmd).not.toContain("--reasoning_effort");
+  for (const [level, expected] of cases) {
+    test(`logical '${level}' -> -c model_reasoning_effort=${expected}`, async () => {
+      const spy = makespy();
+      const { dir } = makeFakeBinaryDir();
+      const adapter = new CodexAdapter({
+        host: { PATH: dir, HOME: "/tmp", ...FAKE_API_HOST },
+        spawn: spy.spawn,
       });
-    }
-  },
-);
+
+      await adapter.ask(sampleAsk(level));
+
+      const work = spy.calls[0];
+      expect(work).toBeDefined();
+      if (work === undefined) return;
+
+      // MUST have `-c` followed by `model_reasoning_effort=<expected>`
+      const idx = work.cmd.findIndex((c) => c === "-c");
+      expect(idx).toBeGreaterThan(-1);
+      expect(work.cmd[idx + 1]).toBe(`model_reasoning_effort=${expected}`);
+
+      // MUST NOT have the old invalid flag `--reasoning_effort`
+      expect(work.cmd).not.toContain("--reasoning_effort");
+    });
+  }
+});

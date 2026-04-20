@@ -299,7 +299,10 @@ export function recoverCritiqueFromFile(file: string): CritiqueOutput | null {
 export type RoundSidecarSeat =
   | "pending"
   | "ok"
-  | { readonly status: "failed" | "schema_violation" | "timeout"; readonly error: SeatErrorDetail }
+  | {
+      readonly status: "failed" | "schema_violation" | "timeout";
+      readonly error: SeatErrorDetail;
+    }
   // Plain-string failure values kept for forward-compat when reading old files.
   | "failed"
   | "schema_violation"
@@ -579,8 +582,14 @@ function classifyErrorReason(msg: string): SeatErrorReason {
   const lower = msg.toLowerCase();
   if (lower.includes("schema")) return "schema_violation";
   if (lower.includes("timeout")) return "timeout";
-  if (lower.includes("auth") || lower.includes("unauthorized")) return "auth_failed";
-  if (lower.includes("cli_error") || lower.includes("exit 1") || lower.includes("exit code")) return "cli_error";
+  if (lower.includes("auth") || lower.includes("unauthorized"))
+    return "auth_failed";
+  if (
+    lower.includes("cli_error") ||
+    lower.includes("exit 1") ||
+    lower.includes("exit code")
+  )
+    return "cli_error";
   return "unknown";
 }
 
@@ -598,8 +607,7 @@ function classifyReviewerError(err: unknown): SeatOutcomeState {
  * Build a SeatErrorDetail from a caught error (Issue #52).
  */
 function buildSeatErrorDetail(err: unknown): SeatErrorDetail {
-  const raw =
-    err instanceof Error ? err.message : String(err);
+  const raw = err instanceof Error ? err.message : String(err);
   const message = sanitizeErrorMessage(raw);
   const reason = classifyErrorReason(raw);
   return { reason, message };
@@ -609,11 +617,12 @@ function seatToDiskStatus(seat: SeatOutcome): RoundSidecarSeat {
   if (seat.state === "ok") return "ok";
   const errorDetail = seat.errorDetail;
   if (errorDetail !== undefined) {
-    const status = seat.state === "schema_violation"
-      ? "schema_violation" as const
-      : seat.state === "timeout"
-        ? "timeout" as const
-        : "failed" as const;
+    const status =
+      seat.state === "schema_violation"
+        ? ("schema_violation" as const)
+        : seat.state === "timeout"
+          ? ("timeout" as const)
+          : ("failed" as const);
     return { status, error: errorDetail };
   }
   // Fallback: plain string (legacy path).
