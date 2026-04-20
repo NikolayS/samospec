@@ -59,13 +59,15 @@ describe("ClaudeAdapter — lifecycle (SPEC §7, §11)", () => {
       "claude",
       'echo "2.1.114 (Claude Code)"',
     );
+    // Include /bin and /usr/bin on PATH so the shebang can resolve
+    // bash (macOS: /bin/bash; Linux: /bin/bash or /usr/bin/bash).
     const adapter = new ClaudeAdapter({
-      host: { PATH: dir, HOME: "/tmp" },
+      host: { PATH: `${dir}:/bin:/usr/bin`, HOME: "/tmp" },
     });
     const result = await adapter.detect();
     expect(result.installed).toBe(true);
     if (result.installed) {
-      expect(result.version.length).toBeGreaterThan(0);
+      expect(result.version).toBe("2.1.114");
       expect(result.path).toBe(binary);
     }
   });

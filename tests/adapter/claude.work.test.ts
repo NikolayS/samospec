@@ -468,6 +468,57 @@ describe("ClaudeAdapter schema-violation repair (SPEC §7)", () => {
   });
 });
 
+// ---------- exit-code classification ----------
+
+describe("ClaudeAdapter exit-code classification (SPEC §7)", () => {
+  test("non-zero exit with terminal stderr -> terminal error, no retry", async () => {
+    const spy = makeSpy({
+      ok: true,
+      exitCode: 2,
+      stdout: "",
+      stderr: "unauthorized: no token",
+    });
+    const { host } = makeInstalledHost();
+    const adapter = new ClaudeAdapter({ host, spawn: spy.spawn });
+
+    let err: unknown;
+    try {
+      await adapter.ask(sampleAsk());
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ClaudeAdapterError);
+    if (err instanceof ClaudeAdapterError) {
+      expect(err.payload.kind).toBe("terminal");
+      expect(err.payload.reason).toBe("other");
+    }
+    // No retry: runWithCappedRetry bails on non-timeout failure.
+    expect(spy.calls.length).toBe(1);
+  });
+
+  test("non-zero exit with rate-limit stderr -> retried as timeout class", async () => {
+    // Every attempt returns the same rate-limit error; runWithCappedRetry
+    // retries 3 times before giving up.
+    const spy = makeSpy({
+      ok: true,
+      exitCode: 1,
+      stdout: "",
+      stderr: "rate limit exceeded (429)",
+    });
+    const { host } = makeInstalledHost();
+    const adapter = new ClaudeAdapter({ host, spawn: spy.spawn });
+
+    let err: unknown;
+    try {
+      await adapter.ask(sampleAsk());
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(ClaudeAdapterError);
+    expect(spy.calls.length).toBe(3);
+  });
+});
+
 // ---------- capped timeout retry ----------
 
 describe("ClaudeAdapter capped timeout retry (SPEC §7)", () => {
