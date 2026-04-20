@@ -57,6 +57,42 @@ export ANTHROPIC_API_KEY="sk-ant-..."   # get at console.anthropic.com
 samospec doctor
 ```
 
+## Reviewer A keeps failing with model_unavailable (ChatGPT auth)
+
+```
+samospec: terminal — model_unavailable: all fallbacks exhausted:
+  gpt-5.1-codex-max → gpt-5.1-codex → account-default (no --model flag);
+  account is not authorized or no model is available
+```
+
+Codex under ChatGPT-account auth (browser login via `codex auth`) does not
+support the pinned models `gpt-5.1-codex-max` and `gpt-5.1-codex`. The
+adapter tries a three-tier fallback chain:
+
+- `gpt-5.1-codex-max` (default pin)
+- `gpt-5.1-codex` (explicit fallback)
+- account-default: no `--model` flag, letting codex pick the account's
+  supported model
+
+If the account-default tier **succeeds**, the round continues and `round.json`
+records `"account_default": true`. Run `samospec status` to see the degraded
+resolution notice.
+
+If the account-default tier also fails, the entire adapter is terminal. This
+means your ChatGPT subscription does not include Codex API access at all.
+
+**Options:**
+
+- Upgrade your ChatGPT plan to one that includes Codex API access.
+- Switch to API-key auth: set `OPENAI_API_KEY` in your environment.
+- Disable Reviewer A and run with Reviewer B only (edit `.samo/config.json`).
+
+**Verify** which tier resolved via `round.json`:
+
+```bash
+cat .samo/spec/<slug>/rounds/r<N>/round.json | grep account_default
+```
+
 ## lead_terminal — other causes
 
 ```

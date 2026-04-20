@@ -9,6 +9,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Codex ChatGPT-account auth (#54):** three tangled bugs fixed together.
+  (1) Exit-0 stdout `invalid_request_error` JSON (the real shape Codex emits
+  when a pinned model is unsupported under ChatGPT-account auth) was
+  misclassified as `schema_violation`; now correctly classified as
+  `model_unavailable` via a pre-parse stdout check.
+  (2) After both explicit pins (`gpt-5.1-codex-max`, `gpt-5.1-codex`) fail
+  with `model_unavailable`, the adapter now attempts one final call with
+  `--model` omitted (account-default tier), letting codex pick the
+  account's supported model. On success, `AskOutput.account_default: true`
+  is set and `samospec status` surfaces the degraded resolution.
+  (3) When all three tiers fail, the terminal error detail lists every
+  attempted tier for diagnosis.
+  New config key: `adapters.reviewer_a.account_default_fallback` (default
+  `true`); set to `false` to force explicit-pin-only mode.
 - **OAuth is the primary auth mode** (#48): reverts PR #47's architectural
   error. `claude /login` OAuth sessions are now fully supported for
   non-interactive work calls — no `ANTHROPIC_API_KEY` required. Stale env
