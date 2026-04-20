@@ -85,6 +85,10 @@ import {
   formatChangelogEntry,
   formatVersionLabel,
 } from "../loop/version.ts";
+import {
+  classifyLeadTerminal,
+  formatLeadTerminalMessage,
+} from "./terminal-messages.ts";
 
 // ---------- constants ----------
 
@@ -261,9 +265,15 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
     // Initial state tracking.
     let currentState: State = state;
     let currentSpec: string = readFileSync(paths.specPath, "utf8");
+    // SPEC §12 conditions 3 + 4 require round-(N-1) signals. The
+    // classifier's "previous" is only a real round when
+    // `hasPreviousRound === true`; round 1 passes synthetic signals
+    // that cannot match, so neither convergence nor repeat-findings
+    // can fire at round 1.
     let previousFindings: readonly Finding[] = [];
     let previousDiff = 0;
     let previousNonSummary = 0;
+    let hasPreviousRound = false;
     let roundsRun = 0;
     let promptedDegradedThisSession = false;
     let sigintReceived = false;
@@ -412,6 +422,13 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         // runRound via round.json; here we advance state.json's round_state
         // based on how the round finished.
         if (roundOutcome.roundStopReason === "lead_terminal") {
+          // Route the raw lead error through the SPEC §7 sub-reason
+          // classifier so refusal / schema_fail / invalid_input /
+          // budget / wall_clock each surface their distinct exit-4
+          // copy. Falls back to `adapter_error` when nothing matches.
+          const { sub_reason, detail } = classifyLeadTerminal(
+            roundOutcome.leadTerminalError ?? new Error(roundOutcome.rationale),
+          );
           const leadTerm: State = {
             ...currentState,
             round_state: "lead_terminal",
@@ -419,12 +436,12 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             updated_at: input.now,
             exit: {
               code: 4,
-              reason: "lead-terminal",
+              reason: `lead-terminal:${sub_reason}`,
               round_index: roundIndex,
             },
           };
           writeState(paths.statePath, leadTerm);
-          error(stopReasonMessage("lead-terminal", input.slug));
+          error(formatLeadTerminalMessage(input.slug, sub_reason, detail));
           return {
             exitCode: 4,
             stdout: lines.join("\n"),
@@ -468,6 +485,11 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             now: input.now,
           });
         }
+
+        // Snapshot SPEC before this round's write so currentDiff below
+        // compares `round-(N-1) spec` vs `round-N spec` — matches the
+        // SPEC §12 condition 3 "diff between consecutive rounds".
+        const preSpecForDiff = currentSpec;
 
         // Write spec + TLDR + decisions + changelog, bump version, commit.
         if (roundOutcome.revisedSpec !== undefined) {
@@ -565,41 +587,59 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             throw err;
           }
 
-          // Advance local spec pointer for next round comparison.
-          previousDiff = countDiffLines(currentSpec, newSpec);
-          previousNonSummary = countNonSummaryCategoriesWithFindings(
-            // Compute from the round's reviewer findings.
-            [
-              ...(roundOutcome.seats.reviewer_a.critique?.findings ?? []),
-              ...(roundOutcome.seats.reviewer_b.critique?.findings ?? []),
-            ],
-          );
-          previousFindings = [
-            ...(roundOutcome.seats.reviewer_a.critique?.findings ?? []),
-            ...(roundOutcome.seats.reviewer_b.critique?.findings ?? []),
-          ];
+          // NOTE: do NOT overwrite `previousDiff` / `previousNonSummary`
+          // / `previousFindings` here. The classifier below needs
+          // round-(N-1)'s signals as `previous` and round-N's as
+          // `current`. We update the "previous" pointers AFTER the
+          // classifier runs, so the NEXT iteration sees this round's
+          // values as its "previous". SPEC §12 conditions 3 + 4 both
+          // require N-vs-(N-1) comparisons; reassigning early made them
+          // collapse into N-vs-N (spurious halt on round 1). Bug fixed
+          // in response to PR #30 REV review.
           currentSpec = newSpec;
         }
 
-        // Evaluate stopping conditions.
-        const currentFindings = [
+        // Compute THIS round's signals for the classifier. Must stay
+        // separate from the `previous…` pointers until after classify.
+        const currentFindings: readonly Finding[] = [
           ...(roundOutcome.seats.reviewer_a.critique?.findings ?? []),
           ...(roundOutcome.seats.reviewer_b.critique?.findings ?? []),
         ];
+        const currentDiff =
+          roundOutcome.revisedSpec !== undefined
+            ? countDiffLines(preSpecForDiff, currentSpec)
+            : 0;
+        const currentNonSummary =
+          countNonSummaryCategoriesWithFindings(currentFindings);
+
+        // SPEC §12 conditions 3 + 4 require TWO consecutive rounds. On
+        // round 1 there is no previous round, so we must neither trip
+        // convergence nor trip repeat-findings. The classifier's
+        // `previous.findings = []` already self-gates repeat-findings
+        // (no previous categories → `no_previous_findings`). For
+        // convergence we pass synthetic "previous" signals that cannot
+        // match (large diff, one non-summary finding) when
+        // `hasPreviousRound` is false.
+        const previousForClassifier = hasPreviousRound
+          ? {
+              findings: previousFindings,
+              diffLines: previousDiff,
+              nonSummaryCategoriesWithFindings: previousNonSummary,
+            }
+          : {
+              findings: [] as readonly Finding[],
+              diffLines: Number.MAX_SAFE_INTEGER,
+              nonSummaryCategoriesWithFindings: Number.MAX_SAFE_INTEGER,
+            };
         const stop = classifyAllStops({
           currentRoundIndex: roundIndex,
           maxRounds,
           leadReady: roundOutcome.ready,
-          previous: {
-            findings: previousFindings,
-            diffLines: previousDiff,
-            nonSummaryCategoriesWithFindings: previousNonSummary,
-          },
+          previous: previousForClassifier,
           current: {
             findings: currentFindings,
-            diffLines: previousDiff, // updated above
-            nonSummaryCategoriesWithFindings:
-              countNonSummaryCategoriesWithFindings(currentFindings),
+            diffLines: currentDiff,
+            nonSummaryCategoriesWithFindings: currentNonSummary,
           },
           reviewerAvailability:
             (roundOutcome.seats.reviewer_a.state === "ok" ? 1 : 0) +
@@ -630,6 +670,15 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             now: input.now,
           });
         }
+
+        // Classifier is done for this round; now roll THIS round's
+        // signals into the "previous" pointers for the NEXT round.
+        // Doing this AFTER classify is what makes SPEC §12 conditions
+        // 3 + 4 compare round-N vs round-(N-1) instead of N vs N.
+        previousFindings = currentFindings;
+        previousDiff = currentDiff;
+        previousNonSummary = currentNonSummary;
+        hasPreviousRound = true;
       }
     } finally {
       process.off("SIGINT", sigintHandler);

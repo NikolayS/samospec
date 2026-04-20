@@ -369,7 +369,7 @@ describe("iterate regression — repeat-findings halt compares round N to N-1 (S
       critique: () => {
         const out = revAOutputs[Math.min(n, revAOutputs.length - 1)];
         n += 1;
-        return Promise.resolve(out!);
+        return Promise.resolve(out);
       },
     };
     const revB = createFakeAdapter({
@@ -439,7 +439,7 @@ describe("iterate regression — repeat-findings halt compares round N to N-1 (S
       critique: () => {
         const out = revAOutputs[Math.min(n, revAOutputs.length - 1)];
         n += 1;
-        return Promise.resolve(out!);
+        return Promise.resolve(out);
       },
     };
     const revB = createFakeAdapter({
@@ -513,7 +513,7 @@ const TERMINAL_SUB_CASES: readonly TerminalSubCase[] = [
 
 describe("iterate regression — lead_terminal exit-4 messages are specific per sub-reason (SPEC §7)", () => {
   for (const sub of TERMINAL_SUB_CASES) {
-    test(`sub-reason ${sub.label} surfaces \"${sub.expectedSubstring}\" in the exit-4 stderr`, async () => {
+    test(`sub-reason ${sub.label} surfaces "${sub.expectedSubstring}" in the exit-4 stderr`, async () => {
       seedSpec(tmp, "refunds");
       const leadTerminal: Adapter = {
         vendor: "fake",

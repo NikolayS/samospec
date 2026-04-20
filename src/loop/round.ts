@@ -135,6 +135,13 @@ export interface RunRoundOutcome {
   readonly retried: boolean;
   /** Lead usage (for wall-clock + budget accounting). */
   readonly leadUsage?: CritiqueOutput["usage"];
+  /**
+   * Raw lead `revise()` error when `roundStopReason === "lead_terminal"`.
+   * The caller (iterate CLI) routes this through
+   * `classifyLeadTerminal` + `formatLeadTerminalMessage` to emit the
+   * SPEC §7 per-sub-reason exit-4 copy.
+   */
+  readonly leadTerminalError?: unknown;
 }
 
 // ---------- atomic write helpers ----------
@@ -463,6 +470,7 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       roundStopReason: "lead_terminal",
       reviewersExhausted: false,
       retried,
+      leadTerminalError: err,
       ...(directive !== undefined ? { leadDirective: directive } : {}),
     };
   }
