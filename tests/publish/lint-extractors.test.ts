@@ -109,9 +109,9 @@ describe("extractPaths — inclusion rule (c): bulleted lines under Files/Layout
   });
 
   test("bulleted path under a `Storage` suffix-insensitive header", () => {
-    const spec = ["### State Storage", "", "- .samospec/state.json"].join("\n");
+    const spec = ["### State Storage", "", "- .samo/state.json"].join("\n");
     const paths = extractPaths(spec).map((p) => p.path);
-    expect(paths).toContain(".samospec/state.json");
+    expect(paths).toContain(".samo/state.json");
   });
 
   test("header resets on next `## Heading` (bullets no longer under Files)", () => {

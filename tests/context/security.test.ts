@@ -10,7 +10,7 @@ import { createTempRepo, type TempRepo } from "../git/helpers/tempRepo.ts";
  *
  *  - "copies a .env.staging into a temp repo and asserts it is NEVER
  *    returned by discovery"
- *  - "attempt to whitelist .env via .samospec-ignore → still excluded"
+ *  - "attempt to whitelist .env via .samo-ignore → still excluded"
  *  - envelope spoof test lives in envelope.test.ts
  *  - blob-sha cache survival lives in gist.test.ts
  *  - 2000-line markdown truncation lives in truncate.test.ts
@@ -44,8 +44,8 @@ describe("context/security — no-read cannot be overridden (SPEC §7)", () => {
     }
   });
 
-  test(".samospec-ignore negation cannot un-ignore .env files", () => {
-    repo.write(".samospec-ignore", "!.env\n!.env.*\n");
+  test(".samo-ignore negation cannot un-ignore .env files", () => {
+    repo.write(".samo-ignore", "!.env\n!.env.*\n");
     repo.write(".env", "PG_URI=postgres://synthetic@localhost/demo\n");
     repo.write(".env.dev", "DEBUG=1\n");
     const result = discoverContext({

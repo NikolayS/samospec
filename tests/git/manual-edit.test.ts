@@ -3,7 +3,7 @@
 /**
  * SPEC §7 — Manual-edit detection (Sprint 3 #3).
  *
- * Scope: `git status --porcelain -- .samospec/spec/<slug>/` — catches BOTH
+ * Scope: `git status --porcelain -- .samo/spec/<slug>/` — catches BOTH
  * tracked edits AND new untracked files. `SPEC.md` → three-option
  * incorporate/overwrite/abort prompt. Other committed artifacts
  * (`decisions.md`, `changelog.md`, `TLDR.md`, `interview.json`) →
@@ -28,24 +28,24 @@ import {
 import { createTempRepo, type TempRepo } from "./helpers/tempRepo.ts";
 
 function commitSpecStart(repo: TempRepo, slug: string): void {
-  // Seed an initial committed SPEC.md under `.samospec/spec/<slug>/` so edits
+  // Seed an initial committed SPEC.md under `.samo/spec/<slug>/` so edits
   // to it register as tracked modifications.
   repo.write(
-    `.samospec/spec/${slug}/SPEC.md`,
+    `.samo/spec/${slug}/SPEC.md`,
     "# Refunds v0.1\n\n## Goals\n\nInitial goals.\n\n## Scope\n\nInitial scope.\n",
   );
-  repo.write(`.samospec/spec/${slug}/decisions.md`, "# Decisions\n");
-  repo.write(`.samospec/spec/${slug}/changelog.md`, "# Changelog\n");
-  repo.write(`.samospec/spec/${slug}/TLDR.md`, "# TL;DR v0.1\n");
-  repo.write(`.samospec/spec/${slug}/interview.json`, "{}\n");
+  repo.write(`.samo/spec/${slug}/decisions.md`, "# Decisions\n");
+  repo.write(`.samo/spec/${slug}/changelog.md`, "# Changelog\n");
+  repo.write(`.samo/spec/${slug}/TLDR.md`, "# TL;DR v0.1\n");
+  repo.write(`.samo/spec/${slug}/interview.json`, "{}\n");
   repo.run([
     "add",
     "--",
-    `.samospec/spec/${slug}/SPEC.md`,
-    `.samospec/spec/${slug}/decisions.md`,
-    `.samospec/spec/${slug}/changelog.md`,
-    `.samospec/spec/${slug}/TLDR.md`,
-    `.samospec/spec/${slug}/interview.json`,
+    `.samo/spec/${slug}/SPEC.md`,
+    `.samo/spec/${slug}/decisions.md`,
+    `.samo/spec/${slug}/changelog.md`,
+    `.samo/spec/${slug}/TLDR.md`,
+    `.samo/spec/${slug}/interview.json`,
   ]);
   repo.run(["commit", "-m", `spec(${slug}): draft v0.1`]);
 }
@@ -71,14 +71,14 @@ describe("detectManualEdits — scope and classification", () => {
 
   test("detects an edited tracked SPEC.md as target=spec", () => {
     repo.write(
-      `.samospec/spec/${slug}/SPEC.md`,
+      `.samo/spec/${slug}/SPEC.md`,
       "# Refunds v0.1\n\n## Goals\n\nRewritten goals.\n\n## Scope\n\nInitial scope.\n",
     );
     const rep = detectManualEdits(slug, { repoPath: repo.dir });
     expect(rep.dirty).toBe(true);
     expect(rep.specEdited).toBe(true);
     expect(rep.files.map((f) => f.path)).toContain(
-      `.samospec/spec/${slug}/SPEC.md`,
+      `.samo/spec/${slug}/SPEC.md`,
     );
     const spec = rep.files.find((f) => f.path.endsWith("SPEC.md"));
     expect(spec?.target).toBe("spec");
@@ -86,10 +86,7 @@ describe("detectManualEdits — scope and classification", () => {
   });
 
   test("detects a new untracked NOTES.md under the spec dir as target=derived", () => {
-    repo.write(
-      `.samospec/spec/${slug}/NOTES.md`,
-      "# Notes\n\nA user drop-in.\n",
-    );
+    repo.write(`.samo/spec/${slug}/NOTES.md`, "# Notes\n\nA user drop-in.\n");
     const rep = detectManualEdits(slug, { repoPath: repo.dir });
     expect(rep.dirty).toBe(true);
     expect(rep.specEdited).toBe(false);
@@ -108,19 +105,19 @@ describe("detectManualEdits — scope and classification", () => {
       "interview.json",
     ];
     for (const a of artifacts) {
-      repo.write(`.samospec/spec/${slug}/${a}`, "user tampered\n");
+      repo.write(`.samo/spec/${slug}/${a}`, "user tampered\n");
     }
     const rep = detectManualEdits(slug, { repoPath: repo.dir });
     expect(rep.dirty).toBe(true);
     expect(rep.specEdited).toBe(false);
     const derivedSorted = [...rep.derivedEdited].sort();
     const expectedSorted = artifacts
-      .map((a) => `.samospec/spec/${slug}/${a}`)
+      .map((a) => `.samo/spec/${slug}/${a}`)
       .sort();
     expect(derivedSorted).toEqual(expectedSorted);
   });
 
-  test("ignores edits outside .samospec/spec/<slug>/", () => {
+  test("ignores edits outside .samo/spec/<slug>/", () => {
     repo.write("README.md", "# Unrelated change\n");
     repo.write("src/app.ts", "export {};\n");
     const rep = detectManualEdits(slug, { repoPath: repo.dir });
@@ -131,10 +128,7 @@ describe("detectManualEdits — scope and classification", () => {
   test("ignores edits in sibling spec dirs", () => {
     // A different slug must not pollute this slug's report.
     commitSpecStart(repo, "other-slug");
-    repo.write(
-      `.samospec/spec/other-slug/SPEC.md`,
-      "# Other spec — tampered\n",
-    );
+    repo.write(`.samo/spec/other-slug/SPEC.md`, "# Other spec — tampered\n");
     const rep = detectManualEdits(slug, { repoPath: repo.dir });
     expect(rep.dirty).toBe(false);
     expect(rep.specEdited).toBe(false);
@@ -191,7 +185,7 @@ describe("applyManualEdit — three-option flow for SPEC.md edits", () => {
 
   test("'incorporate' commits user edits with the SPEC §7 message and appends a changelog entry", () => {
     repo.write(
-      `.samospec/spec/${slug}/SPEC.md`,
+      `.samo/spec/${slug}/SPEC.md`,
       "# Refunds v0.1\n\n## Goals\n\nRewritten goals.\n\n## Scope\n\nInitial scope.\n",
     );
     const report = detectManualEdits(slug, { repoPath: repo.dir });
@@ -209,7 +203,7 @@ describe("applyManualEdit — three-option flow for SPEC.md edits", () => {
     // Changelog had a `user-edit` note appended.
     const changelog = repo.run([
       "show",
-      `HEAD:.samospec/spec/${slug}/changelog.md`,
+      `HEAD:.samo/spec/${slug}/changelog.md`,
     ]).stdout;
     expect(changelog).toContain("user-edit");
     // The lead directive surfaced for the orchestrator to pass in.
@@ -228,7 +222,7 @@ describe("applyManualEdit — three-option flow for SPEC.md edits", () => {
   });
 
   test("'overwrite' discards user edits and does not commit", () => {
-    repo.write(`.samospec/spec/${slug}/SPEC.md`, "# USER WIPED\n");
+    repo.write(`.samo/spec/${slug}/SPEC.md`, "# USER WIPED\n");
     const report = detectManualEdits(slug, { repoPath: repo.dir });
     const commitsBefore = repo.logOnBranch(`samospec/${slug}`).length;
     const outcome = applyManualEdit({
@@ -248,7 +242,7 @@ describe("applyManualEdit — three-option flow for SPEC.md edits", () => {
 
   test("'abort' does not commit and does not mutate state — signals exit 0", () => {
     repo.write(
-      `.samospec/spec/${slug}/SPEC.md`,
+      `.samo/spec/${slug}/SPEC.md`,
       "# Refunds v0.1\n\n## Goals\n\nRewritten goals.\n\n## Scope\n\nInitial scope.\n",
     );
     const report = detectManualEdits(slug, { repoPath: repo.dir });
@@ -270,7 +264,7 @@ describe("applyManualEdit — three-option flow for SPEC.md edits", () => {
   });
 
   test("derived-only edits do NOT trigger the SPEC three-option flow — warn-and-confirm path", () => {
-    repo.write(`.samospec/spec/${slug}/NOTES.md`, "# Notes\nadded by user\n");
+    repo.write(`.samo/spec/${slug}/NOTES.md`, "# Notes\nadded by user\n");
     const report = detectManualEdits(slug, { repoPath: repo.dir });
     expect(report.specEdited).toBe(false);
     expect(report.derivedEdited.length).toBeGreaterThan(0);

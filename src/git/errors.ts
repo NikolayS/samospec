@@ -14,7 +14,7 @@ export class ProtectedBranchError extends Error {
       message ??
         `Refusing to operate on protected branch '${branchName}'. ` +
           `Create a feature branch first, or override the protection ` +
-          `via git config or '.samospec/config.json'.`,
+          `via git config or '.samo/config.json'.`,
     );
     this.name = "ProtectedBranchError";
     this.branchName = branchName;

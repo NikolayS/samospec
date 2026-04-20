@@ -1,6 +1,6 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
-// SPEC §11 calibration storage: `.samospec/config.json` gains a
+// SPEC §11 calibration storage: `.samo/config.json` gains a
 // `calibration` object with `sample_count`, `tokens_per_round[]`,
 // `rounds_to_converge[]`, `cost_per_run_usd[]`.
 //

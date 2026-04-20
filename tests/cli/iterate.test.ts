@@ -43,7 +43,7 @@ function initRepo(cwd: string): void {
 }
 
 function seedSpec(cwd: string, slug: string): State {
-  const slugDir = path.join(cwd, ".samospec", "spec", slug);
+  const slugDir = path.join(cwd, ".samo", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   writeFileSync(
     path.join(slugDir, "SPEC.md"),
@@ -162,7 +162,7 @@ describe("cli/iterate — preconditions", () => {
   test("exits 4 when state is lead_terminal", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
     const state: State = JSON.parse(
       readFileSync(path.join(slugDir, "state.json"), "utf8"),
     );
@@ -191,7 +191,7 @@ describe("cli/iterate — happy path (single round ready=true)", () => {
   test("bumps version v0.1 -> v0.2, writes reviews + changelog, commits", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
 
     const lead: Adapter = {
       ...createFakeAdapter({
@@ -301,7 +301,7 @@ describe("cli/iterate — partial reviewer failure", () => {
   test("one seat fails; round proceeds; directive mentions missing seat", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
 
     let observedLeadDirective: string | undefined;
     const lead: Adapter = {
@@ -504,7 +504,7 @@ describe("cli/iterate — lead_terminal", () => {
   test("lead revise throws -> exit 4, state.round_state=lead_terminal", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
 
     const terminalLead: Adapter = {
       vendor: "fake",

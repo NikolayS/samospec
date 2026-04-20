@@ -7,7 +7,7 @@
  * caps for this invocation.
  *
  * Preconditions:
- *   - `.samospec/spec/<slug>/state.json` exists (exit 1 otherwise with
+ *   - `.samo/spec/<slug>/state.json` exists (exit 1 otherwise with
  *     `samospec new <slug>` suggestion).
  *   - State is at `phase=draft` or `phase=review_loop`, not
  *     `lead_terminal`.
@@ -234,7 +234,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
   if (state.round_state === "lead_terminal") {
     error(
       `samospec: spec '${input.slug}' is at lead_terminal. ` +
-        `Edit .samospec/spec/${input.slug}/ manually to continue.`,
+        `Edit .samo/spec/${input.slug}/ manually to continue.`,
     );
     return {
       exitCode: 4,
@@ -436,7 +436,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
 
         // Allocate round dir.
         const dirs = roundDirsFor(
-          path.join(input.cwd, ".samospec", "spec", input.slug),
+          path.join(input.cwd, ".samo", "spec", input.slug),
           roundIndex,
         );
         mkdirSync(dirs.roundDir, { recursive: true });

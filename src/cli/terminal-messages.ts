@@ -81,7 +81,7 @@ export function formatLeadTerminalMessage(
     case "refusal":
       return (
         `samospec: lead_terminal — model refused. ` +
-        `Edit .samospec/spec/${slug}/SPEC.md to remove sensitive content ` +
+        `Edit .samo/spec/${slug}/SPEC.md to remove sensitive content ` +
         `or retry.${detailSuffix}`
       );
     case "schema_fail":
@@ -92,7 +92,7 @@ export function formatLeadTerminalMessage(
     case "invalid_input":
       return (
         `samospec: lead_terminal — spec too large or malformed. ` +
-        `Check .samospec/spec/${slug}/SPEC.md.${detailSuffix}`
+        `Check .samo/spec/${slug}/SPEC.md.${detailSuffix}`
       );
     case "budget":
       return (
@@ -107,7 +107,7 @@ export function formatLeadTerminalMessage(
     case "adapter_error":
       return (
         `samospec: lead_terminal — adapter error. ` +
-        `See .samospec/spec/${slug}/ for state and retry.${detailSuffix}`
+        `See .samo/spec/${slug}/ for state and retry.${detailSuffix}`
       );
   }
 }

@@ -88,7 +88,7 @@ describe("context/gist — buildDeterministicGist (SPEC §7)", () => {
   });
 });
 
-describe("context/gist — cache at .samospec/cache/gists/<blob-sha>.md", () => {
+describe("context/gist — cache at .samo/cache/gists/<blob-sha>.md", () => {
   let repo: TempRepo;
 
   beforeEach(() => {
@@ -99,10 +99,10 @@ describe("context/gist — cache at .samospec/cache/gists/<blob-sha>.md", () => 
     repo.cleanup();
   });
 
-  test("cache path is blob-sha keyed under .samospec/cache/gists", () => {
+  test("cache path is blob-sha keyed under .samo/cache/gists", () => {
     const full = gistCachePath(repo.dir, "abc123");
     expect(full).toBe(
-      path.join(repo.dir, ".samospec", "cache", "gists", "abc123.md"),
+      path.join(repo.dir, ".samo", "cache", "gists", "abc123.md"),
     );
   });
 

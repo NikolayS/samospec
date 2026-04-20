@@ -72,8 +72,8 @@ describe("doctor-checks / entropy — scanner integration", () => {
   });
 
   test("scans files the user listed in doctor.entropy_scan_paths config", () => {
-    // Stand up a minimal .samospec with config.json listing a scan path.
-    mkdirSync(path.join(tmp, ".samospec"), { recursive: true });
+    // Stand up a minimal .samo with config.json listing a scan path.
+    mkdirSync(path.join(tmp, ".samo"), { recursive: true });
     const spiky = path.join(tmp, "custom.log");
     writeFileSync(
       spiky,
@@ -81,7 +81,7 @@ describe("doctor-checks / entropy — scanner integration", () => {
       "utf8",
     );
     writeFileSync(
-      path.join(tmp, ".samospec", "config.json"),
+      path.join(tmp, ".samo", "config.json"),
       JSON.stringify({
         adapters: {},
         doctor: { entropy_scan_paths: [spiky] },
@@ -93,9 +93,9 @@ describe("doctor-checks / entropy — scanner integration", () => {
     expect(result.message).toMatch(/\b1\b/);
   });
 
-  test("glob-picks up .samospec/spec/<slug>/transcripts/*.log", () => {
+  test("glob-picks up .samo/spec/<slug>/transcripts/*.log", () => {
     const slug = "demo";
-    const dir = path.join(tmp, ".samospec", "spec", slug, "transcripts");
+    const dir = path.join(tmp, ".samo", "spec", slug, "transcripts");
     mkdirSync(dir, { recursive: true });
     const logPath = path.join(dir, "author.log");
     writeFileSync(
@@ -130,7 +130,7 @@ describe("doctor aggregator — entropy integration", () => {
   test("runDoctor wires the entropy check and passes cwd through", async () => {
     runInit({ cwd: tmp });
     // Inject a secret into a discoverable file.
-    const logDir = path.join(tmp, ".samospec", "spec", "demo", "transcripts");
+    const logDir = path.join(tmp, ".samo", "spec", "demo", "transcripts");
     mkdirSync(logDir, { recursive: true });
     writeFileSync(
       path.join(logDir, "author.log"),

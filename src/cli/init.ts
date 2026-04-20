@@ -1,7 +1,7 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
 /**
- * `samospec init` — create or merge a `.samospec/` config directory for
+ * `samospec init` — create or merge a `.samo/` config directory for
  * the current repo. SPEC §5 Phase 1, §10 (idempotent), §11 (pinned
  * defaults + budget), §14 (remote_probe off by default).
  *
@@ -208,7 +208,7 @@ function formatValue(v: unknown): string {
 }
 
 export function runInit(args: RunInitArgs): RunInitResult {
-  const samoDir = path.join(args.cwd, ".samospec");
+  const samoDir = path.join(args.cwd, ".samo");
   const configPath = path.join(samoDir, "config.json");
   const gitignorePath = path.join(samoDir, ".gitignore");
   const cacheDir = path.join(samoDir, "cache");
@@ -228,7 +228,7 @@ export function runInit(args: RunInitArgs): RunInitResult {
         exitCode: 1,
         stdout: "",
         stderr:
-          `samospec: failed to read existing .samospec/config.json: ` +
+          `samospec: failed to read existing .samo/config.json: ` +
           `${(err as Error).message}\n`,
       };
     }
@@ -239,7 +239,7 @@ export function runInit(args: RunInitArgs): RunInitResult {
           exitCode: 1,
           stdout: "",
           stderr:
-            `samospec: existing .samospec/config.json is malformed: ` +
+            `samospec: existing .samo/config.json is malformed: ` +
             `top-level value must be a JSON object. Fix or remove it ` +
             `and rerun samospec init.\n`,
         };
@@ -250,7 +250,7 @@ export function runInit(args: RunInitArgs): RunInitResult {
         exitCode: 1,
         stdout: "",
         stderr:
-          `samospec: existing .samospec/config.json is malformed JSON: ` +
+          `samospec: existing .samo/config.json is malformed JSON: ` +
           `${(err as Error).message}\n` +
           `Fix or remove it and rerun samospec init. ` +
           `(Refusing to silently overwrite user configuration.)\n`,
@@ -265,7 +265,7 @@ export function runInit(args: RunInitArgs): RunInitResult {
   // .gitignore: write if missing; never modify a user-edited one.
   if (!existsSync(gitignorePath)) {
     writeFileSync(gitignorePath, GITIGNORE_BODY, "utf8");
-    messages.push(`created .samospec/.gitignore`);
+    messages.push(`created .samo/.gitignore`);
   }
 
   // Merge defaults → user config.
@@ -297,22 +297,22 @@ export function runInit(args: RunInitArgs): RunInitResult {
   if (!existedBefore) {
     writeFileSync(configPath, mergedJson, "utf8");
     wroteConfig = true;
-    messages.push(`created .samospec/config.json`);
+    messages.push(`created .samo/config.json`);
   } else if (diff.length > 0) {
     writeFileSync(configPath, mergedJson, "utf8");
     wroteConfig = true;
-    messages.push(`merged .samospec/config.json:`);
+    messages.push(`merged .samo/config.json:`);
     for (const line of diff) messages.push(`  ${line}`);
   }
 
   if (!wroteConfig && messages.length === 0) {
-    messages.push(`samospec: .samospec/ is up to date — no changes.`);
+    messages.push(`samospec: .samo/ is up to date — no changes.`);
   } else if (existedBefore && diff.length === 0) {
     messages.push(`samospec: config.json unchanged.`);
   }
 
   if (!existedBefore) {
-    messages.unshift(`samospec: initialized .samospec/ in ${args.cwd}`);
+    messages.unshift(`samospec: initialized .samo/ in ${args.cwd}`);
   }
 
   const stdout = `${messages.join("\n")}\n`;

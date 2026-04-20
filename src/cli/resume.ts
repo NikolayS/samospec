@@ -117,7 +117,7 @@ export async function runResume(
   if (state.round_state === "lead_terminal") {
     errors.push(
       `samospec: spec '${input.slug}' is at lead_terminal. ` +
-        `Edit .samospec/spec/${input.slug}/ manually or rerun with --force.`,
+        `Edit .samo/spec/${input.slug}/ manually or rerun with --force.`,
     );
     return {
       exitCode: 4,

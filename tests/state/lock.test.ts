@@ -28,8 +28,8 @@ let lockPath: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(path.join(tmpdir(), "samospec-lock-"));
-  mkdirSync(path.join(tmp, ".samospec"), { recursive: true });
-  lockPath = path.join(tmp, ".samospec", ".lock");
+  mkdirSync(path.join(tmp, ".samo"), { recursive: true });
+  lockPath = path.join(tmp, ".samo", ".lock");
 });
 
 afterEach(() => {

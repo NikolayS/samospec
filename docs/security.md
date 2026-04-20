@@ -52,9 +52,9 @@ the open question for post-v1.
 
 `doctor` runs a best-effort sweep across:
 
-- `.samospec/spec/<slug>/transcripts/*.log` (written by Sprint 3)
+- `.samo/spec/<slug>/transcripts/*.log` (written by Sprint 3)
 - any file listed under `doctor.entropy_scan_paths` in
-  `.samospec/config.json`
+  `.samo/config.json`
 - explicit paths the caller passes via the `extraPaths` argument
   (used by tests)
 
@@ -82,7 +82,7 @@ explicit and repeated:
 - [`trufflehog`](https://github.com/trufflesecurity/trufflehog) — also
   usable in CI; has higher-quality rulesets for cloud provider keys.
 
-Both support `.samospec/`-scoped scans.
+Both support `.samo/`-scoped scans.
 
 ## Reporting a secret leak
 

@@ -217,7 +217,7 @@ export async function runStatus(input: StatusInput): Promise<StatusResult> {
 
 function computeNextAction(state: State, slug: string): string {
   if (state.round_state === "lead_terminal") {
-    return `edit .samospec/spec/${slug}/SPEC.md manually to recover`;
+    return `edit .samo/spec/${slug}/SPEC.md manually to recover`;
   }
   if (state.phase === "draft" && state.round_state === "committed") {
     return `run \`samospec iterate\` to start the review loop`;

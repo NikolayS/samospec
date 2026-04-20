@@ -7,7 +7,7 @@
  *   git ls-files ∪ git ls-files --others --exclude-standard
  *     -> symlink safety
  *     -> hard-coded no-read list
- *     -> default denylist + .samospec-ignore
+ *     -> default denylist + .samo-ignore
  *     -> batched git log (file → last-authored-at)
  *     -> rank
  *     -> per-phase budget
@@ -73,8 +73,8 @@ export interface DiscoverContextResult {
 
 /**
  * Run the full pipeline. Reads from the filesystem, writes
- * `.samospec/spec/<slug>/context.json`, populates the gist cache at
- * `.samospec/cache/gists/`, and returns the `ContextJson` + the
+ * `.samo/spec/<slug>/context.json`, populates the gist cache at
+ * `.samo/cache/gists/`, and returns the `ContextJson` + the
  * ready-to-ship chunks.
  */
 export function discoverContext(

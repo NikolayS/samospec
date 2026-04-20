@@ -49,7 +49,7 @@ function runSamospec(
 }
 
 describe("integration: bun run src/cli.ts init && doctor", () => {
-  test("init creates .samospec/, doctor reports status and exits", () => {
+  test("init creates .samo/, doctor reports status and exits", () => {
     // Initialize a bare git repo so doctor's git check has something to see.
     spawnSync("git", ["init", "--initial-branch", "feature/integ", tmp], {
       cwd: tmpdir(),
@@ -58,8 +58,8 @@ describe("integration: bun run src/cli.ts init && doctor", () => {
 
     const initResult = runSamospec(["init"], { cwd: tmp });
     expect(initResult.status).toBe(0);
-    expect(existsSync(path.join(tmp, ".samospec", "config.json"))).toBe(true);
-    expect(existsSync(path.join(tmp, ".samospec", ".gitignore"))).toBe(true);
+    expect(existsSync(path.join(tmp, ".samo", "config.json"))).toBe(true);
+    expect(existsSync(path.join(tmp, ".samo", ".gitignore"))).toBe(true);
 
     const doctorResult = runSamospec(["doctor"], { cwd: tmp });
     // doctor may exit 0 or 1 depending on real claude/codex presence in CI.

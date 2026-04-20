@@ -8,7 +8,7 @@
  *     surfaces a prompt with remote name, remote URL, target branch,
  *     default branch, and PR-creation capability.
  *   - User answers `accept` / `refuse` → persisted to
- *     `.samospec/config.json` under `git.push_consent.<remote-url>`.
+ *     `.samo/config.json` under `git.push_consent.<remote-url>`.
  *     Key is the remote URL (not name) so two remotes sharing a name on
  *     different URLs get distinct decisions.
  *   - Ctrl-C at the prompt surfaces as `interrupt` → exit 3 (SPEC §10).
@@ -69,7 +69,7 @@ export interface RequestPushConsentOpts {
 
 export interface PushConsentOutcome {
   readonly decision: PushConsentDecision;
-  /** Truthy when this invocation just wrote to .samospec/config.json. */
+  /** Truthy when this invocation just wrote to .samo/config.json. */
   readonly persisted: boolean;
   /** Exit code on `interrupt` (SPEC §10: 3). Undefined otherwise. */
   readonly exitCode?: number;
@@ -99,7 +99,7 @@ export interface ClearConsentOpts {
  *   - `false` → refused
  *   - `null`  → not yet decided (prompt on first push)
  *
- * Throws if `.samospec/config.json` is present but malformed — we refuse
+ * Throws if `.samo/config.json` is present but malformed — we refuse
  * to silently pass through when user configuration is corrupt.
  */
 export function loadPersistedConsent(opts: LoadConsentOpts): boolean | null {
@@ -110,7 +110,7 @@ export function loadPersistedConsent(opts: LoadConsentOpts): boolean | null {
   if (value === undefined) return null;
   if (typeof value !== "boolean") {
     throw new Error(
-      `.samospec/config.json: git.push_consent[${JSON.stringify(
+      `.samo/config.json: git.push_consent[${JSON.stringify(
         opts.remoteUrl,
       )}] must be a boolean (got ${typeof value}).`,
     );
@@ -120,7 +120,7 @@ export function loadPersistedConsent(opts: LoadConsentOpts): boolean | null {
 
 /**
  * Persist `granted` as `git.push_consent.<remote-url>` in config.json.
- * Creates the `.samospec/config.json` file if missing (keeps a schema_version
+ * Creates the `.samo/config.json` file if missing (keeps a schema_version
  * so a later `samospec init` merges defaults without surprise).
  */
 export function persistConsent(opts: PersistConsentOpts): void {
@@ -261,7 +261,7 @@ export function describePrCapability(probe: PrCapabilityProbe): string {
 
 type JsonObject = Record<string, unknown>;
 
-const CONFIG_REL = path.join(".samospec", "config.json");
+const CONFIG_REL = path.join(".samo", "config.json");
 
 function configPath(repoPath: string): string {
   return path.join(repoPath, CONFIG_REL);
@@ -276,12 +276,12 @@ function readConfig(repoPath: string): JsonObject | null {
     parsed = JSON.parse(raw);
   } catch (err) {
     throw new Error(
-      `.samospec/config.json is not valid JSON: ${(err as Error).message}`,
+      `.samo/config.json is not valid JSON: ${(err as Error).message}`,
       { cause: err },
     );
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`.samospec/config.json: top-level must be a JSON object.`);
+    throw new Error(`.samo/config.json: top-level must be a JSON object.`);
   }
   return parsed as JsonObject;
 }

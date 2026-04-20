@@ -22,7 +22,7 @@
  *   - On lead terminal failure: transition to lead_terminal
  *
  * Round directory layout (§9):
- *   .samospec/spec/<slug>/reviews/r<NN>/
+ *   .samo/spec/<slug>/reviews/r<NN>/
  *     codex.md          reviewer A critique (structured Markdown)
  *     claude.md         reviewer B critique (structured Markdown)
  *     summary.md        lead's synthesis (not yet — stub for Sprint 4)

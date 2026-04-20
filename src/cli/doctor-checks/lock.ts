@@ -13,7 +13,7 @@ export interface CheckLockfileArgs {
 }
 
 /**
- * Reports on `.samospec/.lock`. Uses the Issue #2 helpers in
+ * Reports on `.samo/.lock`. Uses the Issue #2 helpers in
  * `src/state/lock.ts` — does NOT reimplement stale detection.
  *
  *   - OK   — no lock file on disk.
@@ -30,7 +30,7 @@ export function checkLockfile(args: CheckLockfileArgs): CheckResult {
     return {
       status: CheckStatus.Ok,
       label: "lockfile",
-      message: "no .samospec/.lock present",
+      message: "no .samo/.lock present",
     };
   }
 

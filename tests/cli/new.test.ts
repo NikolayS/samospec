@@ -86,7 +86,7 @@ function acceptResolver(): ChoiceResolvers {
 let tmp: string;
 beforeEach(() => {
   tmp = mkdtempSync(path.join(tmpdir(), "samospec-new-"));
-  // A fresh .samospec/ is a precondition (SPEC §5 Phase 1).
+  // A fresh .samo/ is a precondition (SPEC §5 Phase 1).
   runInit({ cwd: tmp });
 });
 afterEach(() => {
@@ -117,7 +117,7 @@ describe("samospec new <slug> — happy path (SPEC §5 Phases 1-4)", () => {
     );
     expect(result.exitCode).toBe(0);
 
-    const slugDir = path.join(tmp, ".samospec", "spec", "demo");
+    const slugDir = path.join(tmp, ".samo", "spec", "demo");
     expect(existsSync(slugDir)).toBe(true);
     expect(existsSync(path.join(slugDir, "state.json"))).toBe(true);
     expect(existsSync(path.join(slugDir, "interview.json"))).toBe(true);
@@ -270,9 +270,7 @@ describe("samospec new — lead_terminal path (SPEC §10 exit codes)", () => {
     expect(result.exitCode).toBe(4);
     expect(result.stderr.toLowerCase()).toMatch(/lead_terminal|persona/);
 
-    const st = readState(
-      path.join(tmp, ".samospec", "spec", "demo", "state.json"),
-    );
+    const st = readState(path.join(tmp, ".samo", "spec", "demo", "state.json"));
     expect(st).not.toBeNull();
     expect(st!.round_state).toBe("lead_terminal");
   });
@@ -281,8 +279,8 @@ describe("samospec new — lead_terminal path (SPEC §10 exit codes)", () => {
 // ---------- slug collision ----------
 
 describe("samospec new — slug collision (SPEC §10)", () => {
-  test("existing .samospec/spec/<slug>/ => exit 1 suggesting resume", async () => {
-    mkdirSync(path.join(tmp, ".samospec", "spec", "demo"), {
+  test("existing .samo/spec/<slug>/ => exit 1 suggesting resume", async () => {
+    mkdirSync(path.join(tmp, ".samo", "spec", "demo"), {
       recursive: true,
     });
     const { adapter } = makeLeadAdapter([personaJson("CLI engineer")]);
@@ -306,7 +304,7 @@ describe("samospec new — slug collision (SPEC §10)", () => {
 
 describe("samospec new — repo lock (SPEC §7 lockfile)", () => {
   test("pre-existing live lock => exit 2", async () => {
-    const lockPath = path.join(tmp, ".samospec", ".lock");
+    const lockPath = path.join(tmp, ".samo", ".lock");
     const fakeLock = {
       pid: process.pid,
       started_at: "2026-04-19T10:00:00Z",

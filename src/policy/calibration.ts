@@ -2,7 +2,7 @@
 
 // SPEC §11 calibration storage.
 //
-// `.samospec/config.json` gains a `calibration` object:
+// `.samo/config.json` gains a `calibration` object:
 //
 //   {
 //     "calibration": {
@@ -200,7 +200,7 @@ export interface WriteCalibrationSampleArgs {
 }
 
 /**
- * Append a calibration sample to `.samospec/config.json`. Reads the
+ * Append a calibration sample to `.samo/config.json`. Reads the
  * existing config, parses the current calibration (or creates an empty
  * one), invokes `recordSession`, and atomically writes the new config.
  *
@@ -211,10 +211,10 @@ export interface WriteCalibrationSampleArgs {
 export function writeCalibrationSample(
   args: WriteCalibrationSampleArgs,
 ): Calibration {
-  const configPath = path.join(args.cwd, ".samospec", "config.json");
+  const configPath = path.join(args.cwd, ".samo", "config.json");
   if (!existsSync(configPath)) {
     throw new Error(
-      `writeCalibrationSample: .samospec/config.json missing at ${configPath}`,
+      `writeCalibrationSample: .samo/config.json missing at ${configPath}`,
     );
   }
   const raw = readFileSync(configPath, "utf8");

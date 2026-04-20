@@ -3,7 +3,7 @@
 /**
  * SPEC §7 — deterministic gist cache.
  *
- * - Cache directory: `.samospec/cache/gists/<blob-sha>.md`
+ * - Cache directory: `.samo/cache/gists/<blob-sha>.md`
  * - Key: git blob hash (sha1("blob <bytes>\0<content>")) — survives
  *   branch switches & rebases; auto-invalidates on content change
  *   because a new blob SHA means a new cache file.
@@ -17,7 +17,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-const GIST_CACHE_REL = path.join(".samospec", "cache", "gists");
+const GIST_CACHE_REL = path.join(".samo", "cache", "gists");
 
 /**
  * Compute the git blob SHA for a file's content. Matches

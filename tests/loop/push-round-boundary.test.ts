@@ -65,7 +65,7 @@ function initRepo(cwd: string, bareUrl: string): void {
 }
 
 function seedSpec(cwd: string, slug: string): void {
-  const slugDir = path.join(cwd, ".samospec", "spec", slug);
+  const slugDir = path.join(cwd, ".samo", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   writeFileSync(
     path.join(slugDir, "SPEC.md"),
@@ -121,9 +121,9 @@ function seedSpec(cwd: string, slug: string): void {
     updated_at: "2026-04-19T12:00:00Z",
   };
   writeState(path.join(slugDir, "state.json"), state);
-  // .samospec/config.json so the consent layer has a real file.
+  // .samo/config.json so the consent layer has a real file.
   writeFileSync(
-    path.join(cwd, ".samospec", "config.json"),
+    path.join(cwd, ".samo", "config.json"),
     JSON.stringify({ schema_version: 1 }, null, 2) + "\n",
     "utf8",
   );
@@ -277,7 +277,7 @@ describe("iterate — round-boundary push integration", () => {
     seedSpec(tmp, "refunds");
     // Pre-persist consent = true so the loop would push by default.
     writeFileSync(
-      path.join(tmp, ".samospec", "config.json"),
+      path.join(tmp, ".samo", "config.json"),
       JSON.stringify(
         {
           schema_version: 1,
@@ -319,7 +319,7 @@ describe("iterate — round-boundary push integration", () => {
   test("persisted refuse: no prompt, no pushes, exits 0 (not 5)", async () => {
     seedSpec(tmp, "refunds");
     writeFileSync(
-      path.join(tmp, ".samospec", "config.json"),
+      path.join(tmp, ".samo", "config.json"),
       JSON.stringify(
         {
           schema_version: 1,
@@ -430,7 +430,7 @@ describe("iterate — round-boundary push integration", () => {
       spawnSync("git", ["remote", "add", "mirror", otherBare], { cwd: tmp });
 
       writeFileSync(
-        path.join(tmp, ".samospec", "config.json"),
+        path.join(tmp, ".samo", "config.json"),
         JSON.stringify(
           {
             schema_version: 1,
@@ -483,7 +483,7 @@ describe("iterate — round-boundary push integration", () => {
 
       // Config should still reflect both choices verbatim.
       const cfg = JSON.parse(
-        readFileSync(path.join(tmp, ".samospec", "config.json"), "utf8"),
+        readFileSync(path.join(tmp, ".samo", "config.json"), "utf8"),
       ) as {
         git: { push_consent: Record<string, boolean> };
       };

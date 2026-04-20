@@ -3,7 +3,7 @@
 /**
  * SPEC §7 — hard-coded no-read list for credential files.
  *
- * These patterns CANNOT be overridden by `.samospec-ignore`. They are the
+ * These patterns CANNOT be overridden by `.samo-ignore`. They are the
  * last line of defense against accidentally feeding a repository's
  * secrets to an LLM adapter.
  *

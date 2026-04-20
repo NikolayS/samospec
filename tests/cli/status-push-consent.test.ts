@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 function seedState(slug: string): void {
-  const slugDir = path.join(tmp, ".samospec", "spec", slug);
+  const slugDir = path.join(tmp, ".samo", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   const state: State = {
     slug,
@@ -69,7 +69,7 @@ describe("status — push_consent surfacing (SPEC §8)", () => {
   test("shows 'push consent: refused' when the repo's remote URL is refused", async () => {
     seedState("refunds");
     writeFileSync(
-      path.join(tmp, ".samospec", "config.json"),
+      path.join(tmp, ".samo", "config.json"),
       JSON.stringify(
         {
           schema_version: 1,
@@ -98,7 +98,7 @@ describe("status — push_consent surfacing (SPEC §8)", () => {
   test("shows 'granted' when persisted consent is true", async () => {
     seedState("refunds");
     writeFileSync(
-      path.join(tmp, ".samospec", "config.json"),
+      path.join(tmp, ".samo", "config.json"),
       JSON.stringify(
         {
           schema_version: 1,
@@ -127,7 +127,7 @@ describe("status — push_consent surfacing (SPEC §8)", () => {
   test("shows 'not yet decided' when no persisted choice exists for this remote", async () => {
     seedState("refunds");
     writeFileSync(
-      path.join(tmp, ".samospec", "config.json"),
+      path.join(tmp, ".samo", "config.json"),
       JSON.stringify({ schema_version: 1 }, null, 2),
       "utf8",
     );

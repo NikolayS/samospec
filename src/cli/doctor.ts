@@ -134,14 +134,14 @@ export async function runDoctor(args: RunDoctorArgs): Promise<RunDoctorResult> {
   );
   results.push(
     checkLockfile({
-      lockPath: path.join(args.cwd, ".samospec", ".lock"),
+      lockPath: path.join(args.cwd, ".samo", ".lock"),
       now,
       maxWallClockMinutes,
     }),
   );
   results.push(
     checkConfig({
-      configPath: path.join(args.cwd, ".samospec", "config.json"),
+      configPath: path.join(args.cwd, ".samo", "config.json"),
     }),
   );
   results.push(checkGlobalConfig({ homeDir: args.homeDir }));

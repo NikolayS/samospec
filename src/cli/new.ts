@@ -130,7 +130,7 @@ export async function runNew(
     lines.push(line);
   };
 
-  const samoDir = path.join(input.cwd, ".samospec");
+  const samoDir = path.join(input.cwd, ".samo");
   const specsDir = path.join(samoDir, "spec");
   const slugDir = path.join(specsDir, input.slug);
   const lockPath = path.join(samoDir, ".lock");
@@ -139,7 +139,7 @@ export async function runNew(
   // directory and suggest resume / --force.
   if (existsSync(slugDir)) {
     errors.push(
-      `samospec: .samospec/spec/${input.slug}/ already exists. ` +
+      `samospec: .samo/spec/${input.slug}/ already exists. ` +
         `Try \`samospec resume ${input.slug}\` or ` +
         `\`samospec new ${input.slug} --force\` to archive the old run.`,
     );
@@ -239,7 +239,7 @@ export async function runNew(
       errors.push(
         `samospec: refusing to branch on protected branch '${branchResult.branch}'. ` +
           `Check out a feature branch first or override protection via ` +
-          `git config / .samospec/config.json.`,
+          `git config / .samo/config.json.`,
       );
       return {
         exitCode: 2,
@@ -291,7 +291,7 @@ export async function runNew(
         writeState(statePath, state);
         errors.push(
           `samospec: lead_terminal at persona — ${err.detail}. ` +
-            `Edit .samospec/spec/${input.slug}/ manually or restart with --force.`,
+            `Edit .samo/spec/${input.slug}/ manually or restart with --force.`,
         );
         return {
           exitCode: 4,
@@ -378,7 +378,7 @@ export async function runNew(
         writeState(statePath, state);
         errors.push(
           `samospec: lead_terminal at interview — ${err.message}. ` +
-            `Edit .samospec/spec/${input.slug}/ manually or restart with --force.`,
+            `Edit .samo/spec/${input.slug}/ manually or restart with --force.`,
         );
         return {
           exitCode: 4,
@@ -605,7 +605,7 @@ function runPreflight(args: {
   adapter: Adapter;
   subscriptionAuth: boolean;
 }): PreflightRunOk | PreflightRunSkipped {
-  const configPath = path.join(args.cwd, ".samospec", "config.json");
+  const configPath = path.join(args.cwd, ".samo", "config.json");
   if (!existsSync(configPath)) {
     return { ok: false, reason: "config.json missing; run samospec init" };
   }
@@ -799,12 +799,12 @@ export interface SpecPaths {
 }
 
 export function specPaths(cwd: string, slug: string): SpecPaths {
-  const slugDir = path.join(cwd, ".samospec", "spec", slug);
+  const slugDir = path.join(cwd, ".samo", "spec", slug);
   return {
     slugDir,
     statePath: path.join(slugDir, "state.json"),
     interviewPath: path.join(slugDir, "interview.json"),
-    lockPath: path.join(cwd, ".samospec", ".lock"),
+    lockPath: path.join(cwd, ".samo", ".lock"),
     specPath: path.join(slugDir, "SPEC.md"),
     tldrPath: path.join(slugDir, "TLDR.md"),
     contextPath: path.join(slugDir, "context.json"),

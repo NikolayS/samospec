@@ -137,8 +137,8 @@ beforeEach(() => {
   tmp = repo.dir;
   runInit({ cwd: tmp });
   // Commit the init files so the working tree starts clean.
-  repo.run(["add", ".samospec"]);
-  repo.run(["commit", "-m", "chore: init .samospec"]);
+  repo.run(["add", ".samo"]);
+  repo.run(["commit", "-m", "chore: init .samo"]);
 });
 
 afterEach(() => {
@@ -174,7 +174,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
 
     expect(result.exitCode).toBe(0);
 
-    const slugDir = path.join(tmp, ".samospec", "spec", "refunds");
+    const slugDir = path.join(tmp, ".samo", "spec", "refunds");
     // All committed artifacts present (SPEC §9).
     for (const f of [
       "SPEC.md",
@@ -254,7 +254,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
       adapter,
     );
 
-    // The commit's diff-tree should only list files under .samospec/spec/refunds/.
+    // The commit's diff-tree should only list files under .samo/spec/refunds/.
     const diffRes = spawnSync(
       "git",
       ["show", "--pretty=", "--name-only", "samospec/refunds"],
@@ -265,7 +265,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
       .map((s) => s.trim())
       .filter((s) => s.length > 0);
     for (const f of files) {
-      expect(f.startsWith(".samospec/spec/refunds/")).toBe(true);
+      expect(f.startsWith(".samo/spec/refunds/")).toBe(true);
     }
     expect(files).not.toContain("NOT_STAGED.md");
   });
@@ -318,7 +318,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
       adapter,
     );
     const config = JSON.parse(
-      readFileSync(path.join(tmp, ".samospec", "config.json"), "utf8"),
+      readFileSync(path.join(tmp, ".samo", "config.json"), "utf8"),
     ) as Record<string, unknown>;
     const cal = readCalibration(config);
     expect(cal).not.toBeNull();
@@ -379,7 +379,7 @@ describe("samospec new refunds — subscription-auth (SPEC §11)", () => {
     );
     expect(result.exitCode).toBe(0);
     const config = JSON.parse(
-      readFileSync(path.join(tmp, ".samospec", "config.json"), "utf8"),
+      readFileSync(path.join(tmp, ".samo", "config.json"), "utf8"),
     ) as Record<string, unknown>;
     const cal = readCalibration(config);
     expect(cal).not.toBeNull();
@@ -416,7 +416,7 @@ describe("samospec new refunds — lead_terminal on draft (SPEC §7)", () => {
     expect(result.stderr.toLowerCase()).toMatch(/lead_terminal|refused/);
     // The state was persisted at lead_terminal.
     const st = readState(
-      path.join(tmp, ".samospec", "spec", "refunds", "state.json"),
+      path.join(tmp, ".samo", "spec", "refunds", "state.json"),
     );
     expect(st).not.toBeNull();
     expect(st!.round_state).toBe("lead_terminal");
@@ -458,8 +458,8 @@ describe("samospec new refunds — refuses commits on protected branches (SPEC �
     repo = createTempRepo({ initialBranch: "main" });
     tmp = repo.dir;
     runInit({ cwd: tmp });
-    repo.run(["add", ".samospec"]);
-    repo.run(["commit", "-m", "chore: init .samospec"]);
+    repo.run(["add", ".samo"]);
+    repo.run(["commit", "-m", "chore: init .samo"]);
 
     const { adapter } = makeAdapter({
       answers: [
@@ -519,7 +519,7 @@ describe("samospec new refunds — consent gate (SPEC §5 Phase 1)", () => {
 
 describe("samospec new refunds — slug collision still exits 1", () => {
   test("existing spec dir => exit 1 with resume hint", async () => {
-    mkdirSync(path.join(tmp, ".samospec", "spec", "refunds"), {
+    mkdirSync(path.join(tmp, ".samo", "spec", "refunds"), {
       recursive: true,
     });
     const { adapter } = makeAdapter({

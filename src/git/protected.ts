@@ -27,7 +27,7 @@ export interface IsProtectedOpts {
    */
   readonly repoPath?: string;
   /**
-   * Parsed `.samospec/config.json` contents (or any object shape subset).
+   * Parsed `.samo/config.json` contents (or any object shape subset).
    * The `git.protected_branches` array is additive.
    */
   readonly userConfig?: UserConfig;

@@ -22,7 +22,7 @@ export interface BuildPrBodyOpts {
   readonly slug: string;
   /** `vX.Y` or `vX.Y.Z`. */
   readonly version: string;
-  /** Raw TLDR.md body from `.samospec/spec/<slug>/TLDR.md`. */
+  /** Raw TLDR.md body from `.samo/spec/<slug>/TLDR.md`. */
   readonly tldr: string;
   /** Raw changelog.md body. */
   readonly changelog: string;
