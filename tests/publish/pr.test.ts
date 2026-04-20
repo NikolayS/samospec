@@ -31,7 +31,9 @@ describe("buildCompareUrl", () => {
         defaultBranch: "main",
         branch: "samospec/refunds",
       }),
-    ).toBe("https://github.com/NikolayS/samospec/compare/main...samospec/refunds");
+    ).toBe(
+      "https://github.com/NikolayS/samospec/compare/main...samospec/refunds",
+    );
   });
 
   test("derives a compare URL from an https GitHub remote (strips .git)", () => {
@@ -41,7 +43,9 @@ describe("buildCompareUrl", () => {
         defaultBranch: "main",
         branch: "samospec/refunds",
       }),
-    ).toBe("https://github.com/NikolayS/samospec/compare/main...samospec/refunds");
+    ).toBe(
+      "https://github.com/NikolayS/samospec/compare/main...samospec/refunds",
+    );
   });
 
   test("derives a merge_requests/new URL for GitLab remotes", () => {
@@ -83,7 +87,9 @@ describe("openPullRequest", () => {
       glab: fakeRunner("glab", calls),
     });
     expect(result.kind).toBe("opened");
-    expect(result.tool).toBe("gh");
+    if (result.kind === "opened") {
+      expect(result.tool).toBe("gh");
+    }
     expect(calls.some((c) => c.startsWith("gh pr create"))).toBe(true);
     expect(calls.some((c) => c.startsWith("glab"))).toBe(false);
   });
@@ -101,7 +107,9 @@ describe("openPullRequest", () => {
       glab: fakeRunner("glab", calls),
     });
     expect(result.kind).toBe("opened");
-    expect(result.tool).toBe("glab");
+    if (result.kind === "opened") {
+      expect(result.tool).toBe("glab");
+    }
     expect(calls.some((c) => c.startsWith("glab mr create"))).toBe(true);
   });
 
@@ -118,9 +126,11 @@ describe("openPullRequest", () => {
       glab: fakeRunner("glab", calls),
     });
     expect(result.kind).toBe("compare-url");
-    expect(result.url).toBe(
-      "https://github.com/NikolayS/samospec/compare/main...samospec/refunds",
-    );
+    if (result.kind === "compare-url") {
+      expect(result.url).toBe(
+        "https://github.com/NikolayS/samospec/compare/main...samospec/refunds",
+      );
+    }
     expect(calls.length).toBe(0);
   });
 

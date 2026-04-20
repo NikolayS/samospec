@@ -111,6 +111,14 @@ const adapterResolutionSchema = z
   })
   .strict();
 
+// SPEC §5 Phase 7 + Issue #32 — label like `v0.2`, `v1.3.1`.
+const publishedVersionSchema = z
+  .string()
+  .regex(
+    /^v\d+\.\d+(?:\.\d+)?$/,
+    "published_version must look like 'vX.Y' or 'vX.Y.Z'",
+  );
+
 export const stateSchema = z
   .object({
     slug: z.string().min(1),
@@ -134,6 +142,12 @@ export const stateSchema = z
       .partial()
       .strict()
       .optional(),
+    // SPEC §5 Phase 7 + Issue #32 — `samospec publish` advance.
+    published_at: isoTimestampSchema.optional(),
+    published_version: publishedVersionSchema.optional(),
+    /** Absent when neither `gh` nor `glab` was authenticated; set from
+     * the tool's stdout URL when the PR was opened successfully. */
+    published_pr_url: z.string().min(1).optional(),
     created_at: isoTimestampSchema,
     updated_at: isoTimestampSchema,
   })

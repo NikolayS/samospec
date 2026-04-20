@@ -70,8 +70,8 @@ describe("promoteSpecToBlueprint", () => {
     mkdirSync(path.join(tmp, ".samospec", "spec", "refunds"), {
       recursive: true,
     });
-    expect(() =>
-      promoteSpecToBlueprint({ cwd: tmp, slug: "refunds" }),
-    ).toThrow(/SPEC\.md/);
+    expect(() => promoteSpecToBlueprint({ cwd: tmp, slug: "refunds" })).toThrow(
+      /SPEC\.md/,
+    );
   });
 });
