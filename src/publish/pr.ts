@@ -33,6 +33,18 @@ export interface PrRunnerResult {
 
 export type PrRunner = (argv: readonly string[]) => PrRunnerResult;
 
+/**
+ * Returns true when `origin/<base>` exists on the remote (i.e. `git
+ * rev-parse --verify origin/<base>` exits 0). Injected in tests.
+ */
+export type BaseBranchChecker = (base: string) => boolean;
+
+/**
+ * Pushes the base branch to the remote (`git push origin <base>`).
+ * Called only when `hasRemoteBase` returns false. Injected in tests.
+ */
+export type BaseBranchPusher = (base: string) => void;
+
 export interface OpenPrOpts {
   readonly capability: PrCapabilityProbe;
   readonly title: string;
@@ -46,6 +58,16 @@ export interface OpenPrOpts {
   /** Injection seams — tests pass fake runners. */
   readonly gh?: PrRunner;
   readonly glab?: PrRunner;
+  /**
+   * Returns true when origin/<defaultBranch> exists on the remote.
+   * Defaults to the real git rev-parse check. Injected for tests.
+   */
+  readonly hasRemoteBase?: BaseBranchChecker;
+  /**
+   * Pushes <defaultBranch> to origin when the remote ref is absent.
+   * Defaults to `git push origin <base>`. Injected for tests.
+   */
+  readonly pushBaseBranch?: BaseBranchPusher;
 }
 
 export type OpenPrResult =
@@ -87,6 +109,12 @@ export function openPullRequest(opts: OpenPrOpts): OpenPrResult {
     }
     return { kind: "compare-url", url: compareUrl };
   }
+
+  // Issue #66 — ensure the base branch exists on the remote before
+  // calling `gh pr create` / `glab mr create`. GitHub's GraphQL API
+  // returns a cryptic "Base sha can't be blank" error when origin/<base>
+  // is absent, so we push it proactively here.
+  ensureBaseBranchOnRemote(opts);
 
   // gh preferred when both are authenticated (probe enforces this).
   if (opts.capability.tool === "gh") {
@@ -258,4 +286,64 @@ function parseRemote(url: string): ParsedRemote | null {
     }
   }
   return null;
+}
+
+// ---------- base branch remote-presence check (Issue #66) ----------
+
+/**
+ * Check `origin/<base>` via `git rev-parse --verify origin/<base>`.
+ * Returns true when the ref exists on the remote (exit 0).
+ */
+function defaultHasRemoteBase(opts: OpenPrOpts): BaseBranchChecker {
+  return (base: string): boolean => {
+    const res = spawnSync(
+      "git",
+      ["rev-parse", "--verify", `origin/${base}`],
+      {
+        ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          GIT_TERMINAL_PROMPT: "0",
+          ...(opts.env ?? {}),
+        },
+      },
+    );
+    return (res.status ?? 1) === 0;
+  };
+}
+
+/**
+ * Push the base branch to origin with `git push origin <base>`.
+ * Logs a notice to stdout so the user is not surprised.
+ */
+function defaultPushBaseBranch(opts: OpenPrOpts): BaseBranchPusher {
+  return (base: string): void => {
+    process.stdout.write(`Pushing base branch to remote...\n`);
+    spawnSync("git", ["push", "origin", base], {
+      ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        ...(opts.env ?? {}),
+      },
+    });
+  };
+}
+
+/**
+ * Ensure origin/<defaultBranch> exists before the PR tool runs.
+ * When the remote ref is absent, push the branch and log a notice.
+ * This prevents GitHub's cryptic "Base sha can't be blank" GraphQL
+ * error (Issue #66).
+ */
+function ensureBaseBranchOnRemote(opts: OpenPrOpts): void {
+  const checker =
+    opts.hasRemoteBase ?? defaultHasRemoteBase(opts);
+  const pusher =
+    opts.pushBaseBranch ?? defaultPushBaseBranch(opts);
+  if (!checker(opts.defaultBranch)) {
+    pusher(opts.defaultBranch);
+  }
 }
