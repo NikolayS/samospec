@@ -201,9 +201,9 @@ describe("requestPushConsent — prompt shape + decisions", () => {
       let payload: PushConsentPrompt | null = null;
       const outcome = await requestPushConsent({
         ...baseOpts(repo.dir),
-        prompt: async (p) => {
+        prompt: (p) => {
           payload = p;
-          return "accept";
+          return Promise.resolve("accept");
         },
       });
       expect(outcome.decision).toBe("accept");
@@ -232,7 +232,7 @@ describe("requestPushConsent — prompt shape + decisions", () => {
 
       const out = await requestPushConsent({
         ...baseOpts(repo.dir),
-        prompt: async () => "accept",
+        prompt: () => Promise.resolve("accept"),
       });
       expect(out.decision).toBe("accept");
       expect(out.persisted).toBe(true);
@@ -260,7 +260,7 @@ describe("requestPushConsent — prompt shape + decisions", () => {
 
       const out = await requestPushConsent({
         ...baseOpts(repo.dir),
-        prompt: async () => "refuse",
+        prompt: () => Promise.resolve("refuse"),
       });
       expect(out.decision).toBe("refuse");
       expect(out.persisted).toBe(true);
@@ -300,9 +300,9 @@ describe("requestPushConsent — prompt shape + decisions", () => {
       let promptCalls = 0;
       const out = await requestPushConsent({
         ...baseOpts(repo.dir),
-        prompt: async () => {
+        prompt: () => {
           promptCalls += 1;
-          return "accept";
+          return Promise.resolve("accept");
         },
       });
       expect(promptCalls).toBe(0);
@@ -338,9 +338,9 @@ describe("requestPushConsent — prompt shape + decisions", () => {
       let promptCalls = 0;
       const out = await requestPushConsent({
         ...baseOpts(repo.dir),
-        prompt: async () => {
+        prompt: () => {
           promptCalls += 1;
-          return "accept";
+          return Promise.resolve("accept");
         },
       });
       expect(promptCalls).toBe(0);
@@ -364,7 +364,7 @@ describe("requestPushConsent — prompt shape + decisions", () => {
 
       const out = await requestPushConsent({
         ...baseOpts(repo.dir),
-        prompt: async () => "interrupt",
+        prompt: () => Promise.resolve("interrupt"),
       });
       expect(out.decision).toBe("interrupt");
       expect(out.exitCode).toBe(3);
