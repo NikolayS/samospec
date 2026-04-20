@@ -1,6 +1,6 @@
 {
   "name": "samospec",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Git-native CLI that turns a rough idea into a reviewed, versioned specification document.",
   "type": "module",
   "bin": {
@@ -8,8 +8,10 @@
   },
   "files": [
     "src",
+    "docs",
     "package.json",
-    "README.md"
+    "README.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "samospec": "bun run src/main.ts",
