@@ -32,7 +32,7 @@ describe("buildCompareUrl", () => {
         branch: "samospec/refunds",
       }),
     ).toBe(
-      "https://github.com/NikolayS/samospec/compare/main...samo/refunds",
+      "https://github.com/NikolayS/samospec/compare/main...samospec/refunds",
     );
   });
 
@@ -44,7 +44,7 @@ describe("buildCompareUrl", () => {
         branch: "samospec/refunds",
       }),
     ).toBe(
-      "https://github.com/NikolayS/samospec/compare/main...samo/refunds",
+      "https://github.com/NikolayS/samospec/compare/main...samospec/refunds",
     );
   });
 
@@ -128,7 +128,7 @@ describe("openPullRequest", () => {
     expect(result.kind).toBe("compare-url");
     if (result.kind === "compare-url") {
       expect(result.url).toBe(
-        "https://github.com/NikolayS/samospec/compare/main...samo/refunds",
+        "https://github.com/NikolayS/samospec/compare/main...samospec/refunds",
       );
     }
     expect(calls.length).toBe(0);
