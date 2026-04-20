@@ -55,7 +55,7 @@ function makeScriptedAskAdapter(
 // ---------- persona form regex ----------
 
 describe("persona form regex (SPEC §5 Phase 2)", () => {
-  test("accepts canonical `Veteran \"<skill>\" expert`", () => {
+  test('accepts canonical `Veteran "<skill>" expert`', () => {
     expect(PERSONA_FORM_RE.test('Veteran "CLI software engineer" expert')).toBe(
       true,
     );
@@ -109,12 +109,15 @@ describe("proposePersona — happy path", () => {
           "The idea is a command-line tool; this persona covers design and UX.",
       }),
     ]);
-    const result = await proposePersona({
-      idea: "a CLI for turning ideas into specs",
-      explain: false,
-      subscriptionAuth: false,
-      choice: { kind: "accept" },
-    }, adapter);
+    const result = await proposePersona(
+      {
+        idea: "a CLI for turning ideas into specs",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
 
     expect(result.persona).toBe('Veteran "CLI software engineer" expert');
     expect(result.rationale.length).toBeGreaterThan(0);
@@ -129,15 +132,18 @@ describe("proposePersona — happy path", () => {
         rationale: "ok",
       }),
     ]);
-    await proposePersona({
-      idea: "some idea",
-      explain: false,
-      subscriptionAuth: false,
-      choice: { kind: "accept" },
-    }, adapter);
+    await proposePersona(
+      {
+        idea: "some idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
 
     expect(adapter.asks.length).toBeGreaterThan(0);
-    const first = adapter.asks[0]!;
+    const first = adapter.asks[0];
     expect(first.prompt).toContain("Veteran");
     expect(first.prompt).toContain("expert");
     expect(first.opts.effort).toBe("max");
@@ -154,12 +160,15 @@ describe("proposePersona — confirm / edit / replace", () => {
         rationale: "reasoning",
       }),
     ]);
-    const result = await proposePersona({
-      idea: "idea",
-      explain: false,
-      subscriptionAuth: false,
-      choice: { kind: "edit", skill: "distributed systems engineer" },
-    }, adapter);
+    const result = await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "edit", skill: "distributed systems engineer" },
+      },
+      adapter,
+    );
     expect(result.skill).toBe("distributed systems engineer");
     expect(result.persona).toBe(
       'Veteran "distributed systems engineer" expert',
@@ -174,15 +183,18 @@ describe("proposePersona — confirm / edit / replace", () => {
         rationale: "reasoning",
       }),
     ]);
-    const result = await proposePersona({
-      idea: "idea",
-      explain: false,
-      subscriptionAuth: false,
-      choice: {
-        kind: "replace",
-        persona: 'Veteran "staff-level platform engineer" expert',
+    const result = await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: {
+          kind: "replace",
+          persona: 'Veteran "staff-level platform engineer" expert',
+        },
       },
-    }, adapter);
+      adapter,
+    );
     expect(result.persona).toBe(
       'Veteran "staff-level platform engineer" expert',
     );
@@ -197,8 +209,9 @@ describe("proposePersona — confirm / edit / replace", () => {
         rationale: "reasoning",
       }),
     ]);
-    await expect(
-      proposePersona(
+    let caught: unknown = null;
+    try {
+      await proposePersona(
         {
           idea: "idea",
           explain: false,
@@ -206,8 +219,12 @@ describe("proposePersona — confirm / edit / replace", () => {
           choice: { kind: "replace", persona: "CLI engineer" },
         },
         adapter,
-      ),
-    ).rejects.toBeDefined();
+      );
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).not.toBeNull();
+    expect(caught).toBeInstanceOf(Error);
   });
 });
 
@@ -227,12 +244,15 @@ describe("proposePersona — schema repair + lead_terminal", () => {
         rationale: "r2",
       }),
     ]);
-    const result = await proposePersona({
-      idea: "idea",
-      explain: false,
-      subscriptionAuth: false,
-      choice: { kind: "accept" },
-    }, adapter);
+    const result = await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
     expect(result.persona).toBe('Veteran "CLI software engineer" expert');
     // Exactly one repair attempt was made (so 2 total ask calls).
     expect(adapter.asks.length).toBe(2);
@@ -243,8 +263,9 @@ describe("proposePersona — schema repair + lead_terminal", () => {
       JSON.stringify({ persona: "nope", rationale: "bad" }),
       JSON.stringify({ persona: "still bad", rationale: "worse" }),
     ]);
-    await expect(
-      proposePersona(
+    let caught: unknown = null;
+    try {
+      await proposePersona(
         {
           idea: "idea",
           explain: false,
@@ -252,8 +273,12 @@ describe("proposePersona — schema repair + lead_terminal", () => {
           choice: { kind: "accept" },
         },
         adapter,
-      ),
-    ).rejects.toThrow(/lead_terminal|schema|persona/i);
+      );
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/lead_terminal|schema|persona/i);
   });
 
   test("non-JSON response => throws PersonaTerminalError", async () => {
@@ -261,8 +286,9 @@ describe("proposePersona — schema repair + lead_terminal", () => {
       "this is not JSON at all",
       "still not JSON",
     ]);
-    await expect(
-      proposePersona(
+    let caught: unknown = null;
+    try {
+      await proposePersona(
         {
           idea: "idea",
           explain: false,
@@ -270,8 +296,12 @@ describe("proposePersona — schema repair + lead_terminal", () => {
           choice: { kind: "accept" },
         },
         adapter,
-      ),
-    ).rejects.toThrow(/lead_terminal|schema|persona/i);
+      );
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as Error).message).toMatch(/lead_terminal|schema|persona/i);
   });
 });
 
@@ -341,7 +371,7 @@ describe("proposePersona — --explain flag (SPEC §4 secondary ICP)", () => {
       },
       adapter,
     );
-    const first = adapter.asks[0]!;
+    const first = adapter.asks[0];
     expect(first.prompt.toLowerCase()).toMatch(
       /plain english|plain-english|non-technical|everyday/,
     );
@@ -363,7 +393,7 @@ describe("proposePersona — --explain flag (SPEC §4 secondary ICP)", () => {
       },
       adapter,
     );
-    const first = adapter.asks[0]!;
+    const first = adapter.asks[0];
     expect(first.prompt.toLowerCase()).not.toMatch(
       /plain english preamble|non-technical/,
     );
@@ -388,6 +418,6 @@ describe("proposePersona — lead effort policy (SPEC §11)", () => {
       effort: "high" as EffortLevel,
     };
     await proposePersona(opts, adapter);
-    expect(adapter.asks[0]!.opts.effort).toBe("high");
+    expect(adapter.asks[0].opts.effort).toBe("high");
   });
 });
