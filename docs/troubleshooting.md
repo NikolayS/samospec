@@ -31,7 +31,40 @@ Run `claude auth login` or `claude login` per the Claude Code documentation.
 For Codex, run `codex auth login` with a valid `OPENAI_API_KEY` in your
 environment.
 
-## lead_terminal
+## Subscription auth — API key required
+
+```
+WARN  auth  claude: subscription auth detected; samospec requires ANTHROPIC_API_KEY
+            for non-interactive invocation
+```
+
+You are authenticated via subscription (Claude Max/Pro or ChatGPT login) but no
+API key is present. The `claude --print` non-interactive mode rejects subscription
+tokens; samospec requires API-key auth for all work calls in v1.
+
+**Fix:** set the API key env var and re-run doctor:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."   # get at console.anthropic.com
+export OPENAI_API_KEY="sk-..."          # get at platform.openai.com
+samospec doctor
+```
+
+If `new` or `iterate` already ran and exited 4 with `subscription_auth_unsupported`,
+no partial artifacts beyond the initial lockfile were created (or they were cleaned
+up). Retry after setting the env var.
+
+## lead_terminal — subscription_auth_unsupported
+
+```
+samospec: lead_terminal — subscription_auth_unsupported
+Exit code: 4.
+```
+
+The lead adapter cannot run in non-interactive mode under subscription auth.
+See the "Subscription auth — API key required" section above.
+
+## lead_terminal — other causes
 
 ```
 samospec: lead_terminal — lead refused or schema-validation failed.

@@ -175,7 +175,15 @@ function makeInstalledHost(): {
 } {
   const { dir, binary } = makeFakeBinaryDir("claude", 'echo "2.1.114"');
   return {
-    host: { PATH: dir, HOME: "/tmp" },
+    // Include a fake API key so auth_status() returns
+    // usable_for_noninteractive:true. Work-call tests exercise spawn
+    // behavior, not subscription-auth gating; the key is never used
+    // for a real API call (no real claude binary is invoked).
+    host: {
+      PATH: dir,
+      HOME: "/tmp",
+      ANTHROPIC_API_KEY: "sk-ant-test-fake-key",
+    },
     binaryPath: binary,
   };
 }
@@ -224,10 +232,14 @@ describe("ClaudeAdapter.auth_status (SPEC §11 subscription-auth)", () => {
 
   test("binary present + no API key -> subscription_auth=true (keychain assumed)", async () => {
     const { host } = makeInstalledHost();
-    const adapter = new ClaudeAdapter({ host });
+    // Strip the API key that makeInstalledHost() now includes so we can
+    // test the subscription-auth heuristic in isolation.
+    const noKeyHost = { ...host, ANTHROPIC_API_KEY: undefined };
+    const adapter = new ClaudeAdapter({ host: noKeyHost });
     const result = await adapter.auth_status();
     expect(result.authenticated).toBe(true);
     expect(result.subscription_auth).toBe(true);
+    expect(result.usable_for_noninteractive).toBe(false);
   });
 });
 

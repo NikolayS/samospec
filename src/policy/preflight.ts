@@ -15,7 +15,8 @@
 //   - rangeLowUsd  — one-round scenario
 //   - rangeHighUsd — M-round scenario
 //   - likelyUsd    — P50 at M_likely, NOT arithmetic midpoint
-//   - perAdapter   — { id: { tokens, usd | "unknown — subscription auth" } }
+//   - perAdapter   — { id: { tokens, usd | "unknown — subscription auth
+//                    (API key required)" } }
 //   - warnings     — subscription-auth notices, usage-null, etc.
 //   - belowFloor   — true when calibration sample_count < 3 (inline
 //                    "first runs; estimate is approximate" printed)
@@ -75,7 +76,7 @@ export interface PreflightAdapter {
 
 export interface PreflightPerAdapter {
   readonly tokens: number;
-  readonly usd: number | "unknown — subscription auth";
+  readonly usd: number | "unknown — subscription auth (API key required)";
 }
 
 export interface PreflightEstimate {
@@ -192,7 +193,7 @@ export function computePreflight(
     if (ad.subscription_auth) {
       perAdapter[ad.id] = {
         tokens: tokensLikely,
-        usd: "unknown — subscription auth",
+        usd: "unknown — subscription auth (API key required)",
       };
       subscriptionAuthCount += 1;
       continue;
@@ -210,7 +211,7 @@ export function computePreflight(
   if (subscriptionAuthCount > 0) {
     warnings.push(
       `${String(subscriptionAuthCount)} adapter(s) under ` +
-        `subscription-auth; total cost incomplete`,
+        `subscription-auth (API key required); total cost incomplete`,
     );
   }
 

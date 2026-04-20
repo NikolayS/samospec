@@ -264,9 +264,18 @@ export class CodexAdapter implements Adapter {
       return Promise.resolve({
         authenticated,
         subscription_auth: false,
+        usable_for_noninteractive: true,
       });
     }
-    return Promise.resolve({ authenticated, subscription_auth });
+    // Subscription-only (ChatGPT login): cannot run codex exec under
+    // subscription auth in non-interactive mode (SPEC §11). Report
+    // usable_for_noninteractive:false so doctor and work calls can
+    // gate on this without re-probing the env.
+    return Promise.resolve({
+      authenticated,
+      subscription_auth,
+      usable_for_noninteractive: false,
+    });
   }
 
   supports_structured_output(): boolean {
@@ -283,8 +292,30 @@ export class CodexAdapter implements Adapter {
 
   // ---------- work calls ----------
 
+  /**
+   * Fail fast if auth_status().usable_for_noninteractive === false.
+   * Must be called at the top of every work call (ask/critique/revise)
+   * BEFORE any spawn. Throws CodexAdapterError with reason
+   * "subscription_auth_unsupported" so callers can surface a clear
+   * message pointing at the required env var.
+   */
+  private async assertUsableForNonInteractive(): Promise<void> {
+    const status = await this.auth_status();
+    if (status.usable_for_noninteractive === false) {
+      throw new CodexAdapterError({
+        kind: "terminal",
+        reason: "subscription_auth_unsupported",
+        detail:
+          "`codex` CLI cannot run in non-interactive mode under subscription " +
+          "auth. Set OPENAI_API_KEY in your environment " +
+          "(get a key at platform.openai.com) and retry.",
+      });
+    }
+  }
+
   async ask(input: AskInput): Promise<AskOutput> {
     AskInputSchema.parse(input);
+    await this.assertUsableForNonInteractive();
     const prompt = buildAskPrompt(input);
     const raw = await this.runWithRetries({
       prompt,
@@ -298,6 +329,7 @@ export class CodexAdapter implements Adapter {
 
   async critique(input: CritiqueInput): Promise<CritiqueOutput> {
     CritiqueInputSchema.parse(input);
+    await this.assertUsableForNonInteractive();
     const prompt = buildCritiquePrompt(input);
     const raw = await this.runWithRetries({
       prompt,
@@ -311,6 +343,7 @@ export class CodexAdapter implements Adapter {
 
   async revise(input: ReviseInput): Promise<ReviseOutput> {
     ReviseInputSchema.parse(input);
+    await this.assertUsableForNonInteractive();
     const prompt = buildRevisePrompt(input);
     const raw = await this.runWithRetries({
       prompt,
@@ -702,7 +735,8 @@ export type CodexAdapterErrorReason =
   | "timeout"
   | "schema_violation"
   | "model_unavailable"
-  | "other";
+  | "other"
+  | "subscription_auth_unsupported";
 
 export interface CodexAdapterErrorPayload {
   readonly kind: "terminal";

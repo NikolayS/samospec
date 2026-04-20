@@ -8,14 +8,26 @@ export interface CheckAuthStatusArgs {
   readonly adapters: readonly AdapterBinding[];
 }
 
+// Map from adapter label to the required API key env var name.
+// Used in subscription-auth WARN messages to point at the right env var.
+const ADAPTER_API_KEY_ENV: Readonly<Record<string, string>> = {
+  claude: "ANTHROPIC_API_KEY",
+  codex: "OPENAI_API_KEY",
+};
+
+function apiKeyEnvForLabel(label: string): string {
+  return ADAPTER_API_KEY_ENV[label] ?? "the required API key env var";
+}
+
 /**
  * Aggregates `auth_status()` across every bound adapter. Statuses:
  *
- *   - OK   — every adapter authenticated with API-key auth (usage
- *            tracking available).
- *   - WARN — at least one adapter authenticated via subscription
- *            (SPEC §11 subscription-auth escape — usage unavailable;
- *            wall-clock + iteration caps enforced instead).
+ *   - OK   — every adapter authenticated and usable for non-interactive
+ *            work calls (API key present).
+ *   - WARN — at least one adapter authenticated via subscription but
+ *            without the matching API key env var — cannot run non-
+ *            interactive work calls (SPEC §11). `doctor` surfaces the
+ *            required env var so the user knows what to set.
  *   - FAIL — any adapter not authenticated.
  *
  * Uses the existing `auth_status()` stub from Issue #5 — does NOT
@@ -26,7 +38,7 @@ export async function checkAuthStatus(
 ): Promise<CheckResult> {
   const details: string[] = [];
   let anyFailure = false;
-  let anySubscription = false;
+  let anySubscriptionNotUsable = false;
 
   for (const { label, adapter } of args.adapters) {
     try {
@@ -36,13 +48,19 @@ export async function checkAuthStatus(
         anyFailure = true;
         continue;
       }
-      if (status.subscription_auth === true) {
-        anySubscription = true;
+      // subscription_auth:true AND usable_for_noninteractive:false means
+      // the adapter is authenticated but cannot run --print mode work calls.
+      if (
+        status.subscription_auth === true &&
+        status.usable_for_noninteractive === false
+      ) {
+        anySubscriptionNotUsable = true;
+        const apiKeyVar = apiKeyEnvForLabel(label);
         const account =
           status.account !== undefined ? ` (${status.account})` : "";
         details.push(
-          `${label}: authenticated via subscription${account} ` +
-            `— token cost not visible; wall-clock + iteration caps enforced`,
+          `${label}: subscription auth detected${account}; ` +
+            `samospec requires ${apiKeyVar} for non-interactive invocation`,
         );
       } else {
         const account =
@@ -57,7 +75,7 @@ export async function checkAuthStatus(
 
   let status: CheckStatus;
   if (anyFailure) status = CheckStatus.Fail;
-  else if (anySubscription) status = CheckStatus.Warn;
+  else if (anySubscriptionNotUsable) status = CheckStatus.Warn;
   else status = CheckStatus.Ok;
 
   return {

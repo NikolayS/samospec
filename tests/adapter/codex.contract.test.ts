@@ -50,6 +50,10 @@ function makeHost(): Record<string, string | undefined> {
     PATH: `${BUN_DIR}:${binDir}`,
     HOME: stateDir,
     TMPDIR: stateDir,
+    // Include a fake API key so auth_status() returns
+    // usable_for_noninteractive:true. Contract tests exercise adapter
+    // behavior, not subscription-auth gating.
+    OPENAI_API_KEY: "sk-openai-test-fake-key",
   };
 }
 

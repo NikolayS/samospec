@@ -68,7 +68,10 @@ function makeFakeBinaryDir(
 
 function makeInstalledHost(): Record<string, string | undefined> {
   const { dir } = makeFakeBinaryDir("claude", 'echo "2.1.114"');
-  return { PATH: dir, HOME: "/tmp" };
+  // Include a fake API key so auth_status() returns
+  // usable_for_noninteractive:true. Tests exercise spawn behavior,
+  // not subscription-auth gating; the key is never used for real calls.
+  return { PATH: dir, HOME: "/tmp", ANTHROPIC_API_KEY: "sk-ant-test-fake-key" };
 }
 
 const OPTS_MAX_120: { effort: EffortLevel; timeout: number } = {
