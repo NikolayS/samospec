@@ -35,6 +35,7 @@ export function newState(args: NewStateArgs): State {
     calibration: null,
     remote_stale: false,
     coupled_fallback: false,
+    head_sha: null,
     round_state: "planned",
     exit: null,
     created_at: args.now,

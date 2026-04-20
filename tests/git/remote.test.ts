@@ -167,11 +167,10 @@ describe("reconcileRemote — non-FF divergence halts with exit 2", () => {
       // Local HEAD is unchanged — no auto-rebase, no force-apply.
       const before = runGit(["rev-parse", "HEAD"], local.dir).trim();
       expect(before).not.toBe("");
-      const res = spawnSync(
-        "git",
-        ["log", "--oneline", "-1"],
-        { cwd: local.dir, encoding: "utf8" },
-      );
+      const res = spawnSync("git", ["log", "--oneline", "-1"], {
+        cwd: local.dir,
+        encoding: "utf8",
+      });
       expect(res.stdout).toContain("local diverge");
     } finally {
       rmSync(scratch, { recursive: true, force: true });

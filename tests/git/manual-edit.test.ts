@@ -66,7 +66,7 @@ describe("detectManualEdits — scope and classification", () => {
     expect(rep.dirty).toBe(false);
     expect(rep.files).toEqual([]);
     expect(rep.specEdited).toBe(false);
-    expect(rep.derivedEdited).toBe([]);
+    expect(rep.derivedEdited).toEqual([]);
   });
 
   test("detects an edited tracked SPEC.md as target=spec", () => {
@@ -113,9 +113,11 @@ describe("detectManualEdits — scope and classification", () => {
     const rep = detectManualEdits(slug, { repoPath: repo.dir });
     expect(rep.dirty).toBe(true);
     expect(rep.specEdited).toBe(false);
-    expect(rep.derivedEdited.sort()).toEqual(
-      artifacts.map((a) => `.samospec/spec/${slug}/${a}`).sort(),
-    );
+    const derivedSorted = [...rep.derivedEdited].sort();
+    const expectedSorted = artifacts
+      .map((a) => `.samospec/spec/${slug}/${a}`)
+      .sort();
+    expect(derivedSorted).toEqual(expectedSorted);
   });
 
   test("ignores edits outside .samospec/spec/<slug>/", () => {
@@ -146,9 +148,7 @@ describe("buildLeadDirective — section heuristic", () => {
     const after =
       "# Refunds v0.1\n\n## Goals\n\nRewritten goals text.\n\n## Scope\n\nOriginal scope.\n";
     const directive = buildLeadDirective({ before, after });
-    expect(directive).toContain(
-      "The user has manually edited sections",
-    );
+    expect(directive).toContain("The user has manually edited sections");
     expect(directive).toContain("Goals");
     expect(directive).not.toContain("Scope");
     expect(directive).toContain(
@@ -207,9 +207,10 @@ describe("applyManualEdit — three-option flow for SPEC.md edits", () => {
     const messages = repo.logOnBranch(`samospec/${slug}`);
     expect(messages[0]).toBe(`spec(${slug}): user-edit before round 1`);
     // Changelog had a `user-edit` note appended.
-    const changelog = repo
-      .run(["show", `HEAD:.samospec/spec/${slug}/changelog.md`])
-      .stdout;
+    const changelog = repo.run([
+      "show",
+      `HEAD:.samospec/spec/${slug}/changelog.md`,
+    ]).stdout;
     expect(changelog).toContain("user-edit");
     // The lead directive surfaced for the orchestrator to pass in.
     expect(outcome.leadDirective).toContain("manually edited sections");
@@ -219,10 +220,7 @@ describe("applyManualEdit — three-option flow for SPEC.md edits", () => {
   });
 
   test("'overwrite' discards user edits and does not commit", () => {
-    repo.write(
-      `.samospec/spec/${slug}/SPEC.md`,
-      "# USER WIPED\n",
-    );
+    repo.write(`.samospec/spec/${slug}/SPEC.md`, "# USER WIPED\n");
     const report = detectManualEdits(slug, { repoPath: repo.dir });
     const commitsBefore = repo.logOnBranch(`samospec/${slug}`).length;
     const outcome = applyManualEdit({
@@ -264,10 +262,7 @@ describe("applyManualEdit — three-option flow for SPEC.md edits", () => {
   });
 
   test("derived-only edits do NOT trigger the SPEC three-option flow — warn-and-confirm path", () => {
-    repo.write(
-      `.samospec/spec/${slug}/NOTES.md`,
-      "# Notes\nadded by user\n",
-    );
+    repo.write(`.samospec/spec/${slug}/NOTES.md`, "# Notes\nadded by user\n");
     const report = detectManualEdits(slug, { repoPath: repo.dir });
     expect(report.specEdited).toBe(false);
     expect(report.derivedEdited.length).toBeGreaterThan(0);

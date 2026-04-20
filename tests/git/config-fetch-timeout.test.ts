@@ -7,7 +7,13 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -44,8 +50,6 @@ describe("init — git.fetch_timeout_seconds default (SPEC §8)", () => {
         fetch_timeout_seconds: 30,
       },
     };
-    // Write via fs rather than mkdir; runInit will handle directory creation.
-    const { mkdirSync, writeFileSync } = require("node:fs") as typeof import("node:fs");
     mkdirSync(samoDir, { recursive: true });
     writeFileSync(cfgPath, JSON.stringify(preSeed, null, 2), "utf8");
 

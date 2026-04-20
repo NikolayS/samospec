@@ -63,6 +63,12 @@ const semverSchema = z
   .string()
   .regex(/^\d+\.\d+\.\d+$/, "must match X.Y.Z SemVer");
 
+// SPEC §8 — HEAD sha recorded on each state.json write so remote
+// reconciliation can halt on drift. Full 40-char lowercase hex only.
+const headShaSchema = z
+  .string()
+  .regex(/^[0-9a-f]{40}$/, "must be a 40-char lowercase hex sha");
+
 const personaSchema = z
   .object({
     skill: z.string().min(1),
@@ -116,6 +122,7 @@ export const stateSchema = z
     calibration: calibrationSchema.nullable(),
     remote_stale: z.boolean(),
     coupled_fallback: z.boolean(),
+    head_sha: headShaSchema.nullable().optional(),
     round_state: roundStateSchema,
     exit: exitSchema.nullable(),
     adapters: z
