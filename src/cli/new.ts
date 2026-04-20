@@ -120,9 +120,9 @@ export interface RunNewInput {
   readonly noPush?: boolean;
   /**
    * Optional list of baseline section names to skip (SPEC §7 v0.2.0
-   * --skip opt-out). Passed through to the draft prompt builder.
+   * --skip opt-out). Forwarded into `authorDraft` → `adapter.revise`.
    */
-  readonly skipSections?: string[];
+  readonly skipSections?: readonly string[];
 }
 
 // ---------- CLI entry ----------
@@ -424,6 +424,9 @@ export async function runNew(
           interview,
           contextChunks: chunks,
           explain: input.explain,
+          ...(input.skipSections !== undefined
+            ? { skipSections: input.skipSections }
+            : {}),
         },
         adapter,
       );

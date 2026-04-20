@@ -21,7 +21,7 @@
 // the full CLI dispatch so the parser change is exercised end-to-end.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -51,9 +51,7 @@ function personaJson(skill: string): string {
   });
 }
 
-function questionsJson(
-  items: readonly { id: string; text: string }[],
-): string {
+function questionsJson(items: readonly { id: string; text: string }[]): string {
   return JSON.stringify({
     questions: items.map((q) => ({
       id: q.id,
@@ -88,7 +86,7 @@ function makeAdapter(answers: readonly string[]): {
   let askCall = 0;
   const adapter: Adapter = {
     ...base,
-    ask: (input: AskInput): Promise<AskOutput> => {
+    ask: (_input: AskInput): Promise<AskOutput> => {
       const a = answers[askCall] ?? answers[answers.length - 1] ?? "";
       askCall += 1;
       return Promise.resolve(askOut(a));
@@ -220,9 +218,10 @@ describe("samospec new --skip threads skipSections to adapter.revise()", () => {
     );
     expect(result.exitCode).toBe(0);
     expect(revises.length).toBeGreaterThan(0);
-    const reviseCall = revises[0]!;
-    expect(reviseCall.skipSections).toBeDefined();
-    expect(reviseCall.skipSections).toContain("user stories");
+    const reviseCall = revises[0];
+    expect(reviseCall).toBeDefined();
+    expect(reviseCall?.skipSections).toBeDefined();
+    expect(reviseCall?.skipSections).toContain("user stories");
   });
 
   test("runNew without skipSections leaves field undefined", async () => {
@@ -244,7 +243,7 @@ describe("samospec new --skip threads skipSections to adapter.revise()", () => {
     expect(result.exitCode).toBe(0);
     expect(revises.length).toBeGreaterThan(0);
     // Absent skip list must not inject anything.
-    expect(revises[0]!.skipSections ?? []).toEqual([]);
+    expect(revises[0]?.skipSections ?? []).toEqual([]);
   });
 
   test("multi-value --skip array threads through", async () => {
@@ -265,8 +264,9 @@ describe("samospec new --skip threads skipSections to adapter.revise()", () => {
       adapter,
     );
     expect(result.exitCode).toBe(0);
-    const reviseCall = revises[0]!;
-    expect(reviseCall.skipSections).toEqual(["user stories", "team"]);
+    const reviseCall = revises[0];
+    expect(reviseCall).toBeDefined();
+    expect(reviseCall?.skipSections).toEqual(["user stories", "team"]);
   });
 });
 
@@ -306,30 +306,23 @@ describe("parseNewArgs --skip comma-splitting and case", () => {
     // (Heuristic: the error complains about the bogus entry only.)
   });
 
-  test("case-insensitive canonical match for valid names", async () => {
-    // "User-Stories" and "USER STORIES" should both be accepted by the
-    // parser. The run will later fail (missing .samo, no slug, etc.),
-    // but the parser itself must NOT emit a "unknown baseline section"
-    // complaint for a valid name in a different case.
+  test("case-insensitive match — uppercase valid name not flagged as unknown", async () => {
+    // Exercise the parser by mixing a valid (uppercase) name with a
+    // bogus name. The error must list ONLY the bogus entry; the
+    // uppercase variant must be canonicalized and accepted.
     const result = await runCli([
       "new",
       "demo",
       "--idea",
       "foo",
       "--skip",
-      "User-Stories",
+      "USER STORIES,bogus-section",
     ]);
-    // Either the run proceeds past the parser (and later fails for
-    // missing .samo), or the parser succeeds silently. In both cases
-    // the error message must NOT contain a "unknown baseline section"
-    // complaint about "User-Stories".
-    if (result.exitCode !== 0) {
-      expect(result.stderr.toLowerCase()).not.toContain(
-        "unknown baseline section: user-stories",
-      );
-      expect(result.stderr.toLowerCase()).not.toContain(
-        "unknown baseline section: 'user-stories'",
-      );
-    }
+    expect(result.exitCode).toBe(1);
+    const lower = result.stderr.toLowerCase();
+    expect(lower).toContain("bogus-section");
+    // The parser's bad-name message must not flag "user stories" as
+    // unknown, since it's a valid canonical section name.
+    expect(lower).not.toMatch(/unknown[^:]*: ['"]?user stories['"]?/);
   });
 });
