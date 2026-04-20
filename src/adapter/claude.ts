@@ -27,6 +27,7 @@ import { existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { detectSubscriptionAuth } from "./auth-status.ts";
+import { type ClaudeResolver } from "./claude-resolver.ts";
 import { preParseJson } from "./json-parse.ts";
 import {
   CLAUDE_NON_INTERACTIVE_FLAGS,
@@ -94,6 +95,15 @@ export interface ClaudeAdapterOpts {
    * `claude-opus-4-7`.
    */
   readonly defaultModel?: string;
+  /**
+   * Shared Claude fallback-chain resolver (SPEC §11). When supplied,
+   * the `--model` pin at every work-call spawn comes from
+   * `resolver.getCurrentModel()` instead of the fixed `defaultModel`.
+   * The resolver is shared between the lead and the Reviewer B
+   * adapter to express the **coupled fallback** linkage: a transition
+   * to sonnet on one side is visible on the other.
+   */
+  readonly resolver?: ClaudeResolver;
 }
 
 // ---------- binary discovery ----------
@@ -145,11 +155,12 @@ function parseVersionOutput(raw: string): string {
 export class ClaudeAdapter implements Adapter {
   readonly vendor: string = CLAUDE_VENDOR;
 
-  private readonly binary: string;
-  private readonly host: Readonly<Record<string, string | undefined>>;
-  private readonly spawnFn: SpawnFn;
-  private readonly modelList: readonly ModelInfo[];
-  private readonly defaultModel: string;
+  protected readonly binary: string;
+  protected readonly host: Readonly<Record<string, string | undefined>>;
+  protected readonly spawnFn: SpawnFn;
+  protected readonly modelList: readonly ModelInfo[];
+  protected readonly defaultModel: string;
+  protected readonly resolver: ClaudeResolver | null;
 
   constructor(opts: ClaudeAdapterOpts = {}) {
     this.binary = opts.binary ?? CLAUDE_BINARY_NAME;
@@ -158,6 +169,18 @@ export class ClaudeAdapter implements Adapter {
     this.spawnFn = opts.spawn ?? spawnCli;
     this.modelList = opts.models ?? DEFAULT_MODELS;
     this.defaultModel = opts.defaultModel ?? DEFAULT_MODEL_ID;
+    this.resolver = opts.resolver ?? null;
+  }
+
+  /**
+   * Current model id the adapter will pin at spawn time. Reads through
+   * the shared resolver when present, falling back to the constructor
+   * `defaultModel`. Exposed for tests + state.json snapshotting.
+   */
+  currentModelId(): string {
+    return this.resolver !== null
+      ? this.resolver.getCurrentModel()
+      : this.defaultModel;
   }
 
   // ---------- lifecycle ----------
@@ -310,15 +333,27 @@ export class ClaudeAdapter implements Adapter {
     const resolvedBinary =
       resolveBinaryPath(this.host, this.binary) ?? this.binary;
 
+    // We track whether any attempt saw a rate-limit-shaped error so we
+    // can surface the `rate_limit` flag on the terminal error. Callers
+    // (review loop, Sprint 3 #4) use this to soft-degrade the seat
+    // rather than treating it as a plain timeout/retry exhaustion.
+    let sawRateLimit = false;
     const outcome = await runWithCappedRetry<string>(
       async (ctx) => {
-        return await this.runSingleAttempt({
+        const single = await this.runSingleAttempt({
           binary: resolvedBinary,
           prompt: args.prompt,
           timeoutMs: ctx.timeout,
           effort: args.effort,
           structured: args.structured,
         });
+        if (!single.ok && single.reason === "timeout") {
+          const detail = single.detail;
+          if (detail !== undefined && isRateLimitDetail(detail)) {
+            sawRateLimit = true;
+          }
+        }
+        return single;
       },
       { baseTimeoutMs: args.timeoutMs },
     );
@@ -330,11 +365,15 @@ export class ClaudeAdapter implements Adapter {
     const base: ClaudeAdapterErrorPayload = {
       kind: "terminal",
       reason: outcome.reason,
+      retryable: outcome.reason === "timeout",
       attempts: outcome.attempts,
     };
-    throw new ClaudeAdapterError(
-      outcome.detail !== undefined ? { ...base, detail: outcome.detail } : base,
-    );
+    const payload: ClaudeAdapterErrorPayload = {
+      ...base,
+      ...(outcome.detail !== undefined ? { detail: outcome.detail } : {}),
+      ...(sawRateLimit ? { rate_limit: true } : {}),
+    };
+    throw new ClaudeAdapterError(payload);
   }
 
   private async runSingleAttempt(args: {
@@ -420,7 +459,7 @@ export class ClaudeAdapter implements Adapter {
       args.binary,
       ...CLAUDE_NON_INTERACTIVE_FLAGS,
       "--model",
-      this.defaultModel,
+      this.currentModelId(),
     ];
     const input: SpawnCliInput = {
       cmd,
@@ -535,21 +574,45 @@ function normalizeUsageAndEffort(
 
 // ---------- error classification ----------
 
+// Stable token used in AttemptFail.detail strings to signal that the
+// underlying CLI error was rate-limit-shaped. `runWithRetries` inspects
+// this token to set the `rate_limit` flag on the outward error payload.
+// Downstream (review loop, Sprint 3 #4) consumes the flag for
+// soft-degrade (SPEC §7 rate-limit sharing).
+const RATE_LIMIT_DETAIL_TOKEN = "rate_limit";
+
+function isRateLimitStderr(stderr: string): boolean {
+  const lower = stderr.toLowerCase();
+  return (
+    lower.includes("rate limit") ||
+    lower.includes("rate-limit") ||
+    /\b429\b/.test(stderr)
+  );
+}
+
+function isRateLimitDetail(detail: string): boolean {
+  return detail.includes(RATE_LIMIT_DETAIL_TOKEN);
+}
+
 function classifyExit(exitCode: number, stderr: string): AttemptResult<string> {
   // Stderr-heuristic classification per SPEC §7 failure classes.
   // Non-zero exit is terminal unless stderr matches a known retryable
   // pattern (rate limit, network, 5xx).
   const lower = stderr.toLowerCase();
+  const rateLimited = isRateLimitStderr(stderr);
   const retryable =
-    lower.includes("rate limit") ||
-    lower.includes("rate-limit") ||
+    rateLimited ||
     lower.includes("network error") ||
     lower.includes("timeout") ||
     /\b5\d{2}\b/.test(stderr);
+  const baseDetail = `exit ${String(exitCode)}: ${stderr.trim()}`;
+  const detail = rateLimited
+    ? `${RATE_LIMIT_DETAIL_TOKEN} | ${baseDetail}`
+    : baseDetail;
   return {
     ok: false,
     reason: retryable ? "timeout" : "other",
-    detail: `exit ${String(exitCode)}: ${stderr.trim()}`,
+    detail,
   };
 }
 
@@ -560,6 +623,21 @@ export interface ClaudeAdapterErrorPayload {
   readonly reason: "timeout" | "schema_violation" | "other";
   readonly detail?: string;
   readonly attempts?: number;
+  /**
+   * SPEC §7 failure classification. `true` when the underlying cause
+   * was a retryable class (rate-limit, network, 5xx, timeout) whose
+   * capped-retry budget was exhausted. The outer `kind` remains
+   * `terminal` after exhaustion, but the review loop uses `retryable`
+   * + `rate_limit` for soft-degrade decisions.
+   */
+  readonly retryable?: boolean;
+  /**
+   * SPEC §7 rate-limit sharing: `true` iff at least one attempt saw a
+   * rate-limit-shaped error (stderr match or 429). Surfaces to the
+   * review loop so Reviewer B can be soft-degraded without halting
+   * the round (lead + Reviewer B share the Claude account budget).
+   */
+  readonly rate_limit?: boolean;
 }
 
 export class ClaudeAdapterError extends Error {

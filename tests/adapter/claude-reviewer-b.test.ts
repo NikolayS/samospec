@@ -32,7 +32,6 @@ import {
   type AskInput,
   type CritiqueInput,
   type EffortLevel,
-  type ReviseInput,
 } from "../../src/adapter/types.ts";
 
 const BUN_DIR = dirname(process.execPath);
@@ -89,15 +88,6 @@ function sampleCritique(): CritiqueInput {
   };
 }
 
-function sampleRevise(): ReviseInput {
-  return {
-    spec: "# SPEC\n\nplaceholder",
-    reviews: [],
-    decisions_history: [],
-    opts: OPTS_MAX_120,
-  };
-}
-
 // ---------- spawn-spy ----------
 
 interface SpawnSpyCall {
@@ -131,56 +121,6 @@ function makeSpy(
       ? (scripted[calls.length - 1] ?? scripted[scripted.length - 1]!)
       : (scripted as SpawnCliResult);
     return Promise.resolve(result);
-  };
-  return { spawn, calls };
-}
-
-/**
- * Shared fake-CLI spy: records every call, then delegates to the
- * fake-CLI harness. Forwards fixture and optional state file. Injects
- * BUN_DIR + host PATH so the bun runtime is reachable under minimal-env.
- */
-function makeFakeCliSpy(opts: {
-  fixture: string;
-  stateFile?: string;
-}): SpawnSpy {
-  const calls: SpawnSpyCall[] = [];
-  const spawn = async (input: SpawnCliInput): Promise<SpawnCliResult> => {
-    calls.push({
-      cmd: [...input.cmd],
-      env: { ...input.env },
-      timeoutMs: input.timeoutMs,
-      stdinLen: input.stdin.length,
-      stdin: input.stdin,
-      extraAllowedEnvKeys: [...(input.extraAllowedEnvKeys ?? [])],
-    });
-    const env: Record<string, string | undefined> = {
-      ...input.env,
-      FAKE_CLI_FIXTURE: opts.fixture,
-    };
-    if (opts.stateFile !== undefined) {
-      env["FAKE_CLI_STATE_FILE"] = opts.stateFile;
-    }
-    const hostSnapshot: Record<string, string | undefined> = {
-      ...(input.host ?? {}),
-    };
-    const hostPath = hostSnapshot["PATH"] ?? "";
-    const mergedPath = hostPath === "" ? BUN_DIR : `${BUN_DIR}:${hostPath}`;
-    hostSnapshot["PATH"] = mergedPath;
-
-    const rewritten: SpawnCliInput = {
-      cmd: ["bun", "run", FAKE_CLI],
-      stdin: input.stdin,
-      env,
-      timeoutMs: input.timeoutMs,
-      extraAllowedEnvKeys: [
-        ...(input.extraAllowedEnvKeys ?? []),
-        "FAKE_CLI_FIXTURE",
-        "FAKE_CLI_STATE_FILE",
-      ],
-      host: hostSnapshot,
-    };
-    return await spawnCli(rewritten);
   };
   return { spawn, calls };
 }
@@ -295,8 +235,7 @@ describe("ClaudeReviewerBAdapter — separate-process spawn (SPEC §7)", () => {
     const spy = makeSpy({
       ok: true,
       exitCode: 0,
-      stdout:
-        '{"answer":"ok","usage":null,"effort_used":"max"}',
+      stdout: '{"answer":"ok","usage":null,"effort_used":"max"}',
       stderr: "",
     });
     const host = makeInstalledHost();
@@ -502,22 +441,62 @@ describe("ClaudeReviewerBAdapter — rate-limit classification (SPEC §7 rate-li
 
 // ---------- shared adapter contract ----------
 
+/**
+ * Contract-test delegator: intercepts --version probes so they don't
+ * consume a branch of the trio fixture; forwards work-call spawns to
+ * the fake-CLI harness keyed by a state file.
+ */
+function makeContractDelegator(
+  fixture: string,
+): (i: SpawnCliInput) => Promise<SpawnCliResult> {
+  const stateDir = mkdtempSync(join(tmpdir(), "samospec-revb-contract-"));
+  TMP.push(stateDir);
+  const stateFile = join(stateDir, "state.json");
+  writeFileSync(stateFile, JSON.stringify({ call: 0 }));
+
+  return async (input: SpawnCliInput): Promise<SpawnCliResult> => {
+    if (input.cmd.includes("--version")) {
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: "2.1.114 (Claude Code)\n",
+        stderr: "",
+      };
+    }
+    const env: Record<string, string | undefined> = {
+      ...input.env,
+      FAKE_CLI_FIXTURE: fixture,
+      FAKE_CLI_STATE_FILE: stateFile,
+    };
+    const hostSnapshot: Record<string, string | undefined> = {
+      ...(input.host ?? {}),
+    };
+    const hostPath = hostSnapshot["PATH"] ?? "";
+    hostSnapshot["PATH"] = hostPath === "" ? BUN_DIR : `${BUN_DIR}:${hostPath}`;
+    const rewritten: SpawnCliInput = {
+      cmd: ["bun", "run", FAKE_CLI],
+      stdin: input.stdin,
+      env,
+      timeoutMs: input.timeoutMs,
+      extraAllowedEnvKeys: [
+        ...(input.extraAllowedEnvKeys ?? []),
+        "FAKE_CLI_FIXTURE",
+        "FAKE_CLI_STATE_FILE",
+      ],
+      host: hostSnapshot,
+    };
+    return await spawnCli(rewritten);
+  };
+}
+
 describe("ClaudeReviewerBAdapter — shared contract (SPEC §13 test 4)", () => {
   test("passes the full contract suite via the fake-CLI trio fixture", async () => {
-    const stateDir = mkdtempSync(join(tmpdir(), "samospec-revb-contract-"));
-    TMP.push(stateDir);
-    const stateFile = join(stateDir, "state.json");
-    writeFileSync(stateFile, JSON.stringify({ call: 0 }));
-
     await runAdapterContract({
       name: "claude-reviewer-b",
       makeAdapter: () =>
         new ClaudeReviewerBAdapter({
           host: makeInstalledHost(),
-          spawn: makeFakeCliSpy({
-            fixture: claudeFixture("contract-trio.json"),
-            stateFile,
-          }).spawn,
+          spawn: makeContractDelegator(claudeFixture("contract-trio.json")),
         }),
     });
   });
