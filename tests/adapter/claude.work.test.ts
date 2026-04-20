@@ -279,6 +279,73 @@ describe("ClaudeAdapter spawn flags + minimal env (SPEC §7)", () => {
     expect(workCall.extraAllowedEnvKeys).toContain("ANTHROPIC_API_KEY");
   });
 
+  test("end-to-end minimal-env: fake-CLI child sees only allowlist keys (no host secrets leak)", async () => {
+    // Captures the child's env dump by wrapping the adapter's spawn
+    // with a "peek" layer: the wrapper records the child's stdout
+    // (the raw env_keys JSON) and then returns a canned schema-valid
+    // JSON to keep ask() happy.
+    const echoEnv = new URL(
+      "../fixtures/fake-cli-fixtures/echo-env.json",
+      import.meta.url,
+    ).pathname;
+    let capturedKeys: readonly string[] = [];
+
+    const peekSpawn = async (input: SpawnCliInput): Promise<SpawnCliResult> => {
+      // First, run the fake-cli for real to capture the env dump.
+      const env: Record<string, string | undefined> = {
+        ...input.env,
+        FAKE_CLI_FIXTURE: echoEnv,
+      };
+      const hostSnapshot: Record<string, string | undefined> = {
+        ...(input.host ?? {}),
+      };
+      const hostPath = hostSnapshot["PATH"] ?? "";
+      hostSnapshot["PATH"] =
+        hostPath === "" ? BUN_DIR : `${BUN_DIR}:${hostPath}`;
+
+      const raw = await spawnCli({
+        cmd: ["bun", "run", FAKE_CLI],
+        stdin: input.stdin,
+        env,
+        timeoutMs: input.timeoutMs,
+        extraAllowedEnvKeys: [
+          ...(input.extraAllowedEnvKeys ?? []),
+          "FAKE_CLI_FIXTURE",
+        ],
+        host: hostSnapshot,
+      });
+      if (raw.ok) {
+        const parsed = JSON.parse(raw.stdout) as { keys?: string[] };
+        capturedKeys = parsed.keys ?? [];
+      }
+      // Return canned JSON for ask() to validate cleanly.
+      return {
+        ok: true,
+        exitCode: 0,
+        stdout: '{"answer":"ok","usage":null,"effort_used":"max"}',
+        stderr: "",
+      };
+    };
+
+    const { host } = makeInstalledHost();
+    const adapter = new ClaudeAdapter({
+      host: {
+        ...host,
+        TMPDIR: "/tmp",
+        ANTHROPIC_API_KEY: "sk-forwarded-value",
+        LEAKY_HOST_SECRET: "nope",
+      },
+      spawn: peekSpawn,
+    });
+
+    await adapter.ask(sampleAsk());
+
+    // Allowlist: HOME, PATH, TMPDIR, ANTHROPIC_API_KEY (+ harness
+    // FAKE_CLI_FIXTURE for the peek wrapper). Nothing else host-side.
+    expect(capturedKeys).toContain("ANTHROPIC_API_KEY");
+    expect(capturedKeys).not.toContain("LEAKY_HOST_SECRET");
+  });
+
   test("revise() returns ready + rationale from JSON body, not parsed from Markdown prose", async () => {
     const spy = makeSpy({
       ok: true,
