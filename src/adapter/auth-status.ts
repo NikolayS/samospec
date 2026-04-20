@@ -11,9 +11,10 @@
 //   - If the adapter is authenticated AND no vendor API-key env var
 //     carries a non-empty value, treat as subscription auth.
 //   - Non-authenticated -> subscription_auth is false (not meaningful).
-//   - Non-Claude vendors (Codex, etc.) do not currently offer
-//     subscription auth; we return false. When a new vendor ships
-//     subscription auth, add its keys here.
+//   - Codex CLI (since Sprint 3 #23) supports ChatGPT-subscription
+//     login in addition to OPENAI_API_KEY. When authenticated without
+//     an API key, the CLI is assumed to be using the subscription
+//     keychain and `subscription_auth=true` is surfaced.
 //
 // The real Claude adapter will layer additional checks in Sprint 2
 // (e.g. probing `claude auth status --json`); this module is the
@@ -28,8 +29,10 @@ export interface DetectSubscriptionAuthInput {
 const API_KEY_ENV_VARS_BY_VENDOR: Readonly<Record<string, readonly string[]>> =
   {
     claude: ["ANTHROPIC_API_KEY"],
-    // Codex / OpenAI: no subscription-auth path exists at time of writing.
-    codex: [],
+    // Codex CLI (as of Sprint 3 #23): supports both OPENAI_API_KEY
+    // (API-key auth) and ChatGPT-subscription login. Mirrors Claude's
+    // Max/Pro escape — CLI is authenticated but cannot report tokens.
+    codex: ["OPENAI_API_KEY"],
   };
 
 export function detectSubscriptionAuth(
