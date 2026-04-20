@@ -240,30 +240,30 @@ describe("computePreflight — calibrated (sample_count >= 10)", () => {
   });
 });
 
-// ---------- subscription-auth escape ----------
+// ---------- OAuth (subscription-auth) escape — #48 updated framing ----------
 
-describe("computePreflight — subscription-auth escape", () => {
-  test("per-adapter cost is the 'unknown — subscription auth (API key required)' string", () => {
+describe("computePreflight — OAuth escape", () => {
+  test("per-adapter cost is the 'unknown — OAuth (no per-token cost visibility)' string", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, REVB]);
     const perLead = r.perAdapter["lead"];
     expect(perLead).toBeDefined();
-    expect(perLead?.usd).toBe("unknown — subscription auth (API key required)");
+    expect(perLead?.usd).toBe("unknown — OAuth (no per-token cost visibility)");
   });
 
-  test("warning lists how many adapters are under subscription-auth", () => {
+  test("warning lists how many adapters are under OAuth", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const subRevB = mkAdapter("reviewer_b", "claude", true, "reviewer_b");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, subRevB]);
-    expect(r.warnings.some((w) => w.includes("subscription"))).toBe(true);
-    expect(
-      r.warnings.some((w) => w.includes("2") && /subscription/i.test(w)),
-    ).toBe(true);
+    expect(r.warnings.some((w) => /oauth/i.test(w))).toBe(true);
+    expect(r.warnings.some((w) => w.includes("2") && /oauth/i.test(w))).toBe(
+      true,
+    );
   });
 
-  test("likelyUsd reflects only priced adapters (excludes subscription-auth)", () => {
+  test("likelyUsd reflects only priced adapters (excludes OAuth adapter)", () => {
     const allPriced = [LEAD, REVA, REVB];
     const rAll = computePreflight(mkConfig(), allPriced);
 
@@ -275,12 +275,12 @@ describe("computePreflight — subscription-auth escape", () => {
     expect(rSub.likelyUsd).toBeLessThan(rAll.likelyUsd);
   });
 
-  test("pretty-printer renders subscription auth label for the subbed adapter line", () => {
+  test("pretty-printer renders OAuth label for the subbed adapter line", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, REVB]);
     const text = formatPreflight(r);
-    expect(text).toContain("unknown — subscription auth");
+    expect(text).toContain("OAuth");
   });
 });
 

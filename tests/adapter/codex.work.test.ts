@@ -222,7 +222,7 @@ describe("CodexAdapter.auth_status (SPEC §11 subscription-auth)", () => {
     expect(result.subscription_auth).toBe(false);
   });
 
-  test("binary present + no API key -> subscription_auth=true (ChatGPT login assumed)", async () => {
+  test("binary present + no API key -> subscription_auth=true (OAuth assumed)", async () => {
     const { host } = makeInstalledHost();
     // Strip the API key that makeInstalledHost() now includes so we can
     // test the subscription-auth heuristic in isolation.
@@ -231,7 +231,9 @@ describe("CodexAdapter.auth_status (SPEC §11 subscription-auth)", () => {
     const result = await adapter.auth_status();
     expect(result.authenticated).toBe(true);
     expect(result.subscription_auth).toBe(true);
-    expect(result.usable_for_noninteractive).toBe(false);
+    // OAuth mode is supported — usable_for_noninteractive is no longer
+    // set to false (#48: OAuth is the primary auth mode).
+    expect(result.usable_for_noninteractive).toBeUndefined();
   });
 });
 

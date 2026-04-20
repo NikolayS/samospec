@@ -11,10 +11,7 @@ import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import {
-  ClaudeAdapter,
-  ClaudeAdapterError,
-} from "../../src/adapter/claude.ts";
+import { ClaudeAdapter, ClaudeAdapterError } from "../../src/adapter/claude.ts";
 import type { SpawnCliInput, SpawnCliResult } from "../../src/adapter/spawn.ts";
 
 const TMP: string[] = [];

@@ -80,7 +80,11 @@ describe("preflight — OAuth adapter shows 'OAuth' label, not 'API key required
 describe("preflight — OAuth adapter: likelyUsd excludes it", () => {
   test("likelyUsd excludes OAuth adapter (same as old subscription-auth behavior)", () => {
     const rAll = computePreflight(mkConfig(), [LEAD_API, REVA_API, REVB_API]);
-    const rOAuth = computePreflight(mkConfig(), [LEAD_OAUTH, REVA_API, REVB_API]);
+    const rOAuth = computePreflight(mkConfig(), [
+      LEAD_OAUTH,
+      REVA_API,
+      REVB_API,
+    ]);
     expect(rOAuth.likelyUsd).toBeLessThan(rAll.likelyUsd);
   });
 });

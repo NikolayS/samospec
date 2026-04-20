@@ -1,10 +1,12 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
-// RED tests for #45 + #46: preflight with subscription-auth adapters.
+// Tests for #48: preflight with OAuth (subscription-auth) adapters.
 //
-// Per SPEC §11 (updated): when an adapter's subscription_auth:true and
-// no API key is present, per-adapter line is
-// "unknown — subscription auth (API key required)" and likelyUsd excludes it.
+// OAuth is the PRIMARY auth mode (#48 reverts #47's "API key required"
+// framing). When an adapter's subscription_auth:true, per-adapter line
+// is "unknown — OAuth (no per-token cost visibility)" (NOT "API key required").
+// likelyUsd excludes it. Warnings mention wall-clock + iteration caps.
+// The run is NOT blocked.
 
 import { describe, expect, test } from "bun:test";
 
@@ -42,73 +44,78 @@ const LEAD = mkAdapter("lead", "claude", false, "lead");
 const REVA = mkAdapter("reviewer_a", "codex", false, "reviewer_a");
 const REVB = mkAdapter("reviewer_b", "claude", false, "reviewer_b");
 
-describe("preflight — subscription-auth shows 'API key required' in per-adapter line", () => {
-  test("per-adapter usd string is 'unknown — subscription auth (API key required)'", () => {
+describe("preflight — OAuth adapter shows 'OAuth' label (not 'API key required')", () => {
+  test("per-adapter usd string is 'unknown — OAuth (no per-token cost visibility)'", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, REVB]);
     const perLead = r.perAdapter["lead"];
     expect(perLead).toBeDefined();
-    expect(perLead?.usd).toBe("unknown — subscription auth (API key required)");
+    expect(perLead?.usd).toBe("unknown — OAuth (no per-token cost visibility)");
   });
 
-  test("pretty-printer includes 'API key required' in per-adapter line", () => {
+  test("pretty-printer includes 'OAuth' in per-adapter line (not 'API key required')", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, REVB]);
     const text = formatPreflight(r);
-    expect(text).toContain("API key required");
+    expect(text).toContain("OAuth");
+    expect(text).not.toContain("API key required");
   });
 
-  test("likelyUsd excludes subscription-auth adapter", () => {
+  test("likelyUsd excludes OAuth adapter", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const rAll = computePreflight(mkConfig(), [LEAD, REVA, REVB]);
     const rSub = computePreflight(mkConfig(), [subLead, REVA, REVB]);
-    // Subscription lead excluded -> likelyUsd is smaller
+    // OAuth lead excluded -> likelyUsd is smaller
     expect(rSub.likelyUsd).toBeLessThan(rAll.likelyUsd);
   });
 
-  test("warnings list includes 'API key required' mention for subscription adapters", () => {
+  test("warnings list mentions OAuth and caps (not 'API key required')", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, REVB]);
-    const hasApiKeyWarning = r.warnings.some((w) =>
-      w.toLowerCase().includes("api key"),
+    const hasOAuthWarning = r.warnings.some((w) =>
+      w.toLowerCase().includes("oauth"),
     );
-    expect(hasApiKeyWarning).toBe(true);
+    expect(hasOAuthWarning).toBe(true);
+    const hasApiKeyRequired = r.warnings.some((w) =>
+      w.toLowerCase().includes("api key required"),
+    );
+    expect(hasApiKeyRequired).toBe(false);
   });
 
-  test("two subscription adapters: both show API key required", () => {
+  test("two OAuth adapters: both show OAuth label", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const subRevB = mkAdapter("reviewer_b", "claude", true, "reviewer_b");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, subRevB]);
     expect(r.perAdapter["lead"]?.usd).toBe(
-      "unknown — subscription auth (API key required)",
+      "unknown — OAuth (no per-token cost visibility)",
     );
     expect(r.perAdapter["reviewer_b"]?.usd).toBe(
-      "unknown — subscription auth (API key required)",
+      "unknown — OAuth (no per-token cost visibility)",
     );
   });
 
-  test("warning count mentions number of subscription adapters", () => {
+  test("warning count mentions number of OAuth adapters", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const subRevB = mkAdapter("reviewer_b", "claude", true, "reviewer_b");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, subRevB]);
     const countWarning = r.warnings.some(
-      (w) => w.includes("2") && /subscription/i.test(w),
+      (w) => w.includes("2") && /oauth/i.test(w),
     );
     expect(countWarning).toBe(true);
   });
 });
 
-describe("preflight — API-key adapters unchanged by subscription changes", () => {
-  test("all API-key adapters: no subscription warning", () => {
+describe("preflight — API-key adapters unchanged by OAuth changes", () => {
+  test("all API-key adapters: no OAuth warning", () => {
     const cfg = mkConfig();
     const r = computePreflight(cfg, [LEAD, REVA, REVB]);
     const hasSubscriptionWarning = r.warnings.some((w) =>
-      /subscription/i.test(w),
+      /oauth|subscription/i.test(w),
     );
     expect(hasSubscriptionWarning).toBe(false);
   });

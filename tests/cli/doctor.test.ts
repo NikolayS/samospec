@@ -135,24 +135,21 @@ describe("doctor-checks / auth", () => {
     expect(result.status).toBe(CheckStatus.Ok);
   });
 
-  test("WARN when subscription-auth without API key (SPEC §11 updated)", async () => {
-    // subscription_auth:true + usable_for_noninteractive:false triggers
-    // WARN with guidance on the required env var. The old "wall-clock +
-    // iteration caps" messaging is replaced by the API key requirement.
+  test("OK when subscription-auth (OAuth) with probe succeeding (#48)", async () => {
+    // OAuth is the primary auth mode (#48). subscription_auth:true is
+    // valid and supported. With a passing probe, the result is OK.
     const claude = createFakeAdapter({
       auth: {
         authenticated: true,
         subscription_auth: true,
-        usable_for_noninteractive: false,
       },
     });
     const result = await checkAuthStatus({
       adapters: [{ label: "claude", adapter: claude }],
+      probe: () =>
+        Promise.resolve({ ok: true, exitCode: 0, stdout: "hi", stderr: "" }),
     });
-    expect(result.status).toBe(CheckStatus.Warn);
-    expect(result.message.toLowerCase()).toContain("subscription");
-    // Updated UX copy: points at ANTHROPIC_API_KEY, not wall-clock.
-    expect(result.message).toContain("ANTHROPIC_API_KEY");
+    expect(result.status).toBe(CheckStatus.Ok);
   });
 
   test("FAIL when not authenticated", async () => {
@@ -460,7 +457,7 @@ describe("runDoctor aggregator", () => {
     }
   });
 
-  test("surfaces subscription_auth: true explicitly in output", async () => {
+  test("surfaces OAuth mode (subscription_auth: true) as authenticated in output", async () => {
     runInit({ cwd: tmp });
     const fakeHome = mkdtempSync(path.join(tmpdir(), "samospec-home-"));
     try {
@@ -475,7 +472,6 @@ describe("runDoctor aggregator", () => {
                 authenticated: true,
                 account: "u@e.com",
                 subscription_auth: true,
-                usable_for_noninteractive: false,
               },
             }),
           },
@@ -486,7 +482,9 @@ describe("runDoctor aggregator", () => {
         remoteUrl: () => null,
         isProtected: () => false,
       });
-      expect(result.stdout.toLowerCase()).toContain("subscription");
+      // OAuth mode: adapter is authenticated; output should include
+      // "authenticated" (probe is not injected here so auth_status only)
+      expect(result.stdout.toLowerCase()).toContain("authenticated");
     } finally {
       rmSync(fakeHome, { recursive: true, force: true });
     }

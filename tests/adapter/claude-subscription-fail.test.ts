@@ -1,18 +1,21 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
-// RED tests for #45 + #46: Claude adapter work calls fail fast when
-// subscription_auth:true and ANTHROPIC_API_KEY is absent.
+// Tests for #48: Claude adapter in OAuth (subscription) mode.
 //
-// When auth_status().usable_for_noninteractive === false, any call to
-// ask(), critique(), or revise() must throw a ClaudeAdapterError with
-// reason "subscription_auth_unsupported" — WITHOUT spawning the CLI.
+// OAuth is the PRIMARY auth mode (#48 reverts #47's fail-fast gate).
+// When subscription_auth:true (no ANTHROPIC_API_KEY), work calls
+// proceed to spawn — they do NOT throw subscription_auth_unsupported.
+//
+// The old "fail-fast before spawn" behavior was introduced by PR #47
+// and has been reverted. This file is repurposed to verify the
+// correct OAuth-primary semantics.
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { ClaudeAdapter, ClaudeAdapterError } from "../../src/adapter/claude.ts";
+import { ClaudeAdapter } from "../../src/adapter/claude.ts";
 import type { SpawnCliInput, SpawnCliResult } from "../../src/adapter/spawn.ts";
 
 const TMP: string[] = [];
@@ -28,22 +31,12 @@ afterAll(() => {
 });
 
 function makeFakeBinary(name: string, script: string): string {
-  const dir = mkdtempSync(join(tmpdir(), "samospec-sub-fail-"));
+  const dir = mkdtempSync(join(tmpdir(), "samospec-sub-oauth-"));
   TMP.push(dir);
   const binary = join(dir, name);
   writeFileSync(binary, `#!/usr/bin/env bash\n${script}\n`);
   chmodSync(binary, 0o755);
   return dir;
-}
-
-// A spy spawn that always panics if called — work calls must NOT reach spawn
-// when subscription auth without API key is detected.
-function makePanicSpawn(): (input: SpawnCliInput) => Promise<SpawnCliResult> {
-  return (_input: SpawnCliInput): Promise<SpawnCliResult> => {
-    throw new Error(
-      "spawn was called but should have been blocked by subscription-auth check",
-    );
-  };
 }
 
 const OPTS = { effort: "max" as const, timeout: 30_000 };
@@ -60,116 +53,78 @@ const SAMPLE_REVISE = {
   opts: OPTS,
 };
 
-function makeSubscriptionAdapter(): ClaudeAdapter {
-  // Binary exists (so auth_status returns authenticated:true,
-  // subscription_auth:true) but no ANTHROPIC_API_KEY in host env.
+function makeOAuthAdapterWithCountingSpy(): {
+  adapter: ClaudeAdapter;
+  spawnCalls: number[];
+} {
   const dir = makeFakeBinary("claude", 'echo "2.1.114"');
-  return new ClaudeAdapter({
-    host: { PATH: dir, HOME: "/tmp" },
-    spawn: makePanicSpawn(),
+  const spawnCalls: number[] = [];
+  const countingSpawn = (_input: SpawnCliInput): Promise<SpawnCliResult> => {
+    spawnCalls.push(1);
+    return Promise.resolve({
+      ok: true,
+      exitCode: 1,
+      stdout: "",
+      stderr: "test stub: non-zero exit",
+    });
+  };
+  const adapter = new ClaudeAdapter({
+    host: { PATH: dir, HOME: "/tmp" }, // no ANTHROPIC_API_KEY
+    spawn: countingSpawn,
   });
+  return { adapter, spawnCalls };
 }
 
-describe("ClaudeAdapter — subscription_auth_unsupported fail-fast", () => {
-  test("ask() throws ClaudeAdapterError with reason subscription_auth_unsupported", async () => {
-    const adapter = makeSubscriptionAdapter();
-    let thrown: unknown;
-    try {
-      await adapter.ask(SAMPLE_ASK);
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown).toBeInstanceOf(ClaudeAdapterError);
-    const err = thrown as ClaudeAdapterError;
-    expect(err.payload.reason).toBe("subscription_auth_unsupported");
-  });
-
-  test("critique() throws ClaudeAdapterError with reason subscription_auth_unsupported", async () => {
-    const adapter = makeSubscriptionAdapter();
-    let thrown: unknown;
-    try {
-      await adapter.critique(SAMPLE_CRITIQUE);
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown).toBeInstanceOf(ClaudeAdapterError);
-    const err = thrown as ClaudeAdapterError;
-    expect(err.payload.reason).toBe("subscription_auth_unsupported");
-  });
-
-  test("revise() throws ClaudeAdapterError with reason subscription_auth_unsupported", async () => {
-    const adapter = makeSubscriptionAdapter();
-    let thrown: unknown;
-    try {
-      await adapter.revise(SAMPLE_REVISE);
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown).toBeInstanceOf(ClaudeAdapterError);
-    const err = thrown as ClaudeAdapterError;
-    expect(err.payload.reason).toBe("subscription_auth_unsupported");
-  });
-
-  test("error message mentions ANTHROPIC_API_KEY", async () => {
-    const adapter = makeSubscriptionAdapter();
-    let thrown: unknown;
-    try {
-      await adapter.ask(SAMPLE_ASK);
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown).toBeInstanceOf(ClaudeAdapterError);
-    const err = thrown as ClaudeAdapterError;
-    expect(err.message).toContain("ANTHROPIC_API_KEY");
-  });
-
-  test("error message mentions console.anthropic.com", async () => {
-    const adapter = makeSubscriptionAdapter();
-    let thrown: unknown;
-    try {
-      await adapter.ask(SAMPLE_ASK);
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown).toBeInstanceOf(ClaudeAdapterError);
-    const err = thrown as ClaudeAdapterError;
-    expect(err.message).toContain("console.anthropic.com");
-  });
-
-  test("spawn is never called (fail-fast before spawn)", async () => {
-    // The panic spawn would throw if called — if we reach here without
-    // it throwing, the work call never called spawn.
-    const adapter = makeSubscriptionAdapter();
-    // We just need to catch the subscription_auth_unsupported error;
-    // if we get a different error (like "spawn was called"), the test fails.
-    let thrown: unknown;
-    try {
-      await adapter.ask(SAMPLE_ASK);
-    } catch (e) {
-      thrown = e;
-    }
-    expect(thrown).toBeInstanceOf(ClaudeAdapterError);
-    expect((thrown as ClaudeAdapterError).payload.reason).toBe(
-      "subscription_auth_unsupported",
-    );
-  });
-
-  test("auth_status() still reports authenticated:true with subscription_auth:true", async () => {
-    const adapter = makeSubscriptionAdapter();
+describe("ClaudeAdapter — OAuth mode (subscription_auth:true) — work calls proceed", () => {
+  test("auth_status() reports authenticated:true with subscription_auth:true", async () => {
+    const { adapter } = makeOAuthAdapterWithCountingSpy();
     const status = await adapter.auth_status();
     expect(status.authenticated).toBe(true);
     expect(status.subscription_auth).toBe(true);
-    expect(status.usable_for_noninteractive).toBe(false);
+  });
+
+  test("auth_status() does NOT report usable_for_noninteractive:false (#48)", async () => {
+    const { adapter } = makeOAuthAdapterWithCountingSpy();
+    const status = await adapter.auth_status();
+    // OAuth is the primary mode — the flag is no longer set to false
+    expect(status.usable_for_noninteractive).not.toBe(false);
+  });
+
+  test("ask() proceeds to spawn (does not short-circuit)", async () => {
+    const { adapter, spawnCalls } = makeOAuthAdapterWithCountingSpy();
+    try {
+      await adapter.ask(SAMPLE_ASK);
+    } catch {
+      // Expected to fail from stub, but spawn must have been called
+    }
+    expect(spawnCalls.length).toBeGreaterThan(0);
+  });
+
+  test("critique() proceeds to spawn (does not short-circuit)", async () => {
+    const { adapter, spawnCalls } = makeOAuthAdapterWithCountingSpy();
+    try {
+      await adapter.critique(SAMPLE_CRITIQUE);
+    } catch {
+      // Expected to fail from stub, but spawn must have been called
+    }
+    expect(spawnCalls.length).toBeGreaterThan(0);
+  });
+
+  test("revise() proceeds to spawn (does not short-circuit)", async () => {
+    const { adapter, spawnCalls } = makeOAuthAdapterWithCountingSpy();
+    try {
+      await adapter.revise(SAMPLE_REVISE);
+    } catch {
+      // Expected to fail from stub, but spawn must have been called
+    }
+    expect(spawnCalls.length).toBeGreaterThan(0);
   });
 
   test("no fail-fast when ANTHROPIC_API_KEY is set (API key present)", async () => {
-    // With API key set, auth_status() should show usable_for_noninteractive:true
-    // and the work call should proceed (or fail for other reasons, not sub-auth).
     const dir = makeFakeBinary("claude", 'echo "2.1.114"');
     const spawnCalls: number[] = [];
     const countingSpawn = (_input: SpawnCliInput): Promise<SpawnCliResult> => {
       spawnCalls.push(1);
-      // Simulate a failed call so we don't need real output parsing.
       return Promise.resolve({
         ok: true,
         exitCode: 1,
@@ -181,18 +136,11 @@ describe("ClaudeAdapter — subscription_auth_unsupported fail-fast", () => {
       host: { PATH: dir, HOME: "/tmp", ANTHROPIC_API_KEY: "sk-ant-fake" },
       spawn: countingSpawn,
     });
-    // ask() should reach spawn (and fail with non-subscription error)
-    let thrown: unknown;
     try {
       await adapter.ask(SAMPLE_ASK);
-    } catch (e) {
-      thrown = e;
+    } catch {
+      // Expected failure, not subscription_auth_unsupported
     }
-    // The spawn was called — not blocked by subscription check
     expect(spawnCalls.length).toBeGreaterThan(0);
-    // Should NOT be subscription_auth_unsupported
-    if (thrown instanceof ClaudeAdapterError) {
-      expect(thrown.payload.reason).not.toBe("subscription_auth_unsupported");
-    }
   });
 });
