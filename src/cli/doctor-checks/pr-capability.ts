@@ -9,8 +9,11 @@
  *
  * Status:
  *   - OK    — `gh` or `glab` is installed and authenticated.
- *   - WARN  — at least one tool is installed but not authenticated.
- *   - FAIL  — neither `gh` nor `glab` is found on PATH.
+ *   - WARN  — at least one tool is installed but not authenticated,
+ *             OR neither tool is installed (PR creation is an optional
+ *             convenience, not a required capability — see review of
+ *             Issue #34). The overall `samospec doctor` exit code is
+ *             0 when this is the only non-OK check.
  *
  * Uses the existing `probePrCapability` helper from `push-consent.ts`
  * with injectable runners for testability.
@@ -53,12 +56,17 @@ export function checkPrCapability(
   const glabInstalled = isInstalled(args.glab);
 
   if (!ghInstalled && !glabInstalled) {
+    // Missing optional tooling is WARN, not FAIL: PR creation is a
+    // convenience (publish still writes the blueprint and commit
+    // locally). The user can open a PR by hand via the compare URL
+    // that publish emits.
     return {
-      status: CheckStatus.Fail,
+      status: CheckStatus.Warn,
       label: "pr-capability",
       message:
         "neither gh nor glab found on PATH — " +
-        "install one to enable auto-PR on publish",
+        "install one to enable auto-PR on publish " +
+        "(publish still works locally; PR can be opened manually)",
     };
   }
 
