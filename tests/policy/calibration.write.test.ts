@@ -46,10 +46,7 @@ describe("writeCalibrationSample", () => {
     expect(next.rounds_to_converge).toEqual([0]);
 
     // config.json on disk reflects the same shape.
-    const raw = readFileSync(
-      path.join(tmp, ".samo", "config.json"),
-      "utf8",
-    );
+    const raw = readFileSync(path.join(tmp, ".samo", "config.json"), "utf8");
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     const readBack = readCalibration(parsed);
     expect(readBack).toEqual(next);

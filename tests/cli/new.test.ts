@@ -270,9 +270,7 @@ describe("samospec new — lead_terminal path (SPEC §10 exit codes)", () => {
     expect(result.exitCode).toBe(4);
     expect(result.stderr.toLowerCase()).toMatch(/lead_terminal|persona/);
 
-    const st = readState(
-      path.join(tmp, ".samo", "spec", "demo", "state.json"),
-    );
+    const st = readState(path.join(tmp, ".samo", "spec", "demo", "state.json"));
     expect(st).not.toBeNull();
     expect(st!.round_state).toBe("lead_terminal");
   });

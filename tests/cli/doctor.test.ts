@@ -297,11 +297,7 @@ describe("doctor-checks / config", () => {
 
   test("FAIL when config.json is malformed", () => {
     mkdirSync(path.join(tmp, ".samo"), { recursive: true });
-    writeFileSync(
-      path.join(tmp, ".samo", "config.json"),
-      "{ broken",
-      "utf8",
-    );
+    writeFileSync(path.join(tmp, ".samo", "config.json"), "{ broken", "utf8");
     const result = checkConfig({
       configPath: path.join(tmp, ".samo", "config.json"),
     });

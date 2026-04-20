@@ -86,10 +86,7 @@ describe("detectManualEdits — scope and classification", () => {
   });
 
   test("detects a new untracked NOTES.md under the spec dir as target=derived", () => {
-    repo.write(
-      `.samo/spec/${slug}/NOTES.md`,
-      "# Notes\n\nA user drop-in.\n",
-    );
+    repo.write(`.samo/spec/${slug}/NOTES.md`, "# Notes\n\nA user drop-in.\n");
     const rep = detectManualEdits(slug, { repoPath: repo.dir });
     expect(rep.dirty).toBe(true);
     expect(rep.specEdited).toBe(false);
@@ -131,10 +128,7 @@ describe("detectManualEdits — scope and classification", () => {
   test("ignores edits in sibling spec dirs", () => {
     // A different slug must not pollute this slug's report.
     commitSpecStart(repo, "other-slug");
-    repo.write(
-      `.samo/spec/other-slug/SPEC.md`,
-      "# Other spec — tampered\n",
-    );
+    repo.write(`.samo/spec/other-slug/SPEC.md`, "# Other spec — tampered\n");
     const rep = detectManualEdits(slug, { repoPath: repo.dir });
     expect(rep.dirty).toBe(false);
     expect(rep.specEdited).toBe(false);

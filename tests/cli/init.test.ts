@@ -84,10 +84,7 @@ describe("samospec init — fresh directory", () => {
 
   test(".gitignore ignores transcripts/, cache/, and .lock", () => {
     runInit({ cwd: tmp });
-    const body = readFileSync(
-      path.join(tmp, ".samo", ".gitignore"),
-      "utf8",
-    );
+    const body = readFileSync(path.join(tmp, ".samo", ".gitignore"), "utf8");
     expect(body).toContain("transcripts/");
     expect(body).toContain("cache/");
     expect(body).toContain(".lock");
