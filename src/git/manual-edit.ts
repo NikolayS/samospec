@@ -356,12 +356,12 @@ export function applyManualEdit(
         args.roundNumber,
       )}`;
 
-      // Stage and commit without routing through `specCommit` — its
-      // `buildCommitMessage` grammar doesn't cover `before round <N>`.
-      // Still a pathspec-scoped stage; no `add -A` anywhere.
-      stageAndCommit(args.repoPath, paths, message);
-
-      let leadDirective: string | undefined;
+      // Snapshot pre-edit `HEAD:SPEC.md` BEFORE stageAndCommit runs —
+      // once the user's edit lands in HEAD, `git show HEAD:SPEC.md`
+      // returns the edited content and the H1/H2 section-name heuristic
+      // collapses to `(unidentified)`. Order is load-bearing here.
+      let specBefore: string | null = null;
+      let specAfter: string | null = null;
       if (args.report.specEdited) {
         const specRel = path.posix.join(
           ".samospec",
@@ -369,9 +369,21 @@ export function applyManualEdit(
           args.slug,
           SPEC_FILE_BASENAME,
         );
-        const before = gitShowHead(args.repoPath, specRel);
-        const after = readFileSafely(path.join(args.repoPath, specRel));
-        leadDirective = buildLeadDirective({ before, after });
+        specBefore = gitShowHead(args.repoPath, specRel);
+        specAfter = readFileSafely(path.join(args.repoPath, specRel));
+      }
+
+      // Stage and commit without routing through `specCommit` — its
+      // `buildCommitMessage` grammar doesn't cover `before round <N>`.
+      // Still a pathspec-scoped stage; no `add -A` anywhere.
+      stageAndCommit(args.repoPath, paths, message);
+
+      let leadDirective: string | undefined;
+      if (specBefore !== null && specAfter !== null) {
+        leadDirective = buildLeadDirective({
+          before: specBefore,
+          after: specAfter,
+        });
       }
 
       return leadDirective === undefined
