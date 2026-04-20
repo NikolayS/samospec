@@ -60,6 +60,8 @@ describe("integration: bun run src/cli.ts init && doctor", () => {
     expect(initResult.status).toBe(0);
     expect(existsSync(path.join(tmp, ".samo", "config.json"))).toBe(true);
     expect(existsSync(path.join(tmp, ".samo", ".gitignore"))).toBe(true);
+    // Rename regression: .samospec/ must NOT be created (#41).
+    expect(existsSync(path.join(tmp, ".samospec"))).toBe(false);
 
     const doctorResult = runSamospec(["doctor"], { cwd: tmp });
     // doctor may exit 0 or 1 depending on real claude/codex presence in CI.
