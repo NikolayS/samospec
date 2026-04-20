@@ -281,9 +281,7 @@ function readConfig(repoPath: string): JsonObject | null {
     );
   }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error(
-      `.samospec/config.json: top-level must be a JSON object.`,
-    );
+    throw new Error(`.samospec/config.json: top-level must be a JSON object.`);
   }
   return parsed as JsonObject;
 }

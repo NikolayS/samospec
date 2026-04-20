@@ -630,9 +630,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
                   },
                 };
                 writeState(paths.statePath, interrupted);
-                error(
-                  `samospec: push-consent prompt interrupted (Ctrl-C).`,
-                );
+                error(`samospec: push-consent prompt interrupted (Ctrl-C).`);
                 return {
                   exitCode: 3,
                   stdout: lines.join("\n"),

@@ -265,12 +265,12 @@ describe("iterate — round-boundary push integration", () => {
     // The branch on the bare remote has two refine commits plus the
     // seed commit — one push per round boundary landed the latest tip.
     const commits = logOnBare("samospec/refunds");
-    expect(commits.some((c) => c.startsWith("spec(refunds): refine v0.2"))).toBe(
-      true,
-    );
-    expect(commits.some((c) => c.startsWith("spec(refunds): refine v0.3"))).toBe(
-      true,
-    );
+    expect(
+      commits.some((c) => c.startsWith("spec(refunds): refine v0.2")),
+    ).toBe(true);
+    expect(
+      commits.some((c) => c.startsWith("spec(refunds): refine v0.3")),
+    ).toBe(true);
   });
 
   test("--no-push override: persisted consent = true, invocation flag skips all pushes", async () => {
@@ -468,9 +468,9 @@ describe("iterate — round-boundary push integration", () => {
       expect(resA.exitCode).toBe(0);
 
       const refs = refsOnBare();
-      expect(
-        refs.some((r) => r.includes("refs/heads/samospec/refunds")),
-      ).toBe(true);
+      expect(refs.some((r) => r.includes("refs/heads/samospec/refunds"))).toBe(
+        true,
+      );
 
       const mirrorRefs = spawnSync(
         "git",
@@ -483,10 +483,7 @@ describe("iterate — round-boundary push integration", () => {
 
       // Config should still reflect both choices verbatim.
       const cfg = JSON.parse(
-        readFileSync(
-          path.join(tmp, ".samospec", "config.json"),
-          "utf8",
-        ),
+        readFileSync(path.join(tmp, ".samospec", "config.json"), "utf8"),
       ) as {
         git: { push_consent: Record<string, boolean> };
       };

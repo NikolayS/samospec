@@ -61,7 +61,13 @@ describe("pushBranch — real bare remote integration", () => {
 
       const ls = spawnSync(
         "git",
-        ["--git-dir", bare, "show-ref", "--verify", "refs/heads/samospec/refunds"],
+        [
+          "--git-dir",
+          bare,
+          "show-ref",
+          "--verify",
+          "refs/heads/samospec/refunds",
+        ],
         { encoding: "utf8" },
       );
       expect(ls.status).toBe(0);

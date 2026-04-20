@@ -22,9 +22,13 @@ beforeEach(() => {
   spawnSync("git", ["init", "-q"], { cwd: tmp });
   spawnSync("git", ["config", "user.email", "test@example.com"], { cwd: tmp });
   spawnSync("git", ["config", "user.name", "Test"], { cwd: tmp });
-  spawnSync("git", ["remote", "add", "origin", "git@example.invalid:me/x.git"], {
-    cwd: tmp,
-  });
+  spawnSync(
+    "git",
+    ["remote", "add", "origin", "git@example.invalid:me/x.git"],
+    {
+      cwd: tmp,
+    },
+  );
 });
 
 afterEach(() => {
