@@ -145,7 +145,7 @@ export async function runDoctor(args: RunDoctorArgs): Promise<RunDoctorResult> {
     }),
   );
   results.push(checkGlobalConfig({ homeDir: args.homeDir }));
-  results.push(checkEntropy());
+  results.push(checkEntropy({ cwd: args.cwd }));
 
   const lines: string[] = [];
   for (const r of results) {

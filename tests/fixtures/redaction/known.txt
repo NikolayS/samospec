@@ -1,0 +1,35 @@
+# Copyright 2026 Nikolay Samokhvalov.
+#
+# Positive corpus for the SamoSpec redaction regex suite.
+# Format: <pattern-kind>\t<prefix>\t<body>
+# The test harness concatenates <prefix> + <body> to form the probe
+# string. Keeping the two halves on either side of a tab prevents
+# GitHub push-protection and external secret scanners from matching
+# the full shape against their rule sets — the committed file never
+# contains a complete "looks like a key" token on any single scannable
+# line. (This matters for push protection; the actual in-memory
+# probe is assembled only when the test runs.)
+#
+# ALL VALUES ARE SYNTHETIC. Every body is overtly EXAMPLE-flavored
+# filler. Do NOT add real keys; rotate + scrub immediately if one ever
+# leaks into a commit.
+#
+# Shapes from SPEC §9, informed by gitleaks + truffleHog rule sets.
+# Comment lines (`#`) are skipped by the harness.
+aws_akia	AKIA	EXAMPLEKEY12345X
+aws_asia	ASIA	EXAMPLEKEY12345X
+openai_sk	sk-	EXAMPLEexampleEXAMPLEexample12345
+openai_sk_proj	sk-proj-	EXAMPLEexampleEXAMPLEexample12345
+github_ghp	ghp_	ExampleExampleExampleExampleExample12
+github_gho	gho_	ExampleExampleExampleExampleExample12
+github_ghs	ghs_	ExampleExampleExampleExampleExample12
+gitlab_glpat	glpat-	ExampleExampleExample12345
+jwt	eyJ	EXAMPLEexample1.EXAMPLEexample12345.EXAMPLEsignature67
+slack_xoxb	xoxb-	EXAMPLE-EXAMPLE-EXAMPLE
+slack_xoxp	xoxp-	EXAMPLE-EXAMPLE-EXAMPLE
+slack_xoxo	xoxo-	EXAMPLE-EXAMPLE-EXAMPLE
+slack_xoxa	xoxa-	EXAMPLE-EXAMPLE-EXAMPLE
+slack_xoxr	xoxr-	EXAMPLE-EXAMPLE-EXAMPLE
+stripe_live	sk_live_	EXAMPLEexampleEXAMPLEexample1234
+stripe_test	sk_test_	EXAMPLEexampleEXAMPLEexample1234
+google_aiza	AIza	EXAMPLEexampleEXAMPLEexample123456789ab

@@ -1,0 +1,33 @@
+# Copyright 2026 Nikolay Samokhvalov.
+#
+# Negative corpus for the SamoSpec redaction regex suite.
+# These strings must pass through `redact()` unchanged. Direction B of
+# the two-directional property test (SPEC §13 item 7) is what catches
+# an overbroad pattern — e.g. a lazy JWT regex would flag `v1.2.3`
+# and silently corrupt spec prose.
+#
+# Lines starting with `#` are ignored.
+v1.2.3
+v2.0.0-rc1
+foo.bar.baz
+example.com.au
+samospec.dev
+src/foo/bar.ts
+./path/to/file.json
+~/.config/samospec/settings.json
+The quick brown fox jumps over the lazy dog.
+SPEC §9 covers the redaction corpus.
+- OK   auth            subscription auth
+- FAIL config          config.json missing
+AKIA is a common AWS prefix but "AKIA" alone is not a secret.
+sk- without a body is not an OpenAI key
+ghp_ alone is not a GitHub PAT
+glpat- alone is not a GitLab PAT
+eyJ-too-short
+xoxb- alone is not a Slack token
+AIza without the 35-char tail is not a Google key
+# A bare `eyJ` prefix with only one dot-segment (no body/signature) must
+# not trigger the tightened JWT regex.
+eyJEXAMPLEheaderOnly
+example.md references v1.2.3 and v3.4.5.
+build 2.0.0 released on 2026-04-19
