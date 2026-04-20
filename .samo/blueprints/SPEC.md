@@ -476,47 +476,57 @@ This prevents the "silent thesis drift" case where lead + Reviewer B both degrad
 
 `effort_used` echoed on every work call; clamps are visible in `state.json` and `doctor`.
 
-### Subscription-auth — detected but not supported for non-interactive work
+### Subscription-auth escape
 
-samospec requires API-key authentication (`ANTHROPIC_API_KEY` for Claude,
-`OPENAI_API_KEY` for Codex). Subscription auth (Claude Max/Pro via the
-`claude` CLI, or ChatGPT-login via the `codex` CLI) is **detected** and
-**reported** but **cannot drive non-interactive work calls today**:
-`claude --print` rejects subscription tokens with
-`Invalid API key · Fix external API key` and the current Claude CLI
-(v2.1.x) has no flag for subscription-auth + headless invocation.
+OAuth (browser login via `claude /login` for Claude Max/Pro, or `codex auth`
+for ChatGPT subscription) is the **primary auth mode**. Users authenticate
+once interactively; samospec inherits that session when it spawns `claude -p`
+/ `codex exec`. No API key env var is required.
 
-The same constraint applies to the Codex `exec` subcommand under
-ChatGPT-login.
+API key env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) are an alternative
+auth path. When a key is present in the environment, the vendor CLI prefers
+it over the OAuth session. A stale or invalid env var will preempt OAuth and
+cause the CLI to fail with `Invalid API key` — in that case, `unset` the var
+and let OAuth take over, or provide a valid key.
 
-When an adapter reports `subscription_auth: true` AND no API key is
-present in the environment:
+When `auth_status().subscription_auth === true` (adapter is running via OAuth
+and no API key env var is set):
 
-- `auth_status()` returns `{ authenticated: true, subscription_auth: true,
-  usable_for_noninteractive: false }`.
-- `doctor` surfaces a **WARN-level** finding:
-  `"subscription auth detected; samospec requires ANTHROPIC_API_KEY for
-  non-interactive invocation"` (or `OPENAI_API_KEY` for Codex). This is a
-  WARN, not a FAIL — the CLI is not broken, it simply cannot run work calls.
-- Any attempt to call `ask()`, `critique()`, or `revise()` on that adapter
-  **fails fast** with a terminal error classified as
-  `subscription_auth_unsupported`, with a message pointing at the required
-  env var (console.anthropic.com / platform.openai.com).
-- `samospec new` / `samospec iterate` exit 4 with sub-reason
-  `subscription_auth_unsupported` and do NOT create partial artifacts beyond
-  the initial lockfile/state.json (cleanup or recording is handled per the
-  standard exit-4 path).
-- Preflight cost estimate shows `unknown — subscription auth (API key
-  required)` per affected adapter; `$Z` reflects only priced adapters;
-  warnings list includes the gap.
+- Token/cost accounting is **unavailable** — the vendor CLI does not expose
+  per-call token counts for OAuth sessions.
+- Token budgets (`max_tokens_per_round`, `max_total_tokens_per_session`,
+  `max_cost_usd`) are **disabled** for that adapter only.
+- `max_iterations`, `max_reviewers`, per-call `timeout`, and
+  `budget.max_wall_clock_minutes` (default 240) are enforced normally as
+  substitute caps.
+- `doctor` surfaces OAuth mode explicitly: `"Claude adapter is in OAuth
+  (subscription) mode. Token cost is not visible to samospec; wall-clock
+  (Xh) and iteration (N) caps are enforced instead."`.
+- Preflight cost estimate shows `unknown — OAuth (no per-token cost
+  visibility)` per affected adapter; `$Z` reflects only priced adapters.
+- Warnings list includes: `"N adapter(s) under OAuth; wall-clock +
+  iteration caps substitute for token/cost budget"`.
+- The run is **NOT blocked** — this is the intended happy path for
+  subscription users.
 
-When `ANTHROPIC_API_KEY` IS set (regardless of subscription state), `doctor`
-reports OK for that adapter and all work calls proceed normally using the
-API-key auth path — the subscription token is effectively shadowed by the
-API key in that scenario.
+`doctor` auth check runs a small live probe (`echo "probe" | claude -p`)
+with a 10-second timeout to confirm the session is actually usable:
 
-**Preflight for API-key adapters is unchanged** — token budgets, dollar
-estimates, and consent gates apply as specified above.
+- Exit 0 and sensible output → **OK**.
+- Stdout contains `"Invalid API key"` → **WARN**: `"claude -p probe failed
+  with 'Invalid API key'. If you're using OAuth (claude /login), a stale
+  ANTHROPIC_API_KEY env var may be preempting it — try unsetting it. If
+  you're using an API key, verify it's valid at
+  https://console.anthropic.com/settings/keys."`.
+- Output indicates "not authenticated" or "please run claude /login" →
+  **WARN**: `"claude is not authenticated. Run \`claude /login\` to set up
+  OAuth, or export ANTHROPIC_API_KEY."`.
+- Other failures (timeout, unknown stderr) → **WARN**: `"claude -p probe
+  failed: <first-line-of-stderr-or-stdout>"`.
+
+This is the only exception to "fail-closed without accounting". It exists
+because the rule otherwise excludes the majority of Claude CLI users.
+Non-subscription adapters with missing `usage` still fail closed.
 
 ### Budget guardrails
 
@@ -545,7 +555,7 @@ Formula:
 - Loop: `M_likely × (reviewer_pair_tokens + revision_tokens)` where `M_likely` = calibrated mean rounds for this repo (below the floor: `M/2`).
 - Context overhead: sum of per-phase budgets (assumes budgets are fully used).
 
-Output: `estimated range: $X–$Y, likely $Z`. `$Z` is defined as the **P50 (midpoint) assuming convergence at `M_likely` rounds** — not the arithmetic midpoint of `$X` and `$Y`. Per-adapter breakdown. When one or more adapters are under subscription-auth escape, their cost is shown as `unknown — subscription auth` and `$Z` reflects only the priced adapters. Over `preflight_confirm_usd` → prompt with `[accept / downshift / abort]`.
+Output: `estimated range: $X–$Y, likely $Z`. `$Z` is defined as the **P50 (midpoint) assuming convergence at `M_likely` rounds** — not the arithmetic midpoint of `$X` and `$Y`. Per-adapter breakdown. When one or more adapters are under the subscription-auth escape (OAuth, no API key), their cost is shown as `unknown — OAuth (no per-token cost visibility)` and `$Z` reflects only the priced adapters. Over `preflight_confirm_usd` → prompt with `[accept / downshift / abort]`.
 
 ## 12. Stopping conditions
 
@@ -724,7 +734,7 @@ v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh rep
 - **`--context` vs `.samo-ignore` precedence.** v1 intent: explicit `--context` wins. Document and test in Sprint 3.
 - **Redaction scope.** Currently covers transcripts and prompts. Paths in `context.json` and text in `decisions.md` are committed and not redacted. Low-risk but uncovered; revisit if the field shows real leakage.
 - **`samospec doctor` auto-run.** Currently only runs on explicit invocation. Consider a minimal `doctor` check on first `new` in a repo so warnings aren't missed. Decide after first-user telemetry.
-- **Non-interactive subscription-auth support (Claude Max/Pro, Codex ChatGPT-subscription)** — blocked until vendor CLIs expose subscription-compatible headless modes. `claude --print` currently rejects subscription tokens; there is no flag for subscription-auth + non-interactive invocation in Claude CLI v2.1.x. Track progress upstream (Anthropic claude-code issue tracker / OpenAI codex issue tracker). Until resolved, samospec requires API keys for all work calls. See §11 subscription-auth detection notes and `docs/troubleshooting.md`.
+- **Vendor support for per-call token/cost visibility in OAuth (subscription) sessions** — currently unavailable; the vendor CLI does not report token counts when running under an OAuth session (`claude -p` without `ANTHROPIC_API_KEY`). samospec uses wall-clock + iteration caps as a substitute (§11 subscription-auth escape). Track upstream progress at the Anthropic claude-code issue tracker / OpenAI codex issue tracker. When vendors expose token counts for OAuth sessions, samospec can re-enable token budget enforcement without any user-facing change.
 
 ## 19. Comparison with v0.5
 
