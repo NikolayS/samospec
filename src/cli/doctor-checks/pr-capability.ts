@@ -29,8 +29,13 @@ export interface PrCapabilityCheckArgs {
   readonly glab?: () => PrCapabilityRunner;
 }
 
-export function checkPrCapability(args: PrCapabilityCheckArgs = {}): CheckResult {
-  const probe = probePrCapability({ gh: args.gh, glab: args.glab });
+export function checkPrCapability(
+  args: PrCapabilityCheckArgs = {},
+): CheckResult {
+  const probe = probePrCapability({
+    ...(args.gh !== undefined ? { gh: args.gh } : {}),
+    ...(args.glab !== undefined ? { glab: args.glab } : {}),
+  });
 
   if (probe.available) {
     return {

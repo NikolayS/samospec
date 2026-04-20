@@ -32,10 +32,14 @@ function findingToStub(f: LintFinding): PublishLintFinding {
 }
 
 function localBranches(repoPath: string): string[] {
-  const res = spawnSync("git", ["branch", "--list", "--format=%(refname:short)"], {
-    cwd: repoPath,
-    encoding: "utf8",
-  });
+  const res = spawnSync(
+    "git",
+    ["branch", "--list", "--format=%(refname:short)"],
+    {
+      cwd: repoPath,
+      encoding: "utf8",
+    },
+  );
   if (res.status !== 0) return [];
   return res.stdout
     .split("\n")
@@ -43,16 +47,18 @@ function localBranches(repoPath: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-function readPublishLintConfig(
-  repoPath: string,
-): { readonly publish_lint?: { readonly allowed_commands?: readonly string[] } } {
+function readPublishLintConfig(repoPath: string): {
+  readonly publish_lint?: { readonly allowed_commands?: readonly string[] };
+} {
   const cfgPath = path.join(repoPath, ".samo", "config.json");
   if (!existsSync(cfgPath)) return {};
   try {
     const raw = readFileSync(cfgPath, "utf8");
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return {};
-    return parsed as { publish_lint?: { allowed_commands?: readonly string[] } };
+    return parsed as {
+      publish_lint?: { allowed_commands?: readonly string[] };
+    };
   } catch {
     return {};
   }

@@ -25,7 +25,7 @@ export interface PushConsentCheckArgs {
    * Enumeration of configured remotes. Each entry is
    * `{ name: string; url: string }`. Injected for testability.
    */
-  readonly remotes: ReadonlyArray<{ readonly name: string; readonly url: string }>;
+  readonly remotes: readonly { readonly name: string; readonly url: string }[];
 }
 
 /**
@@ -47,11 +47,10 @@ export function checkPushConsent(args: PushConsentCheckArgs): CheckResult {
   }
 
   const details: string[] = [];
-  let anyOk = false;
   let anyWarn = false;
 
   for (const remote of args.remotes) {
-    let decision: boolean | null = null;
+    let decision: boolean | null;
     try {
       decision = loadPersistedConsent({
         repoPath: args.repoPath,
@@ -62,9 +61,7 @@ export function checkPushConsent(args: PushConsentCheckArgs): CheckResult {
     }
     const label = consentLabel(decision);
     details.push(`${remote.name} (${remote.url}): ${label}`);
-    if (decision === true) {
-      anyOk = true;
-    } else {
+    if (decision !== true) {
       anyWarn = true;
     }
   }

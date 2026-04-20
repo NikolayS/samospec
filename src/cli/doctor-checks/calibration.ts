@@ -20,10 +20,12 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
 
 import { CheckStatus, type CheckResult } from "../doctor-format.ts";
-import { CALIBRATION_FLOOR, readCalibration } from "../../policy/calibration.ts";
+import {
+  CALIBRATION_FLOOR,
+  readCalibration,
+} from "../../policy/calibration.ts";
 
 export interface CalibrationCheckArgs {
   /** Absolute path to `.samo/config.json`. */

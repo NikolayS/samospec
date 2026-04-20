@@ -47,13 +47,17 @@ export interface RunDoctorArgs {
    * Override for push-consent remote enumeration. Each entry is
    * `{ name, url }`. When omitted, production enumerates via `git remote`.
    */
-  readonly remotes?: ReadonlyArray<{ readonly name: string; readonly url: string }>;
+  readonly remotes?: readonly { readonly name: string; readonly url: string }[];
   /**
    * Injectable PR-capability runners for testability.
    * When omitted, production uses the real `gh`/`glab` probes.
    */
   readonly ghRunner?: () => { status: number; stdout: string; stderr: string };
-  readonly glabRunner?: () => { status: number; stdout: string; stderr: string };
+  readonly glabRunner?: () => {
+    status: number;
+    stdout: string;
+    stderr: string;
+  };
 }
 
 export interface RunDoctorResult {
@@ -112,14 +116,14 @@ function defaultRemoteUrl(cwd: string): string | null {
 
 function defaultRemotes(
   cwd: string,
-): Array<{ readonly name: string; readonly url: string }> {
+): { readonly name: string; readonly url: string }[] {
   const names = spawnSync("git", ["remote"], { cwd, encoding: "utf8" });
   if (names.status !== 0) return [];
   const remoteNames = names.stdout
     .split("\n")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
-  const out: Array<{ readonly name: string; readonly url: string }> = [];
+  const out: { readonly name: string; readonly url: string }[] = [];
   for (const name of remoteNames) {
     const url = spawnSync("git", ["remote", "get-url", name], {
       cwd,
@@ -185,13 +189,8 @@ export async function runDoctor(args: RunDoctorArgs): Promise<RunDoctorResult> {
   results.push(checkEntropy({ cwd: args.cwd }));
 
   // New checks (Issue #34).
-  const remotes =
-    args.remotes !== undefined
-      ? args.remotes
-      : defaultRemotes(args.cwd);
-  results.push(
-    checkPushConsent({ repoPath: args.cwd, remotes }),
-  );
+  const remotes = args.remotes ?? defaultRemotes(args.cwd);
+  results.push(checkPushConsent({ repoPath: args.cwd, remotes }));
   results.push(
     checkCalibration({
       configPath: path.join(args.cwd, ".samo", "config.json"),
@@ -199,8 +198,8 @@ export async function runDoctor(args: RunDoctorArgs): Promise<RunDoctorResult> {
   );
   results.push(
     checkPrCapability({
-      gh: args.ghRunner,
-      glab: args.glabRunner,
+      ...(args.ghRunner !== undefined ? { gh: args.ghRunner } : {}),
+      ...(args.glabRunner !== undefined ? { glab: args.glabRunner } : {}),
     }),
   );
 

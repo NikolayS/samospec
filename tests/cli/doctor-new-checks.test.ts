@@ -8,12 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -208,8 +203,12 @@ describe("doctor-checks / calibration", () => {
 describe("doctor-checks / pr-capability", () => {
   test("FAIL when neither gh nor glab is installed", () => {
     const result = checkPrCapability({
-      gh: () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); },
-      glab: () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); },
+      gh: () => {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
+      glab: () => {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
     });
     expect(result.status).toBe(CheckStatus.Fail);
     expect(result.label).toBe("pr-capability");
@@ -219,7 +218,9 @@ describe("doctor-checks / pr-capability", () => {
   test("WARN when gh is installed but auth status returns non-zero", () => {
     const result = checkPrCapability({
       gh: () => ({ status: 1, stdout: "", stderr: "Not logged in" }),
-      glab: () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); },
+      glab: () => {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
     });
     expect(result.status).toBe(CheckStatus.Warn);
     expect(result.message.toLowerCase()).toContain("not authenticated");
@@ -228,7 +229,9 @@ describe("doctor-checks / pr-capability", () => {
   test("OK when gh is authenticated", () => {
     const result = checkPrCapability({
       gh: () => ({ status: 0, stdout: "Logged in", stderr: "" }),
-      glab: () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); },
+      glab: () => {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
     });
     expect(result.status).toBe(CheckStatus.Ok);
     expect(result.message).toContain("gh");
@@ -236,7 +239,9 @@ describe("doctor-checks / pr-capability", () => {
 
   test("OK when glab is authenticated (gh not installed)", () => {
     const result = checkPrCapability({
-      gh: () => { throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); },
+      gh: () => {
+        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      },
       glab: () => ({ status: 0, stdout: "Logged in", stderr: "" }),
     });
     expect(result.status).toBe(CheckStatus.Ok);
@@ -267,7 +272,11 @@ describe("runDoctor — new checks wired into aggregator", () => {
           {
             label: "claude",
             adapter: createFakeAdapter({
-              auth: { authenticated: true, account: "u@e.com", subscription_auth: false },
+              auth: {
+                authenticated: true,
+                account: "u@e.com",
+                subscription_auth: false,
+              },
             }),
           },
         ],

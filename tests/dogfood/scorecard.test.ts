@@ -47,10 +47,7 @@ import type { RepoState } from "../../src/publish/lint-types.ts";
 // ── template fixture ─────────────────────────────────────────────────────────
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
-const TEMPLATE_PATH = path.join(
-  __dir,
-  "../fixtures/dogfood/template.json",
-);
+const TEMPLATE_PATH = path.join(__dir, "../fixtures/dogfood/template.json");
 
 interface DogfoodTemplate {
   readonly spec_version: string;
@@ -273,11 +270,7 @@ function seedDogfoodSpec(cwd: string, slug: string): void {
   writeFileSync(path.join(slugDir, "SPEC.md"), DOGFOOD_SPEC, "utf8");
   writeFileSync(path.join(slugDir, "TLDR.md"), DOGFOOD_TLDR, "utf8");
   writeFileSync(path.join(slugDir, "decisions.md"), DOGFOOD_DECISIONS, "utf8");
-  writeFileSync(
-    path.join(slugDir, "changelog.md"),
-    DOGFOOD_CHANGELOG,
-    "utf8",
-  );
+  writeFileSync(path.join(slugDir, "changelog.md"), DOGFOOD_CHANGELOG, "utf8");
   writeFileSync(path.join(slugDir, "context.json"), DOGFOOD_CONTEXT, "utf8");
   writeFileSync(
     path.join(slugDir, "interview.json"),
@@ -329,11 +322,9 @@ function seedDogfoodSpec(cwd: string, slug: string): void {
 
   // Commit everything so publish can proceed.
   spawnSync("git", ["add", "."], { cwd });
-  spawnSync(
-    "git",
-    ["commit", "-q", "-m", `spec(${slug}): refine v0.4`],
-    { cwd },
-  );
+  spawnSync("git", ["commit", "-q", "-m", `spec(${slug}): refine v0.4`], {
+    cwd,
+  });
 }
 
 // ── scorecard tests ───────────────────────────────────────────────────────────
@@ -355,13 +346,7 @@ describe("dogfood scorecard (SPEC §13 item 11 — Sprint 4 exit)", () => {
     const slug = "dogfood-test";
     seedDogfoodSpec(tmp, slug);
 
-    const reviewsDir = path.join(
-      tmp,
-      ".samo",
-      "spec",
-      slug,
-      "reviews",
-    );
+    const reviewsDir = path.join(tmp, ".samo", "spec", slug, "reviews");
     let completeCount = 0;
     for (let i = 1; i <= 10; i++) {
       const rDir =
@@ -370,9 +355,7 @@ describe("dogfood scorecard (SPEC §13 item 11 — Sprint 4 exit)", () => {
           : path.join(reviewsDir, `r${String(i)}`);
       const roundFile = path.join(rDir, "round.json");
       if (!existsSync(roundFile)) break;
-      const round = JSON.parse(
-        readFileSync(roundFile, "utf8"),
-      ) as Round;
+      const round = JSON.parse(readFileSync(roundFile, "utf8")) as Round;
       if (round.status === "complete") completeCount++;
     }
     expect(completeCount).toBeGreaterThanOrEqual(3);
@@ -382,13 +365,7 @@ describe("dogfood scorecard (SPEC §13 item 11 — Sprint 4 exit)", () => {
     const slug = "dogfood-test";
     seedDogfoodSpec(tmp, slug);
 
-    const ctxPath = path.join(
-      tmp,
-      ".samo",
-      "spec",
-      slug,
-      "context.json",
-    );
+    const ctxPath = path.join(tmp, ".samo", "spec", slug, "context.json");
     expect(existsSync(ctxPath)).toBe(true);
 
     const ctx = JSON.parse(readFileSync(ctxPath, "utf8")) as Record<
@@ -409,13 +386,7 @@ describe("dogfood scorecard (SPEC §13 item 11 — Sprint 4 exit)", () => {
     const slug = "dogfood-test";
     seedDogfoodSpec(tmp, slug);
 
-    const decisionsPath = path.join(
-      tmp,
-      ".samo",
-      "spec",
-      slug,
-      "decisions.md",
-    );
+    const decisionsPath = path.join(tmp, ".samo", "spec", slug, "decisions.md");
     expect(existsSync(decisionsPath)).toBe(true);
 
     const body = readFileSync(decisionsPath, "utf8").toLowerCase();
@@ -433,13 +404,7 @@ describe("dogfood scorecard (SPEC §13 item 11 — Sprint 4 exit)", () => {
     const slug = "dogfood-test";
     seedDogfoodSpec(tmp, slug);
 
-    const specPath = path.join(
-      tmp,
-      ".samo",
-      "spec",
-      slug,
-      "SPEC.md",
-    );
+    const specPath = path.join(tmp, ".samo", "spec", slug, "SPEC.md");
     const specBody = readFileSync(specPath, "utf8");
 
     const repoState: RepoState = {
@@ -472,12 +437,7 @@ describe("dogfood scorecard (SPEC §13 item 11 — Sprint 4 exit)", () => {
     expect(result.exitCode).toBe(0);
 
     // Blueprint was created.
-    const blueprintPath = path.join(
-      tmp,
-      "blueprints",
-      slug,
-      "SPEC.md",
-    );
+    const blueprintPath = path.join(tmp, "blueprints", slug, "SPEC.md");
     expect(existsSync(blueprintPath)).toBe(true);
 
     // State was advanced to publish phase.
@@ -516,9 +476,7 @@ describe("dogfood scorecard (SPEC §13 item 11 — Sprint 4 exit)", () => {
       const r = JSON.parse(readFileSync(rPath, "utf8")) as Round;
       if (r.status === "complete") completeRounds++;
     }
-    expect(completeRounds).toBeGreaterThanOrEqual(
-      template.min_rounds_complete,
-    );
+    expect(completeRounds).toBeGreaterThanOrEqual(template.min_rounds_complete);
 
     // Criterion 3: context.json with non-empty files + risk_flags.
     const ctx = JSON.parse(
