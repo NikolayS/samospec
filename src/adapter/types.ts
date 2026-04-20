@@ -85,6 +85,10 @@ export const AskOutputSchema = z.object({
   answer: z.string(),
   usage: UsageSchema,
   effort_used: EffortLevelSchema,
+  // Set to true when the adapter fell back to the account-default model
+  // tier (no explicit --model flag). Recorded for state.json visibility
+  // (#54).
+  account_default: z.boolean().optional(),
 });
 export type AskOutput = z.infer<typeof AskOutputSchema>;
 

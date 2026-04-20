@@ -114,6 +114,7 @@ describe("CodexAdapter fallback-chain ordering (SPEC §11)", () => {
   test("default chain is gpt-5.1-codex-max first, gpt-5.1-codex second", async () => {
     // Rejecting every attempt with model-not-available forces the
     // adapter to walk the chain; the spawn cmds capture the order.
+    // accountDefaultFallback: false so we isolate the two-model chain.
     const reject: SpawnCliResult = {
       ok: true,
       exitCode: 2,
@@ -125,6 +126,7 @@ describe("CodexAdapter fallback-chain ordering (SPEC §11)", () => {
     const adapter = new CodexAdapter({
       host: { PATH: dir, HOME: "/tmp", ...FAKE_API_HOST },
       spawn: spy.spawn,
+      accountDefaultFallback: false,
     });
 
     await adapter.ask(sampleAskWithEffort("high")).catch(() => {
@@ -157,6 +159,8 @@ describe("CodexAdapter fallback-chain ordering (SPEC §11)", () => {
       spawn: spy.spawn,
       models: custom,
       defaultModel: "custom-a",
+      // Disable account-default to isolate the custom-chain ordering.
+      accountDefaultFallback: false,
     });
 
     await adapter.ask(sampleAskWithEffort("high")).catch(() => {

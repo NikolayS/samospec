@@ -684,7 +684,8 @@ describe("CodexAdapter model fallback (SPEC §11)", () => {
       expect(err.payload.kind).toBe("terminal");
       expect(err.payload.reason).toBe("model_unavailable");
     }
-    // Both models were attempted.
-    expect(spy.calls.length).toBe(2);
+    // Both explicit models + the account-default tier were attempted
+    // (#54: account-default is the third tier after explicit pins fail).
+    expect(spy.calls.length).toBe(3);
   });
 });

@@ -60,7 +60,12 @@ interface CodexAttemptFail {
   readonly detail?: string;
 }
 type CodexAttemptResult<T> =
-  | { readonly ok: true; readonly value: T }
+  | {
+      readonly ok: true;
+      readonly value: T;
+      /** True when the account-default tier (no --model flag) was used. */
+      readonly accountDefault?: boolean;
+    }
   | CodexAttemptFail;
 import {
   type Adapter,
@@ -96,6 +101,12 @@ const DEFAULT_MODELS: readonly ModelInfo[] = [
 ];
 
 const DEFAULT_MODEL_ID = "gpt-5.1-codex-max";
+
+// Sentinel value appended to the runtime fallback chain to represent
+// the account-default tier: codex is invoked with --model omitted so
+// it falls back to whatever the ChatGPT account supports. Only reached
+// when every explicit pin has raised model_unavailable (#54).
+const ACCOUNT_DEFAULT_SENTINEL = "__account_default__" as const;
 
 // SPEC §11 effort-level table (Codex / OpenAI-family column).
 const EFFORT_TO_REASONING: Readonly<Record<EffortLevel, string>> = {
@@ -141,6 +152,13 @@ export interface CodexAdapterOpts {
    * chain. Default `gpt-5.1-codex-max`.
    */
   readonly defaultModel?: string;
+  /**
+   * When true (the default), append an implicit account-default tier
+   * after all explicit model pins. The tier re-invokes codex with
+   * --model omitted, letting the ChatGPT account pick its supported
+   * default. Set to false to force explicit pins only (#54).
+   */
+  readonly accountDefaultFallback?: boolean;
 }
 
 // ---------- binary discovery ----------
@@ -194,6 +212,7 @@ export class CodexAdapter implements Adapter {
   private readonly spawnFn: SpawnFn;
   private readonly modelList: readonly ModelInfo[];
   private readonly defaultModel: string;
+  private readonly accountDefaultFallback: boolean;
 
   constructor(opts: CodexAdapterOpts = {}) {
     this.binary = opts.binary ?? CODEX_BINARY_NAME;
@@ -202,6 +221,7 @@ export class CodexAdapter implements Adapter {
     this.spawnFn = opts.spawn ?? spawnCli;
     this.modelList = opts.models ?? DEFAULT_MODELS;
     this.defaultModel = opts.defaultModel ?? DEFAULT_MODEL_ID;
+    this.accountDefaultFallback = opts.accountDefaultFallback ?? true;
   }
 
   // ---------- lifecycle ----------
@@ -292,20 +312,21 @@ export class CodexAdapter implements Adapter {
   async ask(input: AskInput): Promise<AskOutput> {
     AskInputSchema.parse(input);
     const prompt = buildAskPrompt(input);
-    const raw = await this.runWithRetries({
+    const { raw, accountDefault } = await this.runWithRetries({
       prompt,
       timeoutMs: input.opts.timeout,
       effort: input.opts.effort,
       structured: true,
     });
     const parsed = parseStructuredJson(raw, input.opts.effort);
-    return AskOutputSchema.parse(parsed);
+    const base = AskOutputSchema.parse(parsed);
+    return accountDefault ? { ...base, account_default: true } : base;
   }
 
   async critique(input: CritiqueInput): Promise<CritiqueOutput> {
     CritiqueInputSchema.parse(input);
     const prompt = buildCritiquePrompt(input);
-    const raw = await this.runWithRetries({
+    const { raw } = await this.runWithRetries({
       prompt,
       timeoutMs: input.opts.timeout,
       effort: input.opts.effort,
@@ -318,7 +339,7 @@ export class CodexAdapter implements Adapter {
   async revise(input: ReviseInput): Promise<ReviseOutput> {
     ReviseInputSchema.parse(input);
     const prompt = buildRevisePrompt(input);
-    const raw = await this.runWithRetries({
+    const { raw } = await this.runWithRetries({
       prompt,
       timeoutMs: input.opts.timeout,
       effort: input.opts.effort,
@@ -335,29 +356,39 @@ export class CodexAdapter implements Adapter {
    * - capped timeout retry (base → +50% → base → terminal)
    * - ONE schema-violation repair retry per timeout-attempt
    * - model fallback chain on "model not available" failure
+   * - account-default tier (#54): after all explicit pins fail with
+   *   model_unavailable, one final attempt with --model omitted
    * - non-interactive flags
    * - minimal env
    *
-   * Returns the raw stdout string for the caller to JSON-parse.
+   * Returns `{ raw, accountDefault }` where raw is the stdout string
+   * for the caller to JSON-parse and accountDefault is true when the
+   * account-default tier (no explicit --model flag) was used (#54).
    */
   private async runWithRetries(args: {
     prompt: string;
     timeoutMs: number;
     effort: EffortLevel;
     structured: boolean;
-  }): Promise<string> {
+  }): Promise<{ raw: string; accountDefault: boolean }> {
     const resolvedBinary =
       resolveBinaryPath(this.host, this.binary) ?? this.binary;
 
     // Runtime fallback chain: defaultModel first, then any other models
     // not equal to the default (preserving list order, de-duped).
-    const chain = buildFallbackChain(this.modelList, this.defaultModel);
+    // When accountDefaultFallback is true, append the sentinel so
+    // runSingleAttempt will attempt a --model-less call as a final tier.
+    const chain = buildFallbackChain(
+      this.modelList,
+      this.defaultModel,
+      this.accountDefaultFallback,
+    );
 
     // Capped timeout retry (SPEC §7): base -> +50% -> base, then
     // terminal. Timeouts are the only retryable class inside this
     // sweep; `model_unavailable` is consumed by the model-fallback
     // loop inside runSingleAttempt and bubbles up only when every
-    // model has been exhausted.
+    // model has been exhausted (including the account-default tier).
     const timeouts = computeAttemptTimeouts(args.timeoutMs);
     let lastFail: CodexAttemptFail | null = null;
     let attemptCount = 0;
@@ -372,7 +403,7 @@ export class CodexAdapter implements Adapter {
         models: chain,
       });
       if (r.ok) {
-        return r.value;
+        return { raw: r.value, accountDefault: r.accountDefault === true };
       }
       lastFail = r;
       if (r.reason !== "timeout") {
@@ -407,6 +438,11 @@ export class CodexAdapter implements Adapter {
    * configured model chain. Each model gets up to two spawns — an
    * initial call plus one schema-repair retry. Model-unavailable on a
    * given model rolls to the next; other non-timeout errors bail.
+   *
+   * The chain may end with ACCOUNT_DEFAULT_SENTINEL, which triggers a
+   * final attempt with --model omitted (#54). If that also fails with
+   * model_unavailable the terminal detail references the account-default
+   * tier so the user can diagnose the failure.
    */
   private async runSingleAttempt(args: {
     binary: string;
@@ -416,9 +452,16 @@ export class CodexAdapter implements Adapter {
     structured: boolean;
     models: readonly string[];
   }): Promise<CodexAttemptResult<string>> {
-    let lastFailure: CodexAttemptFail | null = null;
+    const explicitModels: string[] = [];
+    let triedAccountDefault = false;
 
     for (const model of args.models) {
+      if (model === ACCOUNT_DEFAULT_SENTINEL) {
+        triedAccountDefault = true;
+      } else {
+        explicitModels.push(model);
+      }
+
       const r = await this.runModelAttempt({
         binary: args.binary,
         prompt: args.prompt,
@@ -428,9 +471,9 @@ export class CodexAdapter implements Adapter {
         model,
       });
       if (r.ok) {
-        return r;
+        const accountDefault = model === ACCOUNT_DEFAULT_SENTINEL;
+        return { ...r, accountDefault };
       }
-      lastFailure = r;
       // Only "model_unavailable" rolls forward to the next model.
       // Timeout / schema / other bail now (upper layer may timeout-retry
       // under the capped policy).
@@ -439,14 +482,19 @@ export class CodexAdapter implements Adapter {
       }
     }
 
-    // Every model failed with model_unavailable -> terminal.
-    return (
-      lastFailure ?? {
-        ok: false,
-        reason: "model_unavailable",
-        detail: "no models configured",
-      }
-    );
+    // Every model (and account-default tier if tried) failed.
+    // Build an informative detail listing what was attempted (#54).
+    const triedList = [...explicitModels];
+    if (triedAccountDefault) {
+      triedList.push("account-default (no --model flag)");
+    }
+    const detail =
+      triedList.length > 0
+        ? `all fallbacks exhausted: ${triedList.join(" → ")}; ` +
+          "account is not authorized or no model is available"
+        : "no models configured";
+
+    return { ok: false, reason: "model_unavailable", detail };
   }
 
   private async runModelAttempt(args: {
@@ -477,6 +525,15 @@ export class CodexAdapter implements Adapter {
     }
     if (first.exitCode !== 0) {
       return classifyExit(first.exitCode, first.stderr);
+    }
+
+    // Bug #54: Codex exits 0 and writes the error JSON to stdout when
+    // the model is not supported under ChatGPT-account auth. Detect
+    // this before the schema-parse / repair path so it is correctly
+    // classified as model_unavailable rather than schema_violation.
+    const stdoutApiError = classifyStdoutApiError(first.stdout);
+    if (stdoutApiError !== null) {
+      return stdoutApiError;
     }
 
     if (!args.structured) {
@@ -512,6 +569,12 @@ export class CodexAdapter implements Adapter {
       return classifyExit(repair.exitCode, repair.stderr);
     }
 
+    // Also check the repair response for API-level errors (#54).
+    const repairApiError = classifyStdoutApiError(repair.stdout);
+    if (repairApiError !== null) {
+      return repairApiError;
+    }
+
     const parsedRepair = preParseJson(repair.stdout);
     if (!parsedRepair.ok) {
       return {
@@ -531,11 +594,16 @@ export class CodexAdapter implements Adapter {
     model: string;
   }): Promise<SpawnCliResult> {
     const reasoning = EFFORT_TO_REASONING[args.effort];
+    // Account-default tier (#54): omit --model so codex picks the
+    // account's supported default. All other tiers pin the model.
+    const modelFlags: readonly string[] =
+      args.model === ACCOUNT_DEFAULT_SENTINEL
+        ? []
+        : ["--model", args.model];
     const cmd: readonly string[] = [
       args.binary,
       ...CODEX_NON_INTERACTIVE_FLAGS,
-      "--model",
-      args.model,
+      ...modelFlags,
       "-c",
       `model_reasoning_effort=${reasoning}`,
     ];
@@ -611,6 +679,7 @@ function buildRepairPrompt(originalPrompt: string, badOutput: string): string {
 function buildFallbackChain(
   models: readonly ModelInfo[],
   defaultModel: string,
+  appendAccountDefault: boolean,
 ): readonly string[] {
   const seen = new Set<string>();
   const out: string[] = [];
@@ -624,6 +693,11 @@ function buildFallbackChain(
       out.push(m.id);
       seen.add(m.id);
     }
+  }
+  // Account-default tier (#54): after all explicit pins, try once
+  // without --model so codex picks the ChatGPT account's default.
+  if (appendAccountDefault) {
+    out.push(ACCOUNT_DEFAULT_SENTINEL);
   }
   return out;
 }
@@ -660,6 +734,65 @@ function normalizeUsageAndEffort(
 }
 
 // ---------- error classification ----------
+
+// Bug #54: Codex exits 0 and emits an API-level error JSON on stdout
+// when the requested model is not supported under ChatGPT-account auth.
+// The real error shape is:
+//   ERROR: {"type":"error","status":400,"error":{"type":
+//     "invalid_request_error","message":"The 'X' model is not
+//     supported when using Codex with a ChatGPT account."}}
+//
+// Returns a CodexAttemptFail classified as model_unavailable when the
+// stdout matches this pattern, or null when it does not apply.
+function classifyStdoutApiError(
+  stdout: string,
+): CodexAttemptFail | null {
+  // Fast path: must contain "invalid_request_error" to be an API error.
+  if (!stdout.includes("invalid_request_error")) {
+    return null;
+  }
+  // Extract the JSON payload — may be prefixed by "ERROR: " or similar.
+  const jsonStart = stdout.indexOf("{");
+  if (jsonStart === -1) {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout.slice(jsonStart));
+  } catch {
+    return null;
+  }
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    !("error" in parsed)
+  ) {
+    return null;
+  }
+  const { error } = parsed as { error: unknown };
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+  const { type: errType, message } = error as {
+    type?: unknown;
+    message?: unknown;
+  };
+  if (errType !== "invalid_request_error") {
+    return null;
+  }
+  const msg = typeof message === "string" ? message : "";
+  // Model-unsupported on ChatGPT account → model_unavailable (triggers
+  // the fallback chain).
+  const lowerMsg = msg.toLowerCase();
+  const isModelUnsupported =
+    lowerMsg.includes("not supported") ||
+    lowerMsg.includes("model") ||
+    lowerMsg.includes("account");
+  const reason: CodexAdapterErrorReason = isModelUnsupported
+    ? "model_unavailable"
+    : "other";
+  return { ok: false, reason, detail: msg };
+}
 
 function classifyExit(
   exitCode: number,

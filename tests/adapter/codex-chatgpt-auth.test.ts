@@ -17,7 +17,6 @@
 
 import {
   afterAll,
-  beforeEach,
   describe,
   expect,
   test,
@@ -218,8 +217,10 @@ describe(
         const adapter = new CodexAdapter({
           host,
           spawn: spy.spawn,
-          // Single-model list so we see the classification in isolation.
+          // Single-model list + no account-default so we test
+          // classification in isolation without the fallback chain.
           models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+          accountDefaultFallback: false,
         });
 
         let err: unknown;
@@ -249,7 +250,9 @@ describe(
         const adapter = new CodexAdapter({
           host,
           spawn: spy.spawn,
+          // Disable account-default to isolate the classification test.
           models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+          accountDefaultFallback: false,
         });
 
         let err: unknown;
