@@ -4,7 +4,7 @@
  * SPEC §7/§9 — `context.json` provenance.
  *
  * Written once per phase under
- *   .samospec/spec/<slug>/context.json
+ *   .samo/spec/<slug>/context.json
  *
  * The schema is deliberately conservative:
  * - `files[]` records whether each discovered file was included,
@@ -163,7 +163,7 @@ export function readContextJson(file: string): ContextJson | null {
   return result.data;
 }
 
-/** Compute the absolute path for `.samospec/spec/<slug>/context.json`. */
+/** Compute the absolute path for `.samo/spec/<slug>/context.json`. */
 export function contextJsonPath(repoPath: string, slug: string): string {
-  return path.join(repoPath, ".samospec", "spec", slug, "context.json");
+  return path.join(repoPath, ".samo", "spec", slug, "context.json");
 }

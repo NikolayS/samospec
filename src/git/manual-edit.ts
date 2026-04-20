@@ -3,7 +3,7 @@
 /**
  * SPEC §7 — Manual-edit detection (Sprint 3 #3).
  *
- * Scope: `git status --porcelain -- .samospec/spec/<slug>/` — catches BOTH
+ * Scope: `git status --porcelain -- .samo/spec/<slug>/` — catches BOTH
  * edits to tracked committed artifacts AND new untracked files (e.g., a
  * `NOTES.md` a user dropped into the spec dir between rounds). Plain
  * `git diff HEAD` would miss the latter and violate user story 8's
@@ -78,11 +78,11 @@ export interface DetectManualEditsOpts {
 }
 
 function relSpecDir(slug: string): string {
-  return path.posix.join(".samospec", "spec", slug) + "/";
+  return path.posix.join(".samo", "spec", slug) + "/";
 }
 
 /**
- * Inspect `git status --porcelain -- .samospec/spec/<slug>/` and classify
+ * Inspect `git status --porcelain -- .samo/spec/<slug>/` and classify
  * each touched path. Deletions are surfaced as `deleted`; staged adds /
  * modifications are surfaced with `staged` but still classified by target
  * so the caller can still protect user work.
@@ -327,7 +327,7 @@ export function applyManualEdit(
       // it already exists; a fresh spec might not have one yet.
       const changelogAbs = path.join(
         args.repoPath,
-        ".samospec",
+        ".samo",
         "spec",
         args.slug,
         "changelog.md",
@@ -340,7 +340,7 @@ export function applyManualEdit(
       const paths = args.report.files.map((f) => f.path);
       // The changelog relative path must be in `paths` if it was touched.
       const changelogRel = path.posix.join(
-        ".samospec",
+        ".samo",
         "spec",
         args.slug,
         "changelog.md",
@@ -364,7 +364,7 @@ export function applyManualEdit(
       let specAfter: string | null = null;
       if (args.report.specEdited) {
         const specRel = path.posix.join(
-          ".samospec",
+          ".samo",
           "spec",
           args.slug,
           SPEC_FILE_BASENAME,

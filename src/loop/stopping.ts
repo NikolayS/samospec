@@ -372,7 +372,7 @@ export function stopReasonMessage(reason: StopReason, slug: string): string {
       return (
         `samospec: lead is ignoring critiques ` +
         `(≥80% of findings repeated). ` +
-        `Edit .samospec/spec/${slug}/SPEC.md manually and rerun ` +
+        `Edit .samo/spec/${slug}/SPEC.md manually and rerun ` +
         `\`samospec iterate\`, or abort.`
       );
     case "sigint":
@@ -389,7 +389,7 @@ export function stopReasonMessage(reason: StopReason, slug: string): string {
     case "lead-terminal":
       return (
         `samospec: lead_terminal reached. ` +
-        `Edit .samospec/spec/${slug}/SPEC.md manually or abort.`
+        `Edit .samo/spec/${slug}/SPEC.md manually or abort.`
       );
   }
 }

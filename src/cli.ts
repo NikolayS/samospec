@@ -44,7 +44,7 @@ const VERSION_FLAGS: ReadonlySet<string> = new Set([
 const USAGE =
   "Usage: samospec <command>\n\n" +
   "Commands:\n" +
-  "  init                        Create or refresh .samospec/ in the current repo.\n" +
+  "  init                        Create or refresh .samo/ in the current repo.\n" +
   "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
   "  new <slug> [--idea ...]     Start a new spec (persona + 5-question interview).\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
@@ -399,7 +399,7 @@ function interactiveIterateResolvers(): IterateResolvers {
   return {
     onManualEdit: async (files) => {
       process.stdout.write(
-        `\nUncommitted edits detected under .samospec/spec/ (${String(files.length)} file(s)):\n`,
+        `\nUncommitted edits detected under .samo/spec/ (${String(files.length)} file(s)):\n`,
       );
       for (const f of files) process.stdout.write(`  - ${f}\n`);
       const ans = (

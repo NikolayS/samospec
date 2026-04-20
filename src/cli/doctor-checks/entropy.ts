@@ -10,13 +10,13 @@ import { CheckStatus, type CheckResult } from "../doctor-format.ts";
 /**
  * Options for the entropy-scan check.
  *
- * `cwd` is the repo root: the check globs `.samospec/spec/<slug>/
+ * `cwd` is the repo root: the check globs `.samo/spec/<slug>/
  * transcripts/*.log` under this root (transcripts land here in Sprint 3;
  * until then the glob is simply empty).
  *
  * `extraPaths` is the union of whatever the caller wants scanned on top
  * of the default glob — including any file listed under
- * `doctor.entropy_scan_paths` in `.samospec/config.json`. The aggregator
+ * `doctor.entropy_scan_paths` in `.samo/config.json`. The aggregator
  * resolves that config and flattens it into this array.
  */
 export interface CheckEntropyArgs {
@@ -36,9 +36,9 @@ const WARN_SUFFIX =
 /**
  * Collect the list of files to scan:
  *  1. Any path the caller passed in `extraPaths` (deduped).
- *  2. `.samospec/spec/<slug>/transcripts/*.log` under `cwd`.
+ *  2. `.samo/spec/<slug>/transcripts/*.log` under `cwd`.
  *  3. Any file listed under `doctor.entropy_scan_paths` in the repo's
- *     `.samospec/config.json` (resolved relative to `cwd`).
+ *     `.samo/config.json` (resolved relative to `cwd`).
  *
  * Missing files are silently skipped — the check is diagnostic, not a
  * gate. Non-readable files (permission error) are skipped for the same
@@ -55,8 +55,8 @@ function collectScanTargets(
   // iterated; an empty directory tree yields nothing.
   try {
     // `dot: true` is required so Bun's Glob descends into the hidden
-    // `.samospec` directory.
-    const glob = new Glob(".samospec/spec/*/transcripts/*.log");
+    // `.samo` directory.
+    const glob = new Glob(".samo/spec/*/transcripts/*.log");
     for (const rel of glob.scanSync({ cwd, absolute: false, dot: true })) {
       targets.add(path.join(cwd, rel));
     }
@@ -66,7 +66,7 @@ function collectScanTargets(
   }
 
   // Config-listed extras.
-  const cfgPath = path.join(cwd, ".samospec", "config.json");
+  const cfgPath = path.join(cwd, ".samo", "config.json");
   if (existsSync(cfgPath)) {
     try {
       const raw = readFileSync(cfgPath, "utf8");
@@ -124,7 +124,7 @@ function countRedactionHits(file: string): number {
  *     deliberate, not a regression to investigate.
  *   - OK (explicit clean): every caller-provided path was scanned and
  *     contained zero redactable matches — callers who pass extraPaths
- *     or have .samospec/spec/<slug>/transcripts/*.log in the repo see
+ *     or have .samo/spec/<slug>/transcripts/*.log in the repo see
  *     an OK line confirming the sweep found nothing.
  *   - WARN (hits): at least one match; message lists the hit count and
  *     the number of files, but never surfaces the raw secret.

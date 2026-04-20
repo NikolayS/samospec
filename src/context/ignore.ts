@@ -8,9 +8,9 @@
  *   2. default denylist + asset-size + binary check — built-in
  *   3. `.gitignore` — honored transitively via `git ls-files` (caller
  *      relies on git for the canonical tracked/untracked-unignored set)
- *   4. `.samospec-ignore` — user overlay at repo root
+ *   4. `.samo-ignore` — user overlay at repo root
  *
- * `.samospec-ignore` whitelists (`!pattern`) can un-ignore items from
+ * `.samo-ignore` whitelists (`!pattern`) can un-ignore items from
  * layers (2) and (3), but never from layer (1). This is enforced in
  * {@link applyIgnore} by short-circuiting to {@link isNoRead} first.
  */
@@ -98,11 +98,11 @@ function compileOne(source: string): IgnorePattern {
 }
 
 /**
- * Load `.samospec-ignore` from the repo root. Returns the empty array
+ * Load `.samo-ignore` from the repo root. Returns the empty array
  * when the file is absent.
  */
 export function loadSamospecIgnore(repoPath: string): readonly IgnorePattern[] {
-  const file = path.join(repoPath, ".samospec-ignore");
+  const file = path.join(repoPath, ".samo-ignore");
   if (!existsSync(file)) return [];
   const raw = readFileSync(file, "utf8");
   return parseIgnorePatterns(raw);

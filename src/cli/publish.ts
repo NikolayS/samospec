@@ -11,7 +11,7 @@
  *
  * Flow:
  *   1. Preconditions (exit 1 on miss):
- *      - `.samospec/spec/<slug>/state.json` exists.
+ *      - `.samo/spec/<slug>/state.json` exists.
  *      - `state.round_state === "committed"`.
  *      - `state.published_at` is absent (republish error message).
  *   2. Safety invariant: refuse if current branch is protected (exit 2).

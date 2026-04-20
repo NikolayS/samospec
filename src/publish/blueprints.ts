@@ -3,7 +3,7 @@
 /**
  * SPEC §5 Phase 7 + §9 — blueprint promotion.
  *
- * Copies `.samospec/spec/<slug>/SPEC.md` → `blueprints/<slug>/SPEC.md`,
+ * Copies `.samo/spec/<slug>/SPEC.md` → `blueprints/<slug>/SPEC.md`,
  * creating `blueprints/<slug>/` when missing. The blueprint is a
  * promoted snapshot — SPEC §9 states it is **never hand-edited**. Any
  * revisions go back through `samospec iterate` + `samospec publish`
@@ -34,7 +34,7 @@ export interface PromoteOpts {
  * missing source means the preconditions check above was bypassed.
  */
 export function promoteSpecToBlueprint(opts: PromoteOpts): string {
-  const src = path.join(opts.cwd, ".samospec", "spec", opts.slug, "SPEC.md");
+  const src = path.join(opts.cwd, ".samo", "spec", opts.slug, "SPEC.md");
   if (!existsSync(src)) {
     throw new Error(
       `SPEC.md not found at ${src}. ` +

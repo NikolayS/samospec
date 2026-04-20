@@ -10,7 +10,7 @@ export interface CheckConfigArgs {
 }
 
 /**
- * Sanity-check `.samospec/config.json`:
+ * Sanity-check `.samo/config.json`:
  *   - FAIL if missing or malformed.
  *   - WARN if the pinned lead / reviewer models differ from release
  *     metadata (SPEC §11 — "pinned per samospec release; no runtime

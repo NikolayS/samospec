@@ -45,7 +45,7 @@ export interface ConsentResult {
   readonly decision: ConsentAnswer;
   /** Effort level to clamp this session to on `downshift`. */
   readonly sessionEffort?: "high";
-  /** True if this decision mutates `.samospec/config.json`. */
+  /** True if this decision mutates `.samo/config.json`. */
   readonly persist?: boolean;
   /** Process exit code when `decision === 'abort'`. */
   readonly exitCode?: number;

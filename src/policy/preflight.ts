@@ -249,7 +249,7 @@ function computeMLikely(
 
 /**
  * Convenience: build a `PreflightConfig` from an already-parsed JSON
- * config object (i.e. the contents of `.samospec/config.json`). Missing
+ * config object (i.e. the contents of `.samo/config.json`). Missing
  * keys throw — callers should ensure `runInit` has been run.
  */
 export function preflightConfigFromParsed(

@@ -39,7 +39,7 @@ export interface PublishLintReport {
 
 /**
  * User-config subset read by the lint. Mirrors the shape `init.ts`
- * writes to `.samospec/config.json` — a `publish_lint.allowed_commands`
+ * writes to `.samo/config.json` — a `publish_lint.allowed_commands`
  * array layers on top of the hardcoded allowlist. Other unrelated
  * config keys are ignored.
  */
@@ -59,7 +59,7 @@ export interface PublishLintConfig {
  * - `adapterModels` — resolved model ids from `state.json` (lead +
  *   reviewer_a + reviewer_b). Drift checks compare `claude-…` /
  *   `gpt-…` tokens in prose against this list.
- * - `config` — parsed `.samospec/config.json` content subset.
+ * - `config` — parsed `.samo/config.json` content subset.
  */
 export interface RepoState {
   readonly repoRoot: string;
