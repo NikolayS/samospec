@@ -26,6 +26,11 @@
 
 import type { Adapter, EffortLevel, ReviseOutput } from "../adapter/types.ts";
 import type { InterviewResult } from "./interview.ts";
+import {
+  classifyLeadTerminal,
+  formatLeadTerminalMessage as sharedFormatLeadTerminalMessage,
+  type LeadTerminalSubReason as SharedLeadTerminalSubReason,
+} from "./terminal-messages.ts";
 
 // ---------- constants ----------
 
@@ -37,13 +42,11 @@ export const DRAFT_DEFAULT_EFFORT: EffortLevel = "max";
 
 // ---------- types ----------
 
-export type LeadTerminalSubReason =
-  | "refusal"
-  | "schema_fail"
-  | "invalid_input"
-  | "budget"
-  | "wall_clock"
-  | "adapter_error";
+// SPEC §7 sub-reason taxonomy is owned by `./terminal-messages.ts` so
+// the iterate loop and the v0.1 draft share the same classification +
+// message table. The alias here keeps the existing draft.ts surface
+// (DraftTerminalError + this type) stable for downstream callers.
+export type LeadTerminalSubReason = SharedLeadTerminalSubReason;
 
 export class DraftTerminalError extends Error {
   readonly sub_reason: LeadTerminalSubReason;
@@ -177,25 +180,8 @@ export async function authorDraft(
 }
 
 function classifyReviseError(err: unknown): DraftTerminalError {
-  const message =
-    err instanceof Error ? err.message : typeof err === "string" ? err : "";
-  const lower = message.toLowerCase();
-  if (lower.includes("refus")) {
-    return new DraftTerminalError("refusal", message);
-  }
-  if (lower.includes("schema")) {
-    return new DraftTerminalError("schema_fail", message);
-  }
-  if (lower.includes("invalid input") || lower.includes("too large")) {
-    return new DraftTerminalError("invalid_input", message);
-  }
-  if (lower.includes("budget")) {
-    return new DraftTerminalError("budget", message);
-  }
-  if (lower.includes("wall-clock") || lower.includes("wall clock")) {
-    return new DraftTerminalError("wall_clock", message);
-  }
-  return new DraftTerminalError("adapter_error", message);
+  const { sub_reason, detail } = classifyLeadTerminal(err);
+  return new DraftTerminalError(sub_reason, detail);
 }
 
 // ---------- SPEC §7 exit-4 messaging table ----------
@@ -203,44 +189,13 @@ function classifyReviseError(err: unknown): DraftTerminalError {
 /**
  * Canonical exit-4 copy per SPEC §7 for each sub-reason. Callers
  * print this message to stderr alongside the state-persistence notice.
+ * Implementation lives in `./terminal-messages.ts` so the iterate loop
+ * shares the same copy.
  */
 export function formatLeadTerminalMessage(
   slug: string,
   sub: LeadTerminalSubReason,
   detail: string,
 ): string {
-  const detailSuffix = detail.length > 0 ? ` (${detail})` : "";
-  switch (sub) {
-    case "refusal":
-      return (
-        `samospec: lead_terminal — model refused. ` +
-        `Edit .samospec/spec/${slug}/SPEC.md to remove sensitive content ` +
-        `or retry.${detailSuffix}`
-      );
-    case "schema_fail":
-      return (
-        `samospec: lead_terminal — adapter returned invalid structured output. ` +
-        `File a samospec bug or switch adapter.${detailSuffix}`
-      );
-    case "invalid_input":
-      return (
-        `samospec: lead_terminal — spec too large or malformed. ` +
-        `Check .samospec/spec/${slug}/SPEC.md.${detailSuffix}`
-      );
-    case "budget":
-      return (
-        `samospec: lead_terminal — budget cap hit. ` +
-        `Downshift via --effort or raise budget.*.${detailSuffix}`
-      );
-    case "wall_clock":
-      return (
-        `samospec: lead_terminal — session wall-clock hit. ` +
-        `Resume to continue.${detailSuffix}`
-      );
-    case "adapter_error":
-      return (
-        `samospec: lead_terminal — adapter error. ` +
-        `See .samospec/spec/${slug}/ for state and retry.${detailSuffix}`
-      );
-  }
+  return sharedFormatLeadTerminalMessage(slug, sub, detail);
 }

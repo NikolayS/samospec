@@ -29,4 +29,22 @@ describe("samospec CLI error paths", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("unknown command 'VERSION'");
   });
+
+  test("usage block advertises iterate and status", async () => {
+    const result = await runCli([]);
+    expect(result.stderr).toContain("iterate");
+    expect(result.stderr).toContain("status");
+  });
+
+  test("samospec iterate without slug exits 1 with usage", async () => {
+    const result = await runCli(["iterate"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("missing <slug>");
+  });
+
+  test("samospec status without slug exits 1 with usage", async () => {
+    const result = await runCli(["status"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("missing <slug>");
+  });
 });
