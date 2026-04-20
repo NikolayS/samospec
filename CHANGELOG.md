@@ -20,13 +20,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   with sprints, and embedded changelog. Pass `--skip <list>` to opt out
   of specific sections. `buildRevisePrompt` and `buildAskPrompt` are
   now exported for tests.
-- **Structured decisions array on `revise()` (#59):** `ReviseOutput`
-  gains an optional `decisions[]` field `{ finding_id?, category,
-  verdict: "accepted"|"rejected"|"deferred", rationale }`. When
-  present, the loop serializes it to `decisions.md` with per-round
-  headers and updates `changelog.md` with real accepted/rejected/deferred
-  counts. When absent, falls back to "no decisions recorded this round"
-  (backward compat).
+- **Structured decisions array on `revise()` (#59):** `ReviseOutput` gains an
+  optional `decisions[]` field (verdict: accepted/rejected/deferred). When
+  present, the loop serializes it to `decisions.md` with per-round headers and
+  updates `changelog.md` with real accepted/rejected/deferred counts. When
+  absent, falls back to "no decisions recorded this round" (backward compat).
 - `buildBaselineSectionsBlock()` helper exported from `claude.ts`.
 - `ReviseDecisionSchema`, `ReviseDecision`, `BASELINE_SECTION_NAMES`,
   `BaselineSectionName` exported from `schemas.ts` / `types.ts`.
