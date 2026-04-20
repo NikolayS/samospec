@@ -1,7 +1,13 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
-// Tests for `samospec new <slug>` (SPEC §5 Phases 1-4 skeleton +
+// Tests for `samospec new <slug>` (SPEC §5 Phases 1-5 end-to-end +
 // §7 state persistence + §11 subscription-auth + §10 exit codes).
+//
+// Issue #15 completed the v0.1 draft flow; these tests now assert the
+// post-commit state: phase `draft`, round_state `committed`,
+// version `0.1.0`. The earlier skeleton assertions (phase ending at
+// `interview`, TODO markers in stdout) have been superseded by the
+// end-to-end coverage in `new.e2e.test.ts`.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
@@ -123,11 +129,9 @@ describe("samospec new <slug> — happy path (SPEC §5 Phases 1-4)", () => {
       skill: "CLI engineer",
       accepted: true,
     });
-    // Phase should have advanced through persona -> context -> interview.
-    // Post-interview, scope guard says next phase is `draft` (not
-    // implemented yet). The CLI wiring leaves phase at `interview` with
-    // state persisted; resume decides the next-step messaging.
-    expect(st!.phase).toBe("interview");
+    // Phase advances all the way to `draft` now that Issue #15 is
+    // merged — end-to-end coverage lives in `new.e2e.test.ts`.
+    expect(st!.phase).toBe("draft");
 
     const iv = readInterview(path.join(slugDir, "interview.json"));
     expect(iv).not.toBeNull();
@@ -136,7 +140,7 @@ describe("samospec new <slug> — happy path (SPEC §5 Phases 1-4)", () => {
     expect(iv!.answers.length).toBe(2);
   });
 
-  test("stdout announces TODO markers for context/preflight/draft phases", async () => {
+  test("stdout announces the preflight estimate + draft outcome", async () => {
     const { adapter } = makeLeadAdapter([
       personaJson("CLI engineer"),
       questionsJson([{ id: "q1", text: "framework?" }]),
@@ -152,10 +156,10 @@ describe("samospec new <slug> — happy path (SPEC §5 Phases 1-4)", () => {
       },
       adapter,
     );
-    // TODO markers surfaced per the issue scope — don't block execution.
-    expect(result.stdout.toLowerCase()).toMatch(/context discovery/);
-    expect(result.stdout.toLowerCase()).toMatch(/preflight/);
-    expect(result.stdout.toLowerCase()).toMatch(/draft/);
+    // End-to-end wiring: preflight estimate + TL;DR appear.
+    expect(result.stdout.toLowerCase()).toMatch(/estimated range/);
+    expect(result.stdout.toLowerCase()).toMatch(/tl;dr/);
+    expect(result.stdout.toLowerCase()).toMatch(/resume/);
   });
 });
 
