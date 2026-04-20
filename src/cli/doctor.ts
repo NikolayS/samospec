@@ -19,6 +19,9 @@ import { checkLockfile } from "./doctor-checks/lock.ts";
 import { checkConfig } from "./doctor-checks/config.ts";
 import { checkGlobalConfig } from "./doctor-checks/global-config.ts";
 import { checkEntropy } from "./doctor-checks/entropy.ts";
+import { checkPushConsent } from "./doctor-checks/push-consent.ts";
+import { checkCalibration } from "./doctor-checks/calibration.ts";
+import { checkPrCapability } from "./doctor-checks/pr-capability.ts";
 
 export interface DoctorAdapterBinding {
   readonly label: string;
@@ -40,6 +43,17 @@ export interface RunDoctorArgs {
   readonly isTty?: boolean;
   readonly now?: number;
   readonly maxWallClockMinutes?: number;
+  /**
+   * Override for push-consent remote enumeration. Each entry is
+   * `{ name, url }`. When omitted, production enumerates via `git remote`.
+   */
+  readonly remotes?: ReadonlyArray<{ readonly name: string; readonly url: string }>;
+  /**
+   * Injectable PR-capability runners for testability.
+   * When omitted, production uses the real `gh`/`glab` probes.
+   */
+  readonly ghRunner?: () => { status: number; stdout: string; stderr: string };
+  readonly glabRunner?: () => { status: number; stdout: string; stderr: string };
 }
 
 export interface RunDoctorResult {
@@ -96,6 +110,29 @@ function defaultRemoteUrl(cwd: string): string | null {
   return out.length > 0 ? out : null;
 }
 
+function defaultRemotes(
+  cwd: string,
+): Array<{ readonly name: string; readonly url: string }> {
+  const names = spawnSync("git", ["remote"], { cwd, encoding: "utf8" });
+  if (names.status !== 0) return [];
+  const remoteNames = names.stdout
+    .split("\n")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const out: Array<{ readonly name: string; readonly url: string }> = [];
+  for (const name of remoteNames) {
+    const url = spawnSync("git", ["remote", "get-url", name], {
+      cwd,
+      encoding: "utf8",
+    });
+    if (url.status === 0) {
+      const u = url.stdout.trim();
+      if (u.length > 0) out.push({ name, url: u });
+    }
+  }
+  return out;
+}
+
 export async function runDoctor(args: RunDoctorArgs): Promise<RunDoctorResult> {
   const env = args.env ?? process.env;
   const isTty = args.isTty ?? process.stdout.isTTY ?? false;
@@ -146,6 +183,26 @@ export async function runDoctor(args: RunDoctorArgs): Promise<RunDoctorResult> {
   );
   results.push(checkGlobalConfig({ homeDir: args.homeDir }));
   results.push(checkEntropy({ cwd: args.cwd }));
+
+  // New checks (Issue #34).
+  const remotes =
+    args.remotes !== undefined
+      ? args.remotes
+      : defaultRemotes(args.cwd);
+  results.push(
+    checkPushConsent({ repoPath: args.cwd, remotes }),
+  );
+  results.push(
+    checkCalibration({
+      configPath: path.join(args.cwd, ".samo", "config.json"),
+    }),
+  );
+  results.push(
+    checkPrCapability({
+      gh: args.ghRunner,
+      glab: args.glabRunner,
+    }),
+  );
 
   const lines: string[] = [];
   for (const r of results) {
