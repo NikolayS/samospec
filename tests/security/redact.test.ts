@@ -179,7 +179,8 @@ describe("security/redact — property-based (SPEC §13 item 7)", () => {
     // Generate synthetic matches for each kind by sampling body chars from
     // the pattern's alphabet. The length is drawn loosely but always past
     // the regex minimum so a match is guaranteed.
-    const alnum = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    const alnum =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     const upperAlnum = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 
     const aws = fc
@@ -209,18 +210,14 @@ describe("security/redact — property-based (SPEC §13 item 7)", () => {
     }
   });
 
-  test(
-    "Direction B: random safe strings are identity under redact (N≥1000)",
-    () => {
-      fc.assert(
-        fc.property(safeStringArb, (s) => {
-          expect(redact(s)).toBe(s);
-        }),
-        { numRuns: 1000 },
-      );
-    },
-    15_000,
-  );
+  test("Direction B: random safe strings are identity under redact (N≥1000)", () => {
+    fc.assert(
+      fc.property(safeStringArb, (s) => {
+        expect(redact(s)).toBe(s);
+      }),
+      { numRuns: 1000 },
+    );
+  }, 15_000);
 
   test("Direction B: random version-number-shaped strings are identity", () => {
     const versionArb = fc

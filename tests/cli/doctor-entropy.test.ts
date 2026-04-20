@@ -1,12 +1,7 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -117,11 +112,7 @@ describe("doctor-checks / entropy — scanner integration", () => {
 
   test("OK when scanned files are clean of known patterns", () => {
     const p = path.join(tmp, "clean.log");
-    writeFileSync(
-      p,
-      "just prose v1.2.3 foo.bar.baz src/foo/bar.ts\n",
-      "utf8",
-    );
+    writeFileSync(p, "just prose v1.2.3 foo.bar.baz src/foo/bar.ts\n", "utf8");
     const result = checkEntropy({ cwd: tmp, extraPaths: [p] });
     expect(result.status).toBe(CheckStatus.Ok);
     expect(result.message.toLowerCase()).toContain("best-effort");
@@ -139,13 +130,7 @@ describe("doctor aggregator — entropy integration", () => {
   test("runDoctor wires the entropy check and passes cwd through", async () => {
     runInit({ cwd: tmp });
     // Inject a secret into a discoverable file.
-    const logDir = path.join(
-      tmp,
-      ".samospec",
-      "spec",
-      "demo",
-      "transcripts",
-    );
+    const logDir = path.join(tmp, ".samospec", "spec", "demo", "transcripts");
     mkdirSync(logDir, { recursive: true });
     writeFileSync(
       path.join(logDir, "author.log"),
