@@ -238,8 +238,8 @@ describe("samospec new --explain (SPEC §4 secondary ICP)", () => {
     // First call (persona) + second call (interview) both carry the
     // plain-English preamble.
     expect(asks.length).toBeGreaterThanOrEqual(2);
-    expect(asks[0]!.prompt.toLowerCase()).toMatch(/plain english/);
-    expect(asks[1]!.prompt.toLowerCase()).toMatch(/plain english/);
+    expect(asks[0].prompt.toLowerCase()).toMatch(/plain english/);
+    expect(asks[1].prompt.toLowerCase()).toMatch(/plain english/);
   });
 });
 
@@ -266,7 +266,9 @@ describe("samospec new — lead_terminal path (SPEC §10 exit codes)", () => {
     expect(result.exitCode).toBe(4);
     expect(result.stderr.toLowerCase()).toMatch(/lead_terminal|persona/);
 
-    const st = readState(path.join(tmp, ".samospec", "spec", "demo", "state.json"));
+    const st = readState(
+      path.join(tmp, ".samospec", "spec", "demo", "state.json"),
+    );
     expect(st).not.toBeNull();
     expect(st!.round_state).toBe("lead_terminal");
   });
@@ -380,4 +382,3 @@ describe("samospec new — branch creation guarded by flag (scope guard)", () =>
     expect(invoked).toBe(1);
   });
 });
-

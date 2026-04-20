@@ -12,11 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
-import type {
-  Adapter,
-  AskInput,
-  AskOutput,
-} from "../../src/adapter/types.ts";
+import type { Adapter, AskInput, AskOutput } from "../../src/adapter/types.ts";
 import { runInit } from "../../src/cli/init.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { runResume } from "../../src/cli/resume.ts";
@@ -158,9 +154,7 @@ describe("samospec resume — kill after persona, before interview", () => {
       resumeAdapter,
     );
     expect(second.exitCode).toBe(0);
-    expect(
-      existsSync(path.join(slugDir, "interview.json")),
-    ).toBe(true);
+    expect(existsSync(path.join(slugDir, "interview.json"))).toBe(true);
 
     const iv = readInterview(path.join(slugDir, "interview.json"));
     expect(iv).not.toBeNull();
