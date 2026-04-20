@@ -166,7 +166,7 @@ describe("samospec resume — kill after persona, before interview", () => {
 // ---------- resume after interview ----------
 
 describe("samospec resume — interview already complete", () => {
-  test("prints next-phase notice and exits 0 (pre-#15)", async () => {
+  test("prints 'ready for review loop (Sprint 3)' and exits 0", async () => {
     // Run a full new; then resume.
     const { adapter: newAdapter } = makeLeadAdapter([
       personaJson("CLI engineer"),
@@ -195,8 +195,9 @@ describe("samospec resume — interview already complete", () => {
       resumeAdapter,
     );
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.toLowerCase()).toMatch(/next phase|not implemented/);
-    expect(result.stdout.toLowerCase()).toMatch(/context|draft/);
+    expect(result.stdout.toLowerCase()).toMatch(
+      /ready for review loop|sprint 3/,
+    );
   });
 });
 

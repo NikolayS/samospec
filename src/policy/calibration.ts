@@ -13,10 +13,13 @@
 //     }
 //   }
 //
-// This module exposes the typed read + the pure write helper
-// (`recordSession`) that will be wired into the end-of-session
-// save path by Issue #15 (Sprint 3). It also ships the blend-weight
-// helper used by `preflight.ts`:
+// This module exposes the typed read, the pure write helper
+// (`recordSession`), and a file-level wrapper (`writeCalibrationSample`)
+// that reads the repo's `config.json`, appends the sample, and
+// atomically writes it back. Issue #15 calls the wrapper from the
+// `samospec new` session-end hook.
+//
+// Blend-weight helper used by `preflight.ts`:
 //
 //   blendWeight = min(sample_count, 10) / 10
 //
@@ -26,6 +29,19 @@
 //   - count >= 10       -> calibration dominates
 //
 // Arrays cap at 20; drop the oldest entry on overflow.
+
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeSync,
+} from "node:fs";
+import path from "node:path";
 
 import { z } from "zod";
 
@@ -155,4 +171,126 @@ function append(xs: readonly number[], v: number): number[] {
     out.shift();
   }
   return out;
+}
+
+// ---------- writeCalibrationSample (Issue #15 wiring) ----------
+
+export interface WriteCalibrationSampleArgs {
+  readonly cwd: string;
+  /**
+   * Rough token total for the session. For subscription-auth sessions
+   * where the adapter could not report usage, callers still record the
+   * estimated tokens so the array length matches the other arrays —
+   * the cost array carries 0 in that case.
+   */
+  readonly session_actual_tokens: number;
+  /**
+   * Session cost in USD, or `null` when the adapter could not report
+   * it (subscription auth). `null` is written as `0` so the three
+   * calibration arrays stay the same length; preflight continues to
+   * work with the imputed zero because the SPEC §11 blend formula
+   * weights `mean_cost_per_run_usd` against per-vendor defaults.
+   */
+  readonly session_actual_cost_usd: number | null;
+  /**
+   * Review rounds that ran this session. Zero on the v0.1 draft
+   * commit (no review loop has happened yet).
+   */
+  readonly session_rounds: number;
+}
+
+/**
+ * Append a calibration sample to `.samospec/config.json`. Reads the
+ * existing config, parses the current calibration (or creates an empty
+ * one), invokes `recordSession`, and atomically writes the new config.
+ *
+ * Errors (malformed config etc.) are thrown — the caller is expected
+ * to log them without halting the session: session-end calibration
+ * must never block a successful draft commit.
+ */
+export function writeCalibrationSample(
+  args: WriteCalibrationSampleArgs,
+): Calibration {
+  const configPath = path.join(args.cwd, ".samospec", "config.json");
+  if (!existsSync(configPath)) {
+    throw new Error(
+      `writeCalibrationSample: .samospec/config.json missing at ${configPath}`,
+    );
+  }
+  const raw = readFileSync(configPath, "utf8");
+  let parsed: Record<string, unknown>;
+  try {
+    const json: unknown = JSON.parse(raw);
+    if (typeof json !== "object" || json === null || Array.isArray(json)) {
+      throw new Error("config.json top-level must be a JSON object");
+    }
+    parsed = json as Record<string, unknown>;
+  } catch (err) {
+    throw new Error(
+      `writeCalibrationSample: cannot parse config.json: ${
+        (err as Error).message
+      }`,
+      { cause: err },
+    );
+  }
+
+  const current: Calibration = readCalibration(parsed) ?? {
+    sample_count: 0,
+    tokens_per_round: [],
+    rounds_to_converge: [],
+    cost_per_run_usd: [],
+  };
+
+  // `null` cost becomes 0 in the array so lengths stay equal; preflight
+  // applies the blend formula to the mean either way.
+  const next = recordSession(current, {
+    session_actual_tokens: args.session_actual_tokens,
+    session_actual_cost_usd: args.session_actual_cost_usd ?? 0,
+    session_rounds: args.session_rounds,
+  });
+
+  parsed["calibration"] = next;
+  atomicWriteJson(configPath, parsed);
+
+  return next;
+}
+
+function atomicWriteJson(
+  file: string,
+  value: Readonly<Record<string, unknown>>,
+): void {
+  const dir = path.dirname(file);
+  mkdirSync(dir, { recursive: true });
+  const tmp = path.join(dir, `.${path.basename(file)}.tmp.${process.pid}`);
+  const payload = `${JSON.stringify(value, null, 2)}\n`;
+
+  const fd = openSync(tmp, "w", 0o644);
+  try {
+    writeSync(fd, payload, 0, "utf8");
+    fsyncSync(fd);
+  } finally {
+    closeSync(fd);
+  }
+
+  try {
+    renameSync(tmp, file);
+  } catch (err) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* ignore */
+    }
+    throw err;
+  }
+
+  try {
+    const dfd = openSync(dir, "r");
+    try {
+      fsyncSync(dfd);
+    } finally {
+      closeSync(dfd);
+    }
+  } catch {
+    // Dir-fsync not supported on all platforms.
+  }
 }

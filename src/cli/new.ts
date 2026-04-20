@@ -1,24 +1,52 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
-// SPEC §5 Phases 1-4 skeleton for `samospec new <slug>`.
+// SPEC §5 Phases 1-5 — `samospec new <slug>`, end-to-end.
+//
 // Wires:
 //   - lockfile acquisition (src/state/lock.ts)
-//   - branch creation stub (src/git/branch.ts — guarded by flag, SPEC §15
-//     Sprint 3 task #15 will wire real invocation)
+//   - preflight cost estimate (src/policy/preflight.ts)
+//   - consent gate when over threshold / subscription-auth (src/policy/consent.ts)
+//   - branch creation on samospec/<slug> (src/git/branch.ts)
 //   - persona proposal (src/cli/persona.ts)
-//   - interview (src/cli/interview.ts)
-//   - TODO markers for context / preflight / draft (issues #11 / #14 /
-//     #15 to follow)
+//   - context discovery (src/context/*)
+//   - 5-question interview (src/cli/interview.ts)
+//   - v0.1 draft via revise() (src/cli/draft.ts)
+//   - atomic writes of SPEC.md, TLDR.md, state.json, interview.json,
+//     context.json, decisions.md, changelog.md
+//   - first commit `spec(<slug>): draft v0.1` on samospec/<slug>
+//   - session-end calibration sample (src/policy/calibration.ts)
 //
-// Scope guard (SPEC §13 test 3 persona + test 2 interview):
-//   - No context discovery; no preflight cost estimate; no v0.1 draft.
-//   - Branch creation is behind enableBranchCreation flag so #15 can
-//     wire the real call without touching this file's tests.
+// Scope guardrails for Sprint 2 exit:
+//   - NO push (Sprint 3 adds the consent-gated push).
+//   - NO review loop (Sprint 3).
+//   - NO reviewer adapters (Sprint 3).
+//   - The safety invariant from Issue #3 holds: never commit on a
+//     protected branch (createSpecBranch throws with exit 2; specCommit
+//     additionally refuses).
 
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Adapter } from "../adapter/types.ts";
+import { discoverContext } from "../context/discover.ts";
+import { contextJsonPath } from "../context/provenance.ts";
+import { createSpecBranch } from "../git/branch.ts";
+import { specCommit } from "../git/commit.ts";
+import { ProtectedBranchError, GitLayerUsageError } from "../git/errors.ts";
+import { writeCalibrationSample } from "../policy/calibration.ts";
+import {
+  CONSENT_ABORT_EXIT_CODE,
+  promptConsent,
+  shouldPromptConsent,
+  type ConsentAnswer,
+} from "../policy/consent.ts";
+import {
+  computePreflight,
+  formatPreflight,
+  preflightConfigFromParsed,
+  type PreflightAdapter,
+} from "../policy/preflight.ts";
+import { renderTldr } from "../render/tldr.ts";
 import {
   LockContendedError,
   acquireLock,
@@ -29,21 +57,29 @@ import { advancePhase } from "../state/phase.ts";
 import { newState, readState, writeState } from "../state/store.ts";
 import type { State } from "../state/types.ts";
 import {
+  DraftTerminalError,
+  authorDraft,
+  formatLeadTerminalMessage,
+} from "./draft.ts";
+import {
+  InterviewTerminalError,
+  readInterview,
+  runInterview,
+  writeInterview,
+  type InterviewResult,
+  type OnQuestionCallback,
+} from "./interview.ts";
+import {
   PersonaTerminalError,
   extractSkill,
   proposePersona,
   type PersonaChoice,
   type PersonaProposal,
 } from "./persona.ts";
-import {
-  InterviewTerminalError,
-  readInterview,
-  runInterview,
-  type InterviewResult,
-  type OnQuestionCallback,
-} from "./interview.ts";
 
 const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
+
+const V01_VERSION = "0.1.0" as const;
 
 export interface RunNewResult {
   readonly exitCode: number;
@@ -65,16 +101,21 @@ export interface RunNewInput {
   readonly now: string;
   /** Test seam: inject a non-process pid when probing lock contention. */
   readonly pid?: number;
-  /** Opt-in git branch creation (SPEC #15 Sprint 3). Default: false. */
-  readonly enableBranchCreation?: boolean;
   /**
-   * Injected branch-creator seam. Default resolves to a no-op when
-   * enableBranchCreation is false. When true, invoked exactly once
-   * after lock acquisition.
+   * Legacy flag from the Sprint 2 skeleton: when true, a test-injected
+   * `createBranch` stub is invoked instead of the real git-layer call.
+   * When false or omitted, the real branch creation runs iff the repo
+   * is a git checkout (as is the case once `samospec init` has been
+   * followed by a `git init`). Outside a git repo the legacy behavior
+   * is preserved for the skeleton tests.
    */
+  readonly enableBranchCreation?: boolean;
   readonly createBranch?: (slug: string) => string;
-  /** Override for max wall-clock minutes (lock staleness cutoff). */
   readonly maxWallClockMinutes?: number;
+  /** Test seam: injects the consent-gate answer when the gate fires. */
+  readonly consentAnswer?: ConsentAnswer;
+  /** Always `true` in v1 per Issue #15 scope (consent-gated push is Sprint 3). */
+  readonly noPush?: boolean;
 }
 
 // ---------- CLI entry ----------
@@ -136,17 +177,82 @@ export async function runNew(
   }
 
   try {
-    // Branch creation seam (SPEC §5 Phase 1 + SPEC §15 task #15).
-    if (input.enableBranchCreation === true) {
-      const createBranch = input.createBranch;
-      if (createBranch !== undefined) {
-        createBranch(input.slug);
-      }
-      notice(`TODO #15: branch 'samospec/${input.slug}' created (stub).`);
+    // Preflight cost estimate (SPEC §5 Phase 1 + §11).
+    const preflightRes = runPreflight({
+      cwd: input.cwd,
+      adapter,
+      subscriptionAuth: await resolveSubscriptionAuth(adapter),
+    });
+    if (preflightRes.ok) {
+      notice(preflightRes.text);
     } else {
       notice(
-        `TODO #15: branch creation deferred (set enableBranchCreation=true to opt in).`,
+        `preflight: ${preflightRes.reason} — continuing with scaffold defaults.`,
       );
+    }
+
+    // Consent gate (SPEC §11). When the threshold trips or any
+    // adapter reports usage: null, callers must supply `consentAnswer`.
+    // Tests pass a deterministic answer; interactive CLI wires stdin.
+    if (preflightRes.ok) {
+      const preflightForGate = {
+        likelyUsd: preflightRes.estimate.likelyUsd,
+        anyUsageNull: Object.values(preflightRes.estimate.perAdapter).some(
+          (e) => typeof e.usd !== "number",
+        ),
+      };
+      if (shouldPromptConsent(preflightForGate, preflightRes.thresholdUsd)) {
+        // Default to accept when the gate fires and no answer was
+        // supplied (CI / tests that don't care about the consent path).
+        const consent = promptConsent({
+          preflight: preflightForGate,
+          thresholdUsd: preflightRes.thresholdUsd,
+          answer: input.consentAnswer ?? "accept",
+        });
+        if (consent.decision === "abort") {
+          errors.push(
+            `samospec: preflight consent refused. Exiting without writing a spec.`,
+          );
+          return {
+            exitCode: consent.exitCode ?? CONSENT_ABORT_EXIT_CODE,
+            stdout: lines.join("\n"),
+            stderr: `${errors.join("\n")}\n`,
+          };
+        }
+        if (consent.decision === "downshift") {
+          notice(
+            `consent: running this session at effort=high (not persisted).`,
+          );
+        }
+      }
+    }
+
+    // Branch creation (SPEC §5 Phase 1 + §8).
+    // Two modes:
+    //   - test seam (input.enableBranchCreation===true + createBranch):
+    //     invoke the stub and skip the real git-layer call.
+    //   - default: try the real `createSpecBranch`. Outside a git repo
+    //     this throws; we catch + surface "branch creation skipped"
+    //     so legacy tests that don't initialize a git repo still run.
+    const branchResult = createBranch(input);
+    if (branchResult.kind === "protected") {
+      errors.push(
+        `samospec: refusing to branch on protected branch '${branchResult.branch}'. ` +
+          `Check out a feature branch first or override protection via ` +
+          `git config / .samospec/config.json.`,
+      );
+      return {
+        exitCode: 2,
+        stdout: lines.join("\n"),
+        stderr: `${errors.join("\n")}\n`,
+      };
+    }
+    if (branchResult.kind === "created") {
+      notice(`branch created: ${branchResult.branch}`);
+    } else if (branchResult.kind === "skipped") {
+      notice(`branch creation skipped (${branchResult.reason}).`);
+    } else if (branchResult.kind === "stub") {
+      notice(`branch stub invoked: samospec/${input.slug}.`);
     }
 
     // Materialize the slug directory.
@@ -158,15 +264,8 @@ export async function runNew(
     const statePath = path.join(slugDir, "state.json");
     writeState(statePath, state);
 
-    // Phase-advance seam: each phase we enter bumps the phase pointer
-    // and re-persists so resume starts from the right place.
     state = advancePhase(state, "branch_lock_preflight", { now: input.now });
     writeState(statePath, state);
-
-    // TODO markers (#14 preflight cost, #11 context discovery).
-    notice(
-      `TODO #14: preflight cost estimate deferred (no paid lead calls before preflight land).`,
-    );
 
     // Phase 2 — persona.
     state = advancePhase(state, "persona", { now: input.now });
@@ -211,12 +310,46 @@ export async function runNew(
     writeState(statePath, state);
     notice(`persona accepted: ${persona.persona}`);
 
-    // Phase 3 — context discovery (TODO #11).
+    // Phase 3 — context discovery (SPEC §7).
     state = advancePhase(state, "context", { now: input.now });
     writeState(statePath, state);
-    notice(
-      `TODO #11: context discovery deferred (interview uses idea-only context for now).`,
-    );
+
+    const ctxPath = contextJsonPath(input.cwd, input.slug);
+    let chunks: readonly string[] = [];
+    try {
+      const discovered = discoverContext({
+        repoPath: input.cwd,
+        slug: input.slug,
+        phase: "draft",
+        contextPaths: [],
+      });
+      chunks = discovered.chunks;
+      notice(
+        `context: ${String(discovered.context.files.filter((f) => f.included).length)} file(s) included ` +
+          `(${String(discovered.context.budget.tokens_used)} tokens); ` +
+          `context.json -> ${path.relative(input.cwd, ctxPath)}`,
+      );
+    } catch (err) {
+      // Outside a git repo (skeleton tests), `listTrackedAndUntracked`
+      // will fail. Gracefully skip context — we still need to emit a
+      // minimal empty context.json so the file set is complete.
+      notice(
+        `context discovery skipped: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      const empty = {
+        phase: "draft" as const,
+        files: [],
+        risk_flags: [],
+        budget: { phase: "draft" as const, tokens_used: 0, tokens_budget: 0 },
+      };
+      // Write a placeholder so the committed-artifact set matches SPEC §9.
+      // We do this directly because `writeContextJson` enforces the same
+      // schema.
+      const { writeContextJson } = await import("../context/provenance.ts");
+      writeContextJson(ctxPath, empty);
+    }
 
     // Phase 4 — interview.
     state = advancePhase(state, "interview", { now: input.now });
@@ -253,8 +386,6 @@ export async function runNew(
           stderr: `${errors.join("\n")}\n`,
         };
       }
-      // Any other error (e.g. question-callback reject, simulating a
-      // user Ctrl-C) is classified as interrupted (SPEC §10 exit 3).
       errors.push(
         `samospec: interview interrupted — ${
           err instanceof Error ? err.message : String(err)
@@ -272,14 +403,179 @@ export async function runNew(
       `interview complete: ${String(interview.answers.length)} answer(s) recorded.`,
     );
 
-    // TODO markers for the next unimplemented phases.
-    notice(
-      `TODO #15: v0.1 draft deferred. Next phase: context / draft — not implemented yet.`,
+    // Phase 5 — v0.1 draft.
+    state = advancePhase(state, "draft", { now: input.now });
+    writeState(statePath, state);
+
+    let draft;
+    try {
+      draft = await authorDraft(
+        {
+          slug: input.slug,
+          idea: input.idea,
+          persona: persona.persona,
+          interview,
+          contextChunks: chunks,
+          explain: input.explain,
+        },
+        adapter,
+      );
+    } catch (err) {
+      if (err instanceof DraftTerminalError) {
+        state = { ...state, round_state: "lead_terminal" };
+        state.updated_at = input.now;
+        writeState(statePath, state);
+        errors.push(
+          formatLeadTerminalMessage(input.slug, err.sub_reason, err.detail),
+        );
+        return {
+          exitCode: 4,
+          stdout: lines.join("\n"),
+          stderr: `${errors.join("\n")}\n`,
+        };
+      }
+      throw err;
+    }
+
+    // ---------- write committed artifacts (SPEC §9) ----------
+
+    const specPath = path.join(slugDir, "SPEC.md");
+    const tldrPath = path.join(slugDir, "TLDR.md");
+    const decisionsPath = path.join(slugDir, "decisions.md");
+    const changelogPath = path.join(slugDir, "changelog.md");
+
+    // SPEC.md: lead's draft verbatim.
+    writeFileSync(specPath, ensureTrailingNewline(draft.spec), "utf8");
+
+    // TLDR.md: heuristic render.
+    const tldr = renderTldr(draft.spec, { slug: input.slug });
+    writeFileSync(tldrPath, tldr, "utf8");
+
+    // decisions.md: empty seed with a "no decisions yet" preamble.
+    writeFileSync(
+      decisionsPath,
+      `# decisions\n\n- No review-loop decisions yet. Populated during Sprint 3.\n`,
+      "utf8",
     );
 
-    // Final state: phase remains `interview` until #15 advances us.
-    state.updated_at = input.now;
+    // changelog.md: first entry — v0.1 draft from the lead.
+    const changelogLines: string[] = [
+      `# changelog`,
+      ``,
+      `## v0.1 — ${input.now}`,
+      ``,
+      `- Initial draft authored by the lead.`,
+      `- Persona: ${persona.persona}`,
+    ];
+    if (state.coupled_fallback) {
+      changelogLines.push(`- Coupled fallback recorded (SPEC §11).`);
+    }
+    changelogLines.push(``);
+    writeFileSync(changelogPath, changelogLines.join("\n"), "utf8");
+
+    // interview.json already written by runInterview; confirm existence
+    // so a regression test that breaks this has a clear failure point.
+    if (!existsSync(interviewPath)) {
+      // Re-write from the in-memory result as a defensive belt.
+      writeInterview(interviewPath, {
+        slug: interview.slug,
+        persona: interview.persona,
+        generated_at: interview.generated_at,
+        questions: [...interview.questions],
+        answers: [...interview.answers],
+      });
+    }
+
+    // state.json: advance to committed, version v0.1, round 0.
+    state = {
+      ...state,
+      round_state: "committed",
+      round_index: 0,
+      version: V01_VERSION,
+      updated_at: input.now,
+    };
     writeState(statePath, state);
+
+    // ---------- first commit on samospec/<slug> ----------
+
+    if (branchResult.kind === "created") {
+      try {
+        specCommit({
+          repoPath: input.cwd,
+          slug: input.slug,
+          action: "draft",
+          version: "0.1",
+          paths: [
+            path.relative(input.cwd, path.join(slugDir, "SPEC.md")),
+            path.relative(input.cwd, path.join(slugDir, "TLDR.md")),
+            path.relative(input.cwd, path.join(slugDir, "state.json")),
+            path.relative(input.cwd, path.join(slugDir, "interview.json")),
+            path.relative(input.cwd, path.join(slugDir, "context.json")),
+            path.relative(input.cwd, path.join(slugDir, "decisions.md")),
+            path.relative(input.cwd, path.join(slugDir, "changelog.md")),
+          ],
+        });
+        notice(
+          `committed spec(${input.slug}): draft v0.1 on samospec/${input.slug}`,
+        );
+      } catch (err) {
+        if (err instanceof ProtectedBranchError) {
+          state = { ...state, round_state: "lead_revised" };
+          state.updated_at = input.now;
+          writeState(statePath, state);
+          errors.push(
+            `samospec: refusing to commit on protected branch '${err.branchName}'. ` +
+              `Check out a feature branch and run \`samospec resume ${input.slug}\`.`,
+          );
+          return {
+            exitCode: 2,
+            stdout: lines.join("\n"),
+            stderr: `${errors.join("\n")}\n`,
+          };
+        }
+        throw err;
+      }
+    } else {
+      notice(`commit skipped (no git branch created).`);
+    }
+
+    // ---------- calibration sample (SPEC §11) ----------
+
+    try {
+      const tokens = approximateSessionTokens({ draftUsage: draft.usage });
+      const costUsd = extractCostUsd(draft.usage);
+      writeCalibrationSample({
+        cwd: input.cwd,
+        session_actual_tokens: tokens,
+        session_actual_cost_usd: costUsd,
+        session_rounds: 0,
+      });
+    } catch (err) {
+      // Calibration is best-effort; never halt a successful draft
+      // commit on calibration failure. Surface the issue so a user
+      // running with `--explain` sees it.
+      notice(
+        `calibration sample skipped: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
+    // ---------- TL;DR preview + resume hint ----------
+
+    notice("");
+    notice("TL;DR");
+    notice(tldr);
+    notice(
+      `next: \`samospec resume ${input.slug}\` (review loop lands in Sprint 3).`,
+    );
+
+    if (input.noPush !== false) {
+      // SPEC §8 + Issue #15 scope: no push in this sprint.
+      notice(
+        `(--no-push default active; push consent gate ships in Sprint 3.)`,
+      );
+    }
 
     return {
       exitCode: 0,
@@ -291,7 +587,115 @@ export async function runNew(
   }
 }
 
-// ---------- helpers ----------
+// ---------- preflight helper ----------
+
+interface PreflightRunOk {
+  readonly ok: true;
+  readonly text: string;
+  readonly estimate: ReturnType<typeof computePreflight>;
+  readonly thresholdUsd: number;
+}
+interface PreflightRunSkipped {
+  readonly ok: false;
+  readonly reason: string;
+}
+
+function runPreflight(args: {
+  cwd: string;
+  adapter: Adapter;
+  subscriptionAuth: boolean;
+}): PreflightRunOk | PreflightRunSkipped {
+  const configPath = path.join(args.cwd, ".samospec", "config.json");
+  if (!existsSync(configPath)) {
+    return { ok: false, reason: "config.json missing; run samospec init" };
+  }
+  let parsed: Record<string, unknown>;
+  try {
+    const raw = readFileSync(configPath, "utf8");
+    const json: unknown = JSON.parse(raw);
+    if (typeof json !== "object" || json === null || Array.isArray(json)) {
+      return { ok: false, reason: "config.json malformed" };
+    }
+    parsed = json as Record<string, unknown>;
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `config.json unreadable: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  let config;
+  try {
+    config = preflightConfigFromParsed(parsed);
+  } catch (err) {
+    return {
+      ok: false,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+  const adapters: readonly PreflightAdapter[] = [
+    {
+      id: "lead",
+      vendor: args.adapter.vendor,
+      role: "lead",
+      subscription_auth: args.subscriptionAuth,
+    },
+    {
+      id: "reviewer_a",
+      vendor: config.adapters.reviewer_a.adapter,
+      role: "reviewer_a",
+      subscription_auth: false,
+    },
+    {
+      id: "reviewer_b",
+      vendor: config.adapters.reviewer_b.adapter,
+      role: "reviewer_b",
+      subscription_auth: args.subscriptionAuth,
+    },
+  ];
+  const estimate = computePreflight(config, adapters);
+  const text = formatPreflight(estimate);
+  return {
+    ok: true,
+    text,
+    estimate,
+    thresholdUsd: config.budget.preflight_confirm_usd,
+  };
+}
+
+// ---------- branch helpers ----------
+
+type BranchCreation =
+  | { kind: "created"; branch: string }
+  | { kind: "skipped"; reason: string }
+  | { kind: "stub"; branch: string }
+  | { kind: "protected"; branch: string };
+
+function createBranch(input: RunNewInput): BranchCreation {
+  if (input.enableBranchCreation === true) {
+    if (input.createBranch !== undefined) {
+      const branch = input.createBranch(input.slug);
+      return { kind: "stub", branch };
+    }
+    // Fall through — caller asked for real branch creation.
+  }
+  try {
+    const branch = createSpecBranch(input.slug, { repoPath: input.cwd });
+    return { kind: "created", branch };
+  } catch (err) {
+    if (err instanceof ProtectedBranchError) {
+      return { kind: "protected", branch: err.branchName };
+    }
+    if (err instanceof GitLayerUsageError) {
+      return { kind: "skipped", reason: err.message };
+    }
+    return {
+      kind: "skipped",
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+// ---------- subsystem helpers ----------
 
 async function resolveSubscriptionAuth(adapter: Adapter): Promise<boolean> {
   try {
@@ -310,34 +714,10 @@ interface PersonaInteractiveInput {
   readonly resolver: (p: PersonaProposal) => Promise<PersonaChoice>;
 }
 
-/**
- * Two-step persona flow: first call proposePersona in "accept" mode
- * just to surface the proposal; then ask the resolver for the real
- * choice; if the resolver returns anything other than accept, invoke
- * proposePersona again with the real choice (edit/replace short-
- * circuits the ask path because the persona string is already valid).
- *
- * We rely on proposePersona's pure applyChoice on the first result:
- * we pass through the PersonaProposal returned in step 1 and re-
- * invoke only for edit/replace so the caller sees a single "call the
- * lead once" happy path for accept.
- */
 async function proposePersonaInteractive(
   input: PersonaInteractiveInput,
   adapter: Adapter,
 ): Promise<PersonaProposal> {
-  // The first invocation is a dry-run to surface the proposal to the
-  // user via the resolver. We still want subscription-auth copy + the
-  // lead call to happen exactly once. proposePersona only makes the
-  // call on the first attempt; edit/replace do NOT re-ask. To support
-  // this, we call once with kind=accept, then apply the resolver's
-  // final choice locally via a second invocation (which re-uses the
-  // validated persona form, so won't re-hit the lead).
-  //
-  // Implementation detail: proposePersona always hits the lead once
-  // regardless of choice, so we drive two invocations naturally and
-  // cache the first proposal.
-
   const draft = await proposePersona(
     {
       idea: input.idea,
@@ -348,21 +728,10 @@ async function proposePersonaInteractive(
     },
     adapter,
   );
-
-  // Surface the draft to the user; SPEC §11 message was printed if
-  // applicable inside the first call.
   input.onNotice(`proposed persona: ${draft.persona}`);
   input.onNotice(`rationale: ${draft.rationale}`);
-
   const choice = await input.resolver(draft);
-
-  if (choice.kind === "accept") {
-    return draft;
-  }
-
-  // For edit/replace, reuse applyChoice via a second proposePersona
-  // call path. We want no second lead call — but proposePersona always
-  // hits the lead, so we synthesize the result manually.
+  if (choice.kind === "accept") return draft;
   if (choice.kind === "edit") {
     return {
       persona: `Veteran "${choice.skill}" expert`,
@@ -371,7 +740,7 @@ async function proposePersonaInteractive(
       accepted: true,
     };
   }
-  // kind === "replace"
+  // replace
   const skill = extractSkill(choice.persona);
   if (skill === null) {
     throw new PersonaTerminalError(
@@ -387,6 +756,34 @@ async function proposePersonaInteractive(
   };
 }
 
+function ensureTrailingNewline(s: string): string {
+  return s.endsWith("\n") ? s : `${s}\n`;
+}
+
+// ---------- calibration inputs ----------
+
+/**
+ * Rough token total for the session. The first draft runs through
+ * `revise()` exactly once; if the adapter reported usage we take
+ * `input_tokens + output_tokens`, otherwise we fall back to a small
+ * constant that keeps the array length in lockstep with cost_per_run.
+ */
+function approximateSessionTokens(args: {
+  draftUsage: { input_tokens?: number; output_tokens?: number } | null;
+}): number {
+  const u = args.draftUsage;
+  if (u === null || u === undefined) return 0;
+  return (u.input_tokens ?? 0) + (u.output_tokens ?? 0);
+}
+
+function extractCostUsd(
+  usage: { cost_usd?: number | undefined } | null,
+): number | null {
+  if (usage === null || usage === undefined) return null;
+  if (typeof usage.cost_usd !== "number") return null;
+  return usage.cost_usd;
+}
+
 // ---------- diagnostic readers (used by resume) ----------
 
 export interface SpecPaths {
@@ -394,6 +791,11 @@ export interface SpecPaths {
   readonly statePath: string;
   readonly interviewPath: string;
   readonly lockPath: string;
+  readonly specPath: string;
+  readonly tldrPath: string;
+  readonly contextPath: string;
+  readonly decisionsPath: string;
+  readonly changelogPath: string;
 }
 
 export function specPaths(cwd: string, slug: string): SpecPaths {
@@ -403,17 +805,30 @@ export function specPaths(cwd: string, slug: string): SpecPaths {
     statePath: path.join(slugDir, "state.json"),
     interviewPath: path.join(slugDir, "interview.json"),
     lockPath: path.join(cwd, ".samospec", ".lock"),
+    specPath: path.join(slugDir, "SPEC.md"),
+    tldrPath: path.join(slugDir, "TLDR.md"),
+    contextPath: path.join(slugDir, "context.json"),
+    decisionsPath: path.join(slugDir, "decisions.md"),
+    changelogPath: path.join(slugDir, "changelog.md"),
   };
 }
 
 export interface SpecInspection {
   readonly state: State | null;
   readonly hasInterview: boolean;
+  readonly hasSpec: boolean;
+  readonly hasTldr: boolean;
+  readonly hasContext: boolean;
 }
 
 export function inspectSpec(cwd: string, slug: string): SpecInspection {
   const paths = specPaths(cwd, slug);
   const state = readState(paths.statePath);
-  const hasInterview = readInterview(paths.interviewPath) !== null;
-  return { state, hasInterview };
+  return {
+    state,
+    hasInterview: readInterview(paths.interviewPath) !== null,
+    hasSpec: existsSync(paths.specPath),
+    hasTldr: existsSync(paths.tldrPath),
+    hasContext: existsSync(paths.contextPath),
+  };
 }
