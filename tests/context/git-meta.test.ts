@@ -78,7 +78,10 @@ describe("context/git-meta — collectAuthorDates against temp repo", () => {
 
   test("single batched spawn regardless of repo size (~50 commits)", () => {
     for (let i = 0; i < 50; i++) {
-      repo.write(`src/file-${String(i)}.ts`, `export const x = ${String(i)};\n`);
+      repo.write(
+        `src/file-${String(i)}.ts`,
+        `export const x = ${String(i)};\n`,
+      );
       repo.run(["add", `src/file-${String(i)}.ts`]);
       repo.run(["commit", "-m", `feat: file ${String(i)}`]);
     }

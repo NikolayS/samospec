@@ -1,7 +1,7 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -39,7 +39,7 @@ const fresh = (): ContextJson => ({
       bytes: 400_000,
       blob: "b".repeat(40),
       included: false,
-      gist_id: ("b".repeat(40)) + ".md",
+      gist_id: "b".repeat(40) + ".md",
       risk_flags: ["large_file_truncated"],
     },
   ],
@@ -68,8 +68,10 @@ describe("context/provenance — schema (SPEC §7, §9)", () => {
 
   test("negative bytes are rejected", () => {
     const bad = fresh();
-    // @ts-expect-error intentional mutation for negative test
-    bad.files[0].bytes = -1;
+    // Mutate bytes to an invalid negative value. The schema stamp
+    // (z.number().int().nonnegative()) must reject.
+    const firstFile = bad.files[0] as { bytes: number } | undefined;
+    if (firstFile !== undefined) firstFile.bytes = -1;
     const r = contextJsonSchema.safeParse(bad);
     expect(r.success).toBe(false);
   });

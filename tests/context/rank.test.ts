@@ -43,9 +43,9 @@ describe("context/rank — bucket classification (SPEC §7)", () => {
     expect(classifyBucket("src/auth/login.ts", ["src/auth"])).toBe(
       "user-source",
     );
-    expect(classifyBucket("src/billing/x.rs", ["src/auth", "src/billing"])).toBe(
-      "user-source",
-    );
+    expect(
+      classifyBucket("src/billing/x.rs", ["src/auth", "src/billing"]),
+    ).toBe("user-source");
     expect(classifyBucket("src/other/x.ts", ["src/auth"])).toBe("other");
   });
 

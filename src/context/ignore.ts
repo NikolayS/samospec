@@ -101,9 +101,7 @@ function compileOne(source: string): IgnorePattern {
  * Load `.samospec-ignore` from the repo root. Returns the empty array
  * when the file is absent.
  */
-export function loadSamospecIgnore(
-  repoPath: string,
-): readonly IgnorePattern[] {
+export function loadSamospecIgnore(repoPath: string): readonly IgnorePattern[] {
   const file = path.join(repoPath, ".samospec-ignore");
   if (!existsSync(file)) return [];
   const raw = readFileSync(file, "utf8");

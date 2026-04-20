@@ -112,11 +112,13 @@ export interface RankedFile {
  * descending (newer wins). Files without an authored-at date sort to
  * the end of their bucket (but preserve input order amongst themselves).
  */
+interface RankedRow {
+  readonly idx: number;
+  readonly file: RankedFile;
+}
+
 export function rankFiles(args: RankFilesArgs): readonly RankedFile[] {
-  const enriched: Array<{
-    readonly idx: number;
-    readonly file: RankedFile;
-  }> = args.paths.map((p, idx) => ({
+  const enriched: RankedRow[] = args.paths.map((p, idx) => ({
     idx,
     file: {
       path: p,

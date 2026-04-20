@@ -14,12 +14,7 @@
  */
 
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const GIST_CACHE_REL = path.join(".samospec", "cache", "gists");
@@ -53,18 +48,13 @@ export function parseImportsExports(
   filePath: string,
 ): ImportsExports {
   const lower = filePath.toLowerCase();
-  if (/\.(?:ts|tsx|js|jsx|mjs|cjs)$/.test(lower)) {
-    return parseTsImportsExports(content);
+  const tsExtensions = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
+  for (const ext of tsExtensions) {
+    if (lower.endsWith(ext)) return parseTsImportsExports(content);
   }
-  if (/\.py$/.test(lower)) {
-    return parsePyImports(content);
-  }
-  if (/\.rs$/.test(lower)) {
-    return parseRsUseItems(content);
-  }
-  if (/\.go$/.test(lower)) {
-    return parseGoImports(content);
-  }
+  if (lower.endsWith(".py")) return parsePyImports(content);
+  if (lower.endsWith(".rs")) return parseRsUseItems(content);
+  if (lower.endsWith(".go")) return parseGoImports(content);
   return { imports: [], exports: [] };
 }
 
@@ -72,8 +62,7 @@ function parseTsImportsExports(content: string): ImportsExports {
   const imports = new Set<string>();
   const exports = new Set<string>();
 
-  const importRe =
-    /import\s+(?:[^;'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
+  const importRe = /import\s+(?:[^;'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
   for (const m of content.matchAll(importRe)) {
     imports.add(m[1] ?? "");
   }
@@ -145,9 +134,7 @@ export function buildDeterministicGist(
   const bytes = Buffer.byteLength(args.content, "utf8");
   const lineCount = countLines(args.content);
   const date =
-    args.authoredAt !== undefined
-      ? isoDate(args.authoredAt)
-      : "(unknown)";
+    args.authoredAt !== undefined ? isoDate(args.authoredAt) : "(unknown)";
   const { imports, exports } = parseImportsExports(args.content, args.path);
 
   const lines: string[] = [];

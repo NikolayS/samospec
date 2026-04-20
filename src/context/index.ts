@@ -24,11 +24,7 @@ export {
   type ContextBudgets,
   type FitFilesToBudgetArgs,
 } from "./budget.ts";
-export {
-  ENVELOPE_SYSTEM_NOTE,
-  wrap,
-  type WrapArgs,
-} from "./envelope.ts";
+export { ENVELOPE_SYSTEM_NOTE, wrap, type WrapArgs } from "./envelope.ts";
 export {
   buildDeterministicGist,
   computeBlobSha,

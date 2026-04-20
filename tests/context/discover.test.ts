@@ -1,8 +1,14 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { readFileSync, existsSync, symlinkSync } from "node:fs";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -74,8 +80,7 @@ describe("context/discover — symlink safety (SPEC §7)", () => {
     // to it. git ls-files --others --exclude-standard will list the
     // symlink itself; we must refuse.
     const target = path.join(outside, "secret.txt");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    Bun.write(target, "outside secret");
+    writeFileSync(target, "outside secret");
     symlinkSync(target, path.join(repo.dir, "rogue-link"));
 
     const candidates = ["README.md", "rogue-link"];

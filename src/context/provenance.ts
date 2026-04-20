@@ -101,7 +101,10 @@ export function writeContextJson(file: string, ctx: ContextJson): void {
   const dir = path.dirname(file);
   mkdirSync(dir, { recursive: true });
 
-  const tmp = path.join(dir, `.${path.basename(file)}.tmp.${String(process.pid)}`);
+  const tmp = path.join(
+    dir,
+    `.${path.basename(file)}.tmp.${String(process.pid)}`,
+  );
   const payload = `${JSON.stringify(parsed.data, null, 2)}\n`;
 
   const fd = openSync(tmp, "w", 0o644);

@@ -54,9 +54,7 @@ describe("context/envelope — content-unique delimiter (SPEC §7)", () => {
     // valid terminator (it lacks the `_deadbeef` suffix).
     expect(env).toContain("</repo_content>");
     // And the suffix-less form should appear BEFORE the real close.
-    expect(env.indexOf("</repo_content>")).toBeLessThan(
-      env.indexOf(realClose),
-    );
+    expect(env.indexOf("</repo_content>")).toBeLessThan(env.indexOf(realClose));
   });
 
   test("path attribute XML-escapes double quotes and angle brackets", () => {

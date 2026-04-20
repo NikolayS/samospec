@@ -47,6 +47,15 @@ import {
 
 export type ContextPhase = ContextJson["phase"];
 
+interface LoadedFile {
+  readonly path: string;
+  readonly content: string;
+  readonly bytes: number;
+  readonly blob: string;
+  readonly authoredAt: number | undefined;
+  readonly riskFlags: RiskFlag[];
+}
+
 export interface DiscoverContextArgs {
   readonly repoPath: string;
   readonly slug: string;
@@ -99,16 +108,7 @@ export function discoverContext(
   });
 
   // 6. Load content, apply large-file truncation, track risk flags.
-  type Loaded = {
-    readonly path: string;
-    readonly content: string;
-    readonly bytes: number;
-    readonly blob: string;
-    readonly authoredAt: number | undefined;
-    readonly riskFlags: RiskFlag[];
-  };
-
-  const loaded: Loaded[] = [];
+  const loaded: LoadedFile[] = [];
   for (const r of ranked) {
     const full = path.join(args.repoPath, r.path);
     let rawBuf: Buffer;
@@ -182,9 +182,7 @@ export function discoverContext(
     fileEntries.push(entry);
 
     if (included) {
-      chunks.push(
-        wrap({ path: l.path, content: l.content, blobSha: l.blob }),
-      );
+      chunks.push(wrap({ path: l.path, content: l.content, blobSha: l.blob }));
     } else {
       // Ensure the deterministic gist cache entry exists.
       readOrCreateGist({
