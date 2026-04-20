@@ -597,9 +597,7 @@ export class CodexAdapter implements Adapter {
     // Account-default tier (#54): omit --model so codex picks the
     // account's supported default. All other tiers pin the model.
     const modelFlags: readonly string[] =
-      args.model === ACCOUNT_DEFAULT_SENTINEL
-        ? []
-        : ["--model", args.model];
+      args.model === ACCOUNT_DEFAULT_SENTINEL ? [] : ["--model", args.model];
     const cmd: readonly string[] = [
       args.binary,
       ...CODEX_NON_INTERACTIVE_FLAGS,
@@ -744,9 +742,7 @@ function normalizeUsageAndEffort(
 //
 // Returns a CodexAttemptFail classified as model_unavailable when the
 // stdout matches this pattern, or null when it does not apply.
-function classifyStdoutApiError(
-  stdout: string,
-): CodexAttemptFail | null {
+function classifyStdoutApiError(stdout: string): CodexAttemptFail | null {
   // Fast path: must contain "invalid_request_error" to be an API error.
   if (!stdout.includes("invalid_request_error")) {
     return null;
@@ -762,11 +758,7 @@ function classifyStdoutApiError(
   } catch {
     return null;
   }
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    !("error" in parsed)
-  ) {
+  if (typeof parsed !== "object" || parsed === null || !("error" in parsed)) {
     return null;
   }
   const { error } = parsed as { error: unknown };

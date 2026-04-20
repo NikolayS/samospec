@@ -15,43 +15,22 @@
 // Fixture: fake-CLI emitting the real ChatGPT-auth error shape on
 // stdout with exit 0 (confirmed codex behavior).
 
-import {
-  afterAll,
-  describe,
-  expect,
-  test,
-} from "bun:test";
-import {
-  mkdtempSync,
-  writeFileSync,
-  chmodSync,
-  rmSync,
-} from "node:fs";
+import { afterAll, describe, expect, test } from "bun:test";
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import {
-  CodexAdapter,
-  CodexAdapterError,
-} from "../../src/adapter/codex.ts";
+import { CodexAdapter, CodexAdapterError } from "../../src/adapter/codex.ts";
 import type { AskInput, EffortLevel } from "../../src/adapter/types.ts";
-import type {
-  SpawnCliInput,
-  SpawnCliResult,
-} from "../../src/adapter/spawn.ts";
+import type { SpawnCliInput, SpawnCliResult } from "../../src/adapter/spawn.ts";
 import { spawnCli } from "../../src/adapter/spawn.ts";
 
 const BUN_DIR = dirname(process.execPath);
-const FAKE_CLI = new URL(
-  "../fixtures/fake-cli.ts",
-  import.meta.url,
-).pathname;
+const FAKE_CLI = new URL("../fixtures/fake-cli.ts", import.meta.url).pathname;
 
 function codexFixture(name: string): string {
-  return new URL(
-    `../fixtures/codex-fixtures/${name}`,
-    import.meta.url,
-  ).pathname;
+  return new URL(`../fixtures/codex-fixtures/${name}`, import.meta.url)
+    .pathname;
 }
 
 const TMP: string[] = [];
@@ -119,9 +98,7 @@ function makeFakeCliSpy(opts: {
   stateFile?: string;
 }): SpawnSpy {
   const calls: SpawnSpyCall[] = [];
-  const spawn = async (
-    input: SpawnCliInput,
-  ): Promise<SpawnCliResult> => {
+  const spawn = async (input: SpawnCliInput): Promise<SpawnCliResult> => {
     calls.push({
       cmd: [...input.cmd],
       stdin: input.stdin,
@@ -140,8 +117,7 @@ function makeFakeCliSpy(opts: {
       ...(input.host ?? {}),
     };
     const hostPath = hostSnapshot["PATH"] ?? "";
-    hostSnapshot["PATH"] =
-      hostPath === "" ? BUN_DIR : `${BUN_DIR}:${hostPath}`;
+    hostSnapshot["PATH"] = hostPath === "" ? BUN_DIR : `${BUN_DIR}:${hostPath}`;
 
     const rewritten: SpawnCliInput = {
       cmd: ["bun", "run", FAKE_CLI],
@@ -184,133 +160,123 @@ function sampleAsk(): AskInput {
 
 // ---------- Bug 1: misclassification (exit-0 + stdout error JSON) ----------
 
-describe(
-  "Bug #54-1: ChatGPT-auth error on stdout exit-0 → model_unavailable",
-  () => {
-    test(
-      "exit-0 with invalid_request_error stdout classifies as " +
-        "model_unavailable, not schema_violation",
-      async () => {
-        // The real Codex CLI emits the error JSON on stdout with exit 0
-        // when the model is not supported under ChatGPT-account auth.
-        // The current adapter misses this and falls through to the
-        // schema-repair path, ultimately classifying it as schema_violation.
-        const spy = makeSpy({
-          ok: true,
-          exitCode: 0,
-          stdout:
-            "ERROR: " +
-            JSON.stringify({
-              type: "error",
-              status: 400,
-              error: {
-                type: "invalid_request_error",
-                message:
-                  "The 'gpt-5.1-codex-max' model is not supported " +
-                  "when using Codex with a ChatGPT account.",
-              },
-            }) +
-            "\n",
-          stderr: "",
-        });
-        const { host } = makeInstalledHost();
-        const adapter = new CodexAdapter({
-          host,
-          spawn: spy.spawn,
-          // Single-model list + no account-default so we test
-          // classification in isolation without the fallback chain.
-          models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
-          accountDefaultFallback: false,
-        });
+describe("Bug #54-1: ChatGPT-auth error on stdout exit-0 → model_unavailable", () => {
+  test(
+    "exit-0 with invalid_request_error stdout classifies as " +
+      "model_unavailable, not schema_violation",
+    async () => {
+      // The real Codex CLI emits the error JSON on stdout with exit 0
+      // when the model is not supported under ChatGPT-account auth.
+      // The current adapter misses this and falls through to the
+      // schema-repair path, ultimately classifying it as schema_violation.
+      const spy = makeSpy({
+        ok: true,
+        exitCode: 0,
+        stdout:
+          "ERROR: " +
+          JSON.stringify({
+            type: "error",
+            status: 400,
+            error: {
+              type: "invalid_request_error",
+              message:
+                "The 'gpt-5.1-codex-max' model is not supported " +
+                "when using Codex with a ChatGPT account.",
+            },
+          }) +
+          "\n",
+        stderr: "",
+      });
+      const { host } = makeInstalledHost();
+      const adapter = new CodexAdapter({
+        host,
+        spawn: spy.spawn,
+        // Single-model list + no account-default so we test
+        // classification in isolation without the fallback chain.
+        models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+        accountDefaultFallback: false,
+      });
 
-        let err: unknown;
-        try {
-          await adapter.ask(sampleAsk());
-        } catch (e) {
-          err = e;
-        }
-        expect(err).toBeInstanceOf(CodexAdapterError);
-        if (err instanceof CodexAdapterError) {
-          expect(err.payload.reason).toBe("model_unavailable");
-          expect(err.payload.kind).toBe("terminal");
-          // Must NOT be schema_violation (the pre-fix regression).
-          expect(err.payload.reason).not.toBe("schema_violation");
-        }
-      },
-    );
+      let err: unknown;
+      try {
+        await adapter.ask(sampleAsk());
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(CodexAdapterError);
+      if (err instanceof CodexAdapterError) {
+        expect(err.payload.reason).toBe("model_unavailable");
+        expect(err.payload.kind).toBe("terminal");
+        // Must NOT be schema_violation (the pre-fix regression).
+        expect(err.payload.reason).not.toBe("schema_violation");
+      }
+    },
+  );
 
-    test(
-      "fake-CLI fixture: real ChatGPT-auth error shape classifies as " +
-        "model_unavailable",
-      async () => {
-        const spy = makeFakeCliSpy({
-          fixture: codexFixture("chatgpt-auth-error-max.json"),
-        });
-        const { host } = makeInstalledHost();
-        const adapter = new CodexAdapter({
-          host,
-          spawn: spy.spawn,
-          // Disable account-default to isolate the classification test.
-          models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
-          accountDefaultFallback: false,
-        });
+  test(
+    "fake-CLI fixture: real ChatGPT-auth error shape classifies as " +
+      "model_unavailable",
+    async () => {
+      const spy = makeFakeCliSpy({
+        fixture: codexFixture("chatgpt-auth-error-max.json"),
+      });
+      const { host } = makeInstalledHost();
+      const adapter = new CodexAdapter({
+        host,
+        spawn: spy.spawn,
+        // Disable account-default to isolate the classification test.
+        models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+        accountDefaultFallback: false,
+      });
 
-        let err: unknown;
-        try {
-          await adapter.ask(sampleAsk());
-        } catch (e) {
-          err = e;
-        }
-        expect(err).toBeInstanceOf(CodexAdapterError);
-        if (err instanceof CodexAdapterError) {
-          expect(err.payload.reason).toBe("model_unavailable");
-        }
-        // Only one spawn — no repair retry on model_unavailable.
-        expect(spy.calls.length).toBe(1);
-      },
-    );
-  },
-);
+      let err: unknown;
+      try {
+        await adapter.ask(sampleAsk());
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(CodexAdapterError);
+      if (err instanceof CodexAdapterError) {
+        expect(err.payload.reason).toBe("model_unavailable");
+      }
+      // Only one spawn — no repair retry on model_unavailable.
+      expect(spy.calls.length).toBe(1);
+    },
+  );
+});
 
 // ---------- Bug 2: no account-default fallback tier ----------
 
 describe("Bug #54-2: account-default fallback after both explicit pins fail", () => {
-  test(
-    "both explicit pins → model_unavailable, third call has NO --model flag",
-    async () => {
-      const stateDir = mkdtempSync(
-        join(tmpdir(), "samospec-codex54-state-"),
-      );
-      TMP.push(stateDir);
-      const stateJson = join(stateDir, "state.json");
-      writeFileSync(stateJson, JSON.stringify({ call: 0 }));
+  test("both explicit pins → model_unavailable, third call has NO --model flag", async () => {
+    const stateDir = mkdtempSync(join(tmpdir(), "samospec-codex54-state-"));
+    TMP.push(stateDir);
+    const stateJson = join(stateDir, "state.json");
+    writeFileSync(stateJson, JSON.stringify({ call: 0 }));
 
-      const spy = makeFakeCliSpy({
-        fixture: codexFixture(
-          "chatgpt-auth-both-fail-then-default.json",
-        ),
-        stateFile: stateJson,
-      });
-      const { host } = makeInstalledHost();
-      const adapter = new CodexAdapter({ host, spawn: spy.spawn });
+    const spy = makeFakeCliSpy({
+      fixture: codexFixture("chatgpt-auth-both-fail-then-default.json"),
+      stateFile: stateJson,
+    });
+    const { host } = makeInstalledHost();
+    const adapter = new CodexAdapter({ host, spawn: spy.spawn });
 
-      const out = await adapter.ask(sampleAsk());
+    const out = await adapter.ask(sampleAsk());
 
-      // The adapter must succeed using the account-default tier.
-      expect(out.answer).toBe("account-default-ok");
+    // The adapter must succeed using the account-default tier.
+    expect(out.answer).toBe("account-default-ok");
 
-      // Three spawns: gpt-5.1-codex-max (fail), gpt-5.1-codex (fail),
-      // account-default (no --model flag, success).
-      expect(spy.calls.length).toBe(3);
+    // Three spawns: gpt-5.1-codex-max (fail), gpt-5.1-codex (fail),
+    // account-default (no --model flag, success).
+    expect(spy.calls.length).toBe(3);
 
-      // Third call must NOT include --model in argv.
-      const thirdCmd = spy.calls[2]?.cmd ?? [];
-      expect(thirdCmd).not.toContain("--model");
-      // First and second calls had explicit --model pins.
-      expect(spy.calls[0]?.cmd).toContain("--model");
-      expect(spy.calls[1]?.cmd).toContain("--model");
-    },
-  );
+    // Third call must NOT include --model in argv.
+    const thirdCmd = spy.calls[2]?.cmd ?? [];
+    expect(thirdCmd).not.toContain("--model");
+    // First and second calls had explicit --model pins.
+    expect(spy.calls[0]?.cmd).toContain("--model");
+    expect(spy.calls[1]?.cmd).toContain("--model");
+  });
 
   test(
     "account-default success → adapter records account_default: true" +
@@ -373,24 +339,41 @@ describe("Bug #54-2: account-default fallback after both explicit pins fail", ()
 
       // The adapter must expose account_default resolution so the
       // resolver / state.json layer can surface it.
-      expect((out as Record<string, unknown>)["account_default"]).toBe(
-        true,
-      );
+      expect((out as Record<string, unknown>)["account_default"]).toBe(true);
     },
   );
 });
 
 // ---------- Bug 3: terminal when account-default also fails ----------
 
-describe(
-  "Bug #54-3: terminal with informative message when all tiers fail",
-  () => {
-    test(
-      "all three tiers fail → terminal CodexAdapterError listing " +
-        "all attempted tiers",
-      async () => {
-        // All three responses: ChatGPT-auth error (exit 0, stdout)
-        const chatGptError = (model: string): SpawnCliResult => ({
+describe("Bug #54-3: terminal with informative message when all tiers fail", () => {
+  test(
+    "all three tiers fail → terminal CodexAdapterError listing " +
+      "all attempted tiers",
+    async () => {
+      // All three responses: ChatGPT-auth error (exit 0, stdout)
+      const chatGptError = (model: string): SpawnCliResult => ({
+        ok: true,
+        exitCode: 0,
+        stdout:
+          "ERROR: " +
+          JSON.stringify({
+            type: "error",
+            status: 400,
+            error: {
+              type: "invalid_request_error",
+              message: `The '${model}' model is not supported when using Codex with a ChatGPT account.`,
+            },
+          }) +
+          "\n",
+        stderr: "",
+      });
+
+      const spy = makeSpy([
+        chatGptError("gpt-5.1-codex-max"),
+        chatGptError("gpt-5.1-codex"),
+        // Account-default also fails: same error shape, no model name.
+        {
           ok: true,
           exitCode: 0,
           stdout:
@@ -400,83 +383,58 @@ describe(
               status: 400,
               error: {
                 type: "invalid_request_error",
-                message: `The '${model}' model is not supported when using Codex with a ChatGPT account.`,
+                message:
+                  "Your ChatGPT account is not authorized " +
+                  "for Codex API access.",
               },
             }) +
             "\n",
           stderr: "",
-        });
+        },
+      ]);
+      const { host } = makeInstalledHost();
+      const adapter = new CodexAdapter({ host, spawn: spy.spawn });
 
-        const spy = makeSpy([
-          chatGptError("gpt-5.1-codex-max"),
-          chatGptError("gpt-5.1-codex"),
-          // Account-default also fails: same error shape, no model name.
-          {
-            ok: true,
-            exitCode: 0,
-            stdout:
-              "ERROR: " +
-              JSON.stringify({
-                type: "error",
-                status: 400,
-                error: {
-                  type: "invalid_request_error",
-                  message:
-                    "Your ChatGPT account is not authorized " +
-                    "for Codex API access.",
-                },
-              }) +
-              "\n",
-            stderr: "",
-          },
-        ]);
-        const { host } = makeInstalledHost();
-        const adapter = new CodexAdapter({ host, spawn: spy.spawn });
+      let err: unknown;
+      try {
+        await adapter.ask(sampleAsk());
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(CodexAdapterError);
+      if (err instanceof CodexAdapterError) {
+        expect(err.payload.kind).toBe("terminal");
+        expect(err.payload.reason).toBe("model_unavailable");
+        // The detail must mention that fallbacks were attempted so
+        // the user can diagnose the failure.
+        const detail = err.payload.detail ?? "";
+        expect(detail.toLowerCase()).toContain("account");
+      }
+      // All three tiers were attempted.
+      expect(spy.calls.length).toBe(3);
+      // Third call had no --model flag (account-default tier).
+      const thirdCmd = spy.calls[2]?.cmd ?? [];
+      expect(thirdCmd).not.toContain("--model");
+    },
+  );
 
-        let err: unknown;
-        try {
-          await adapter.ask(sampleAsk());
-        } catch (e) {
-          err = e;
-        }
-        expect(err).toBeInstanceOf(CodexAdapterError);
-        if (err instanceof CodexAdapterError) {
-          expect(err.payload.kind).toBe("terminal");
-          expect(err.payload.reason).toBe("model_unavailable");
-          // The detail must mention that fallbacks were attempted so
-          // the user can diagnose the failure.
-          const detail = err.payload.detail ?? "";
-          expect(detail.toLowerCase()).toContain("account");
-        }
-        // All three tiers were attempted.
-        expect(spy.calls.length).toBe(3);
-        // Third call had no --model flag (account-default tier).
-        const thirdCmd = spy.calls[2]?.cmd ?? [];
-        expect(thirdCmd).not.toContain("--model");
-      },
-    );
+  test("fake-CLI fixture: all-fail path → terminal model_unavailable", async () => {
+    const spy = makeFakeCliSpy({
+      fixture: codexFixture("chatgpt-auth-all-fail.json"),
+    });
+    const { host } = makeInstalledHost();
+    const adapter = new CodexAdapter({ host, spawn: spy.spawn });
 
-    test(
-      "fake-CLI fixture: all-fail path → terminal model_unavailable",
-      async () => {
-        const spy = makeFakeCliSpy({
-          fixture: codexFixture("chatgpt-auth-all-fail.json"),
-        });
-        const { host } = makeInstalledHost();
-        const adapter = new CodexAdapter({ host, spawn: spy.spawn });
-
-        let err: unknown;
-        try {
-          await adapter.ask(sampleAsk());
-        } catch (e) {
-          err = e;
-        }
-        expect(err).toBeInstanceOf(CodexAdapterError);
-        if (err instanceof CodexAdapterError) {
-          expect(err.payload.kind).toBe("terminal");
-          expect(err.payload.reason).toBe("model_unavailable");
-        }
-      },
-    );
-  },
-);
+    let err: unknown;
+    try {
+      await adapter.ask(sampleAsk());
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CodexAdapterError);
+    if (err instanceof CodexAdapterError) {
+      expect(err.payload.kind).toBe("terminal");
+      expect(err.payload.reason).toBe("model_unavailable");
+    }
+  });
+});
