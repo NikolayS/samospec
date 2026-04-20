@@ -1,0 +1,9 @@
+{
+  "script": [
+    {
+      "type": "stdout",
+      "text": "{\"findings\":[{\"category\":\"missing-risk\",\"text\":\"credentials file not locked down\",\"severity\":\"major\"}],\"summary\":\"one missing-risk finding\",\"suggested_next_version\":\"0.1.1\",\"usage\":null,\"effort_used\":\"high\"}"
+    },
+    { "type": "exit", "code": 0 }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "script": [
+    {
+      "type": "stderr",
+      "text": "error: model is not available for this account\n"
+    },
+    { "type": "exit", "code": 2 }
+  ]
+}

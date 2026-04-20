@@ -1,0 +1,22 @@
+{
+  "branches": {
+    "0": {
+      "script": [
+        {
+          "type": "stderr",
+          "text": "error: model 'gpt-5.1-codex-max' is not available for this account\n"
+        },
+        { "type": "exit", "code": 2 }
+      ]
+    },
+    "default": {
+      "script": [
+        {
+          "type": "stdout",
+          "text": "{\"answer\":\"fallback-ok\",\"usage\":null,\"effort_used\":\"high\"}"
+        },
+        { "type": "exit", "code": 0 }
+      ]
+    }
+  }
+}

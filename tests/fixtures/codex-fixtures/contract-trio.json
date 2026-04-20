@@ -1,0 +1,40 @@
+{
+  "branches": {
+    "0": {
+      "script": [
+        {
+          "type": "stdout",
+          "text": "{\"answer\":\"ok\",\"usage\":null,\"effort_used\":\"max\"}"
+        },
+        { "type": "exit", "code": 0 }
+      ]
+    },
+    "1": {
+      "script": [
+        {
+          "type": "stdout",
+          "text": "{\"findings\":[{\"category\":\"missing-risk\",\"text\":\"x\",\"severity\":\"major\"}],\"summary\":\"s\",\"suggested_next_version\":\"0.1.1\",\"usage\":null,\"effort_used\":\"max\"}"
+        },
+        { "type": "exit", "code": 0 }
+      ]
+    },
+    "2": {
+      "script": [
+        {
+          "type": "stdout",
+          "text": "{\"spec\":\"# SPEC\\n\\n.\",\"ready\":false,\"rationale\":\"reviewer seat — no revise commitment\",\"usage\":null,\"effort_used\":\"max\"}"
+        },
+        { "type": "exit", "code": 0 }
+      ]
+    },
+    "default": {
+      "script": [
+        {
+          "type": "stdout",
+          "text": "{\"answer\":\"extra-call\",\"usage\":null,\"effort_used\":\"max\"}"
+        },
+        { "type": "exit", "code": 0 }
+      ]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "script": [
+    {
+      "type": "stdout",
+      "text": "```json\n{\"answer\":\"fenced-ok\",\"usage\":null,\"effort_used\":\"high\"}\n```"
+    },
+    { "type": "exit", "code": 0 }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "script": [
+    {
+      "type": "stdout",
+      "text": "{\"spec\":\"# SPEC\\n\\nrevised by reviewer A.\",\"ready\":false,\"rationale\":\"review seat rarely revises but the method must work\",\"usage\":null,\"effort_used\":\"high\"}"
+    },
+    { "type": "exit", "code": 0 }
+  ]
+}
