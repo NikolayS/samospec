@@ -58,6 +58,23 @@ describe("buildMinimalEnv (SPEC §7 minimal-env spawn)", () => {
     });
     expect(env["OPENAI_API_KEY"]).toBeUndefined();
   });
+
+  test("forwards USER and LOGNAME for macOS Keychain OAuth (#50)", () => {
+    const env = buildMinimalEnv({
+      host: {
+        HOME: "/home/nik",
+        PATH: "/usr/bin",
+        TMPDIR: "/tmp",
+        USER: "nik",
+        LOGNAME: "nik",
+        SECRET: "s3cr3t",
+      },
+      extraAllowedKeys: [],
+    });
+    expect(env["USER"]).toBe("nik");
+    expect(env["LOGNAME"]).toBe("nik");
+    expect(env["SECRET"]).toBeUndefined();
+  });
 });
 
 describe("non-interactive flag documentation (SPEC §7)", () => {

@@ -31,7 +31,14 @@ export const CLAUDE_NON_INTERACTIVE_FLAGS: readonly string[] = [
 
 export const CODEX_NON_INTERACTIVE_FLAGS: readonly string[] = ["exec"];
 
-const BASELINE_ALLOWED_ENV_KEYS: readonly string[] = ["HOME", "PATH", "TMPDIR"];
+const BASELINE_ALLOWED_ENV_KEYS: readonly string[] = [
+  "HOME",
+  "PATH",
+  "TMPDIR",
+  // USER and LOGNAME are required for macOS Keychain OAuth (#50).
+  "USER",
+  "LOGNAME",
+];
 
 export interface BuildMinimalEnvInput {
   readonly host: Readonly<Record<string, string | undefined>>;
