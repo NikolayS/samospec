@@ -7,7 +7,6 @@ import { ClaudeAdapter } from "./adapter/claude.ts";
 import { ClaudeResolver } from "./adapter/claude-resolver.ts";
 import { ClaudeReviewerBAdapter } from "./adapter/claude-reviewer-b.ts";
 import { CodexAdapter } from "./adapter/codex.ts";
-import { createFakeAdapter } from "./adapter/fake-adapter.ts";
 import type { Adapter } from "./adapter/types.ts";
 import { runInit } from "./cli/init.ts";
 import { runDoctor, type DoctorAdapterBinding } from "./cli/doctor.ts";
@@ -56,16 +55,15 @@ const USAGE =
   "  version                     Print the samospec version and exit.\n";
 
 /**
- * Default adapter bindings for `samospec doctor`. Sprint 1 only ships
- * the fake adapter (real adapters land in Sprint 2+). The fake's
- * default program is tuned to `installed: true` + `authenticated: true`
- * + `subscription_auth: true`, which realistically surfaces every
- * branch of the doctor output when invoked interactively.
+ * Default adapter bindings for `samospec doctor`. Uses the real
+ * ClaudeAdapter and CodexAdapter (shipped in Sprints 2–3) so that
+ * doctor probes the actual installed CLIs on the user's PATH. The
+ * fake adapter is for tests only and must not appear here.
  */
 function defaultAdapterBindings(): readonly DoctorAdapterBinding[] {
   return [
-    { label: "claude", adapter: createFakeAdapter() },
-    { label: "codex", adapter: createFakeAdapter() },
+    { label: "claude", adapter: new ClaudeAdapter() },
+    { label: "codex", adapter: new CodexAdapter() },
   ];
 }
 
