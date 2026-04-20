@@ -45,9 +45,7 @@ export interface DegradedResult {
  * seat name + actual model so the status line and changelog carry enough
  * context for a user to decide whether to accept/abort.
  */
-export function detectDegradedResolution(
-  input: DegradedInput,
-): DegradedResult {
+export function detectDegradedResolution(input: DegradedInput): DegradedResult {
   const items: string[] = [];
   if (input.lead.model_id !== DEFAULT_LEAD_MODEL) {
     items.push(`lead fell back to ${input.lead.model_id}`);

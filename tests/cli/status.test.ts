@@ -20,7 +20,11 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function seedMinimal(slug: string, round: number = 1, override: Partial<State> = {}): void {
+function seedMinimal(
+  slug: string,
+  round = 1,
+  override: Partial<State> = {},
+): void {
   const slugDir = path.join(tmp, ".samospec", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   const state: State = {
@@ -50,9 +54,7 @@ describe("cli/status — preconditions", () => {
       cwd: tmp,
       slug: "no-such-slug",
       now: "2026-04-19T12:10:00Z",
-      adapters: [
-        { role: "lead", adapter: createFakeAdapter({}) },
-      ],
+      adapters: [{ role: "lead", adapter: createFakeAdapter({}) }],
     });
     expect(res.exitCode).toBe(1);
     expect(res.stderr).toContain("samospec new no-such-slug");

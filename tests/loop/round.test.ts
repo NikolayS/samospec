@@ -1,7 +1,7 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -116,7 +116,8 @@ describe("loop/round — partial failure (SPEC §7)", () => {
     // Failing reviewer B.
     const revB: Adapter = {
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,
@@ -152,7 +153,8 @@ describe("loop/round — partial failure (SPEC §7)", () => {
     let bCalls = 0;
     const revA: Adapter = {
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,
@@ -167,7 +169,8 @@ describe("loop/round — partial failure (SPEC §7)", () => {
     };
     const revB: Adapter = {
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,
@@ -200,7 +203,8 @@ describe("loop/round — partial failure (SPEC §7)", () => {
     const lead = createFakeAdapter({ revise: READY_REVISE });
     const failingA: Adapter = {
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,
@@ -235,15 +239,15 @@ describe("loop/round — lead_terminal (SPEC §7)", () => {
   test("lead revise() throws -> roundStopReason=lead_terminal", async () => {
     const leadTerminal: Adapter = {
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("unused")),
-      revise: () =>
-        Promise.reject(new Error("model refused to continue")),
+      revise: () => Promise.reject(new Error("model refused to continue")),
     };
     const revA = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
     const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
@@ -316,7 +320,7 @@ describe("loop/round — helpers", () => {
   test("renderCritiqueMarkdown + recoverCritiqueFromFile round-trip", () => {
     const body = renderCritiqueMarkdown(SAMPLE_CRITIQUE, "reviewer_a");
     const file = path.join(tmp, "codex.md");
-    require("node:fs").writeFileSync(file, body, "utf8");
+    writeFileSync(file, body, "utf8");
     const recovered = recoverCritiqueFromFile(file);
     expect(recovered).not.toBeNull();
     expect(recovered?.findings.length).toBe(2);
@@ -356,7 +360,8 @@ describe("loop/round — decisions_history passthrough", () => {
     let seenHistory: unknown;
     const lead: Adapter = {
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,

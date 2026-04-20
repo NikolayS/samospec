@@ -120,7 +120,9 @@ function seedSpec(cwd: string, slug: string): State {
   };
   writeState(path.join(slugDir, "state.json"), state);
   spawnSync("git", ["add", "."], { cwd });
-  spawnSync("git", ["commit", "-q", "-m", "spec(refunds): draft v0.1"], { cwd });
+  spawnSync("git", ["commit", "-q", "-m", "spec(refunds): draft v0.1"], {
+    cwd,
+  });
   return state;
 }
 
@@ -136,9 +138,7 @@ const DEFAULT_TIME_INPUTS = {
 };
 
 const SAMPLE_CRITIQUE: CritiqueOutput = {
-  findings: [
-    { category: "ambiguity", text: "ambig #1", severity: "minor" },
-  ],
+  findings: [{ category: "ambiguity", text: "ambig #1", severity: "minor" }],
   summary: "summary",
   suggested_next_version: "0.2",
   usage: null,
@@ -329,7 +329,7 @@ describe("loop/idempotency — second iterate after committed round", () => {
     // Either ready or max-rounds is valid here; when maxRounds equals
     // the round index, the classifier prefers max-rounds first. We
     // care that the second round actually ran and committed.
-    expect(["ready", "max-rounds"]).toContain(r2.stopReason);
+    expect(["ready", "max-rounds"]).toContain(r2.stopReason ?? "unknown");
 
     const afterTwo: State = JSON.parse(
       readFileSync(path.join(slugDir, "state.json"), "utf8"),

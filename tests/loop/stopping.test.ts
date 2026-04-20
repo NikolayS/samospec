@@ -339,8 +339,16 @@ describe("loop/stopping — classifyAllStops (SPEC §12 eight conditions)", () =
       currentRoundIndex: 2,
       maxRounds: 10,
       leadReady: false,
-      previous: { ...prev, diffLines: 100, nonSummaryCategoriesWithFindings: 2 },
-      current: { ...signals, diffLines: 100, nonSummaryCategoriesWithFindings: 2 },
+      previous: {
+        ...prev,
+        diffLines: 100,
+        nonSummaryCategoriesWithFindings: 2,
+      },
+      current: {
+        ...signals,
+        diffLines: 100,
+        nonSummaryCategoriesWithFindings: 2,
+      },
       reviewerAvailability: 2,
       wallClockOk: true,
       budgetOk: true,

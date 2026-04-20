@@ -2,7 +2,14 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -38,7 +45,11 @@ function initRepo(cwd: string): void {
 function seedSpec(cwd: string, slug: string): State {
   const slugDir = path.join(cwd, ".samospec", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
-  writeFileSync(path.join(slugDir, "SPEC.md"), "# SPEC\n\ncontent v0.1\n", "utf8");
+  writeFileSync(
+    path.join(slugDir, "SPEC.md"),
+    "# SPEC\n\ncontent v0.1\n",
+    "utf8",
+  );
   writeFileSync(path.join(slugDir, "TLDR.md"), "# TLDR\n\n- old\n", "utf8");
   writeFileSync(
     path.join(slugDir, "decisions.md"),
@@ -63,7 +74,12 @@ function seedSpec(cwd: string, slug: string): State {
   );
   writeFileSync(
     path.join(slugDir, "context.json"),
-    JSON.stringify({ phase: "draft", files: [], risk_flags: [], budget: { phase: "draft", tokens_used: 0, tokens_budget: 0 } }),
+    JSON.stringify({
+      phase: "draft",
+      files: [],
+      risk_flags: [],
+      budget: { phase: "draft", tokens_used: 0, tokens_budget: 0 },
+    }),
     "utf8",
   );
   const state: State = {
@@ -84,7 +100,9 @@ function seedSpec(cwd: string, slug: string): State {
   };
   writeState(path.join(slugDir, "state.json"), state);
   spawnSync("git", ["add", "."], { cwd });
-  spawnSync("git", ["commit", "-q", "-m", "spec(refunds): draft v0.1"], { cwd });
+  spawnSync("git", ["commit", "-q", "-m", "spec(refunds): draft v0.1"], {
+    cwd,
+  });
   return state;
 }
 
@@ -207,12 +225,18 @@ describe("cli/iterate — happy path (single round ready=true)", () => {
     expect(res.roundsRun).toBe(1);
 
     // Spec updated, round dir populated.
-    expect(
-      readFileSync(path.join(slugDir, "SPEC.md"), "utf8"),
-    ).toContain("content v0.2 revised");
-    expect(existsSync(path.join(slugDir, "reviews", "r01", "round.json"))).toBe(true);
-    expect(existsSync(path.join(slugDir, "reviews", "r01", "codex.md"))).toBe(true);
-    expect(existsSync(path.join(slugDir, "reviews", "r01", "claude.md"))).toBe(true);
+    expect(readFileSync(path.join(slugDir, "SPEC.md"), "utf8")).toContain(
+      "content v0.2 revised",
+    );
+    expect(existsSync(path.join(slugDir, "reviews", "r01", "round.json"))).toBe(
+      true,
+    );
+    expect(existsSync(path.join(slugDir, "reviews", "r01", "codex.md"))).toBe(
+      true,
+    );
+    expect(existsSync(path.join(slugDir, "reviews", "r01", "claude.md"))).toBe(
+      true,
+    );
     const sidecar = JSON.parse(
       readFileSync(path.join(slugDir, "reviews", "r01", "round.json"), "utf8"),
     );
@@ -224,18 +248,14 @@ describe("cli/iterate — happy path (single round ready=true)", () => {
     expect(dec).toContain("accepted codex#1");
 
     // Changelog appended.
-    const changelog = readFileSync(
-      path.join(slugDir, "changelog.md"),
-      "utf8",
-    );
+    const changelog = readFileSync(path.join(slugDir, "changelog.md"), "utf8");
     expect(changelog).toContain("v0.2 —");
 
     // Commit visible in git log.
-    const log = spawnSync(
-      "git",
-      ["log", "--oneline"],
-      { cwd: tmp, encoding: "utf8" },
-    );
+    const log = spawnSync("git", ["log", "--oneline"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
     expect(log.stdout).toContain("refine v0.2 after review r1");
   });
 });
@@ -286,7 +306,8 @@ describe("cli/iterate — partial reviewer failure", () => {
     let observedLeadDirective: string | undefined;
     const lead: Adapter = {
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,
@@ -347,7 +368,8 @@ describe("cli/iterate — both seats fail then retry succeeds", () => {
     let bCalls = 0;
     const failFirst = (label: string): Adapter => ({
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,
@@ -448,7 +470,8 @@ describe("cli/iterate — reviewers exhausted", () => {
 
     const failing: Adapter = {
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,
@@ -485,7 +508,8 @@ describe("cli/iterate — lead_terminal", () => {
 
     const terminalLead: Adapter = {
       vendor: "fake",
-      detect: () => Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
       auth_status: () => Promise.resolve({ authenticated: true }),
       supports_structured_output: () => true,
       supports_effort: () => true,
@@ -565,11 +589,31 @@ describe("cli/iterate — repeat-findings halt (SPEC §12 condition 4)", () => {
     // Fixture: 5 near-identical findings across 2 rounds, same category.
     const identicalCritique: CritiqueOutput = {
       findings: [
-        { category: "ambiguity", text: "the spec is ambiguous about refunds", severity: "minor" },
-        { category: "ambiguity", text: "the spec is ambiguous about returns", severity: "minor" },
-        { category: "ambiguity", text: "the spec is ambiguous about shipping", severity: "minor" },
-        { category: "ambiguity", text: "the spec is ambiguous about payments", severity: "minor" },
-        { category: "ambiguity", text: "the spec is ambiguous about taxes", severity: "minor" },
+        {
+          category: "ambiguity",
+          text: "the spec is ambiguous about refunds",
+          severity: "minor",
+        },
+        {
+          category: "ambiguity",
+          text: "the spec is ambiguous about returns",
+          severity: "minor",
+        },
+        {
+          category: "ambiguity",
+          text: "the spec is ambiguous about shipping",
+          severity: "minor",
+        },
+        {
+          category: "ambiguity",
+          text: "the spec is ambiguous about payments",
+          severity: "minor",
+        },
+        {
+          category: "ambiguity",
+          text: "the spec is ambiguous about taxes",
+          severity: "minor",
+        },
       ],
       summary: "same findings",
       suggested_next_version: "0.2",

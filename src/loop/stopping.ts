@@ -26,10 +26,7 @@
  */
 
 import type { Finding, FindingCategory } from "../adapter/types.ts";
-import {
-  jaccardSimilarity,
-  normalizeForRepeatDetection,
-} from "./trigram.ts";
+import { jaccardSimilarity, normalizeForRepeatDetection } from "./trigram.ts";
 
 // ---------- constants ----------
 
@@ -386,13 +383,9 @@ export function stopReasonMessage(reason: StopReason, slug: string): string {
         `Continue with one reviewer or abort.`
       );
     case "wall-clock":
-      return (
-        `samospec: session wall-clock hit — resume to continue.`
-      );
+      return `samospec: session wall-clock hit — resume to continue.`;
     case "budget":
-      return (
-        `samospec: budget cap hit — downshift via --effort or raise budget.*.`
-      );
+      return `samospec: budget cap hit — downshift via --effort or raise budget.*.`;
     case "lead-terminal":
       return (
         `samospec: lead_terminal reached. ` +

@@ -46,9 +46,14 @@ import {
   type CallTimeoutsMs,
 } from "../policy/wallclock.ts";
 import { renderTldr } from "../render/tldr.ts";
-import { acquireLock, releaseLock, type LockHandle, LockContendedError } from "../state/lock.ts";
+import {
+  acquireLock,
+  releaseLock,
+  type LockHandle,
+  LockContendedError,
+} from "../state/lock.ts";
 import { writeState } from "../state/store.ts";
-import type { State } from "../state/types.ts";
+import { stateSchema, type State } from "../state/types.ts";
 import { specPaths } from "./new.ts";
 import {
   appendRoundDecisions,
@@ -75,7 +80,11 @@ import {
   stopReasonMessage,
   type StopReason,
 } from "../loop/stopping.ts";
-import { bumpMinor, formatChangelogEntry, formatVersionLabel } from "../loop/version.ts";
+import {
+  bumpMinor,
+  formatChangelogEntry,
+  formatVersionLabel,
+} from "../loop/version.ts";
 
 // ---------- constants ----------
 
@@ -86,7 +95,9 @@ const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
 // ---------- types ----------
 
 export type DegradeChoice = "accept" | "abort";
-export type ManualEditResolver = (files: readonly string[]) => Promise<ManualEditChoice>;
+export type ManualEditResolver = (
+  files: readonly string[],
+) => Promise<ManualEditChoice>;
 export type DegradeResolver = (summary: string) => Promise<DegradeChoice>;
 export type ContinueReviewersChoice = "continue" | "abort";
 export type ContinueReviewersResolver = () => Promise<ContinueReviewersChoice>;
@@ -141,9 +152,7 @@ export interface IterateResult {
 
 // ---------- main ----------
 
-export async function runIterate(
-  input: IterateInput,
-): Promise<IterateResult> {
+export async function runIterate(input: IterateInput): Promise<IterateResult> {
   const lines: string[] = [];
   const errLines: string[] = [];
   const notice = (line: string): void => {
@@ -169,10 +178,22 @@ export async function runIterate(
   }
 
   // Read state.
-  const rawState = JSON.parse(
-    readFileSync(paths.statePath, "utf8"),
-  ) as State;
-  const state: State = rawState;
+  const parsedState = stateSchema.safeParse(
+    JSON.parse(readFileSync(paths.statePath, "utf8")) as unknown,
+  );
+  if (!parsedState.success) {
+    error(
+      `samospec: state.json at ${paths.statePath} is malformed: ` +
+        `${parsedState.error.message}`,
+    );
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `${errLines.join("\n")}\n`,
+      roundsRun: 0,
+    };
+  }
+  const state: State = parsedState.data;
 
   if (state.round_state === "lead_terminal") {
     error(
@@ -301,7 +322,9 @@ export async function runIterate(
             report.files.map((f) => f.path),
           );
           if (choice === "abort") {
-            notice(`samospec: manual-edit abort on round ${String(roundIndex)}.`);
+            notice(
+              `samospec: manual-edit abort on round ${String(roundIndex)}.`,
+            );
             return finishIterate({
               reason: "sigint",
               message: "samospec: aborted after manual-edit prompt.",
@@ -335,7 +358,8 @@ export async function runIterate(
         }
 
         // Degraded-resolution check.
-        const resSnapshot = input.resolutions ?? inferResolutions(input.adapters, currentState);
+        const resSnapshot =
+          input.resolutions ?? inferResolutions(input.adapters, currentState);
         const degraded = detectDegradedResolution(resSnapshot);
         if (
           (input.degradeOnFirstRound ?? true) &&
@@ -380,9 +404,7 @@ export async function runIterate(
           adapters: input.adapters,
           critiqueTimeoutMs: callTimeouts.criticA_ms,
           reviseTimeoutMs: callTimeouts.revise_ms,
-          ...(manualEditDirective !== undefined
-            ? { manualEditDirective }
-            : {}),
+          ...(manualEditDirective !== undefined ? { manualEditDirective } : {}),
         });
 
         // Persist state at round boundary (round_state tracking).
@@ -413,7 +435,9 @@ export async function runIterate(
           };
         }
 
-        if (roundOutcome.roundStopReason === "both_seats_failed_even_after_retry") {
+        if (
+          roundOutcome.roundStopReason === "both_seats_failed_even_after_retry"
+        ) {
           // Prompt the user per SPEC §7 / #6.
           const cont = await input.resolvers.onReviewerExhausted();
           if (cont === "abort") {
@@ -613,13 +637,6 @@ export async function runIterate(
   } finally {
     releaseLock(handle);
   }
-  // eslint-disable-next-line no-unreachable
-  return {
-    exitCode: 0,
-    stdout: lines.join("\n"),
-    stderr: "",
-    roundsRun: 0,
-  };
 }
 
 // ---------- helpers ----------

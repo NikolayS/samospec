@@ -100,7 +100,9 @@ function seedSpec(cwd: string, slug: string): State {
   };
   writeState(path.join(slugDir, "state.json"), state);
   spawnSync("git", ["add", "."], { cwd });
-  spawnSync("git", ["commit", "-q", "-m", "spec(refunds): draft v0.1"], { cwd });
+  spawnSync("git", ["commit", "-q", "-m", "spec(refunds): draft v0.1"], {
+    cwd,
+  });
   return state;
 }
 
@@ -270,7 +272,10 @@ describe("loop/e2e — manual-edit mid-session", () => {
       critique: () => Promise.reject(new Error("unused")),
       revise: (input) => {
         roundCounter += 1;
-        if (roundCounter === 2 && input.spec.includes("samospec:lead-directive")) {
+        if (
+          roundCounter === 2 &&
+          input.spec.includes("samospec:lead-directive")
+        ) {
           sawDirective = true;
         }
         return Promise.resolve({

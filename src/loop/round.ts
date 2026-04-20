@@ -46,11 +46,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-import type {
-  Adapter,
-  CritiqueOutput,
-  Finding,
-} from "../adapter/types.ts";
+import type { Adapter, CritiqueOutput, Finding } from "../adapter/types.ts";
 import type { ReviewDecision } from "./decisions.ts";
 import type { DegradedResult } from "./degradation.ts";
 
@@ -123,7 +119,10 @@ export type RoundStopReason =
 
 export interface RunRoundOutcome {
   readonly roundNumber: number;
-  readonly seats: { readonly reviewer_a: SeatOutcome; readonly reviewer_b: SeatOutcome };
+  readonly seats: {
+    readonly reviewer_a: SeatOutcome;
+    readonly reviewer_b: SeatOutcome;
+  };
   readonly revisedSpec?: string;
   readonly ready: boolean;
   readonly rationale: string;
@@ -187,7 +186,8 @@ export function renderCritiqueMarkdown(
   out: CritiqueOutput,
   seat: ReviewerSeat,
 ): string {
-  const header = seat === "reviewer_a" ? "Reviewer A — Codex" : "Reviewer B — Claude";
+  const header =
+    seat === "reviewer_a" ? "Reviewer A — Codex" : "Reviewer B — Claude";
   const lines: string[] = [];
   lines.push(`# ${header}`);
   lines.push("");
@@ -243,9 +243,7 @@ export function renderCritiqueMarkdown(
  * Try to recover a CritiqueOutput from a committed critique Markdown
  * file. Returns null on miss or malformed.
  */
-export function recoverCritiqueFromFile(
-  file: string,
-): CritiqueOutput | null {
+export function recoverCritiqueFromFile(file: string): CritiqueOutput | null {
   if (!existsSync(file)) return null;
   const raw = readFileSync(file, "utf8");
   const start = raw.indexOf("<!-- samospec:critique v1 -->");
@@ -314,9 +312,7 @@ export function readRoundJson(file: string): RoundSidecar | null {
  *   - Between reviews_collected and lead_revised, we write round.json
  *     status=complete before calling the lead.
  */
-export async function runRound(
-  input: RunRoundInput,
-): Promise<RunRoundOutcome> {
+export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
   const { dirs, roundNumber, adapters, now } = input;
 
   mkdirSync(dirs.roundDir, { recursive: true });
@@ -347,7 +343,7 @@ export async function runRound(
   });
 
   // Persist seats + critique files atomically.
-  await persistSeatResults(dirs, attempt1);
+  persistSeatResults(dirs, attempt1);
 
   let retried = false;
   let seatA = attempt1.reviewerA;
@@ -364,7 +360,7 @@ export async function runRound(
       ...(input.signal !== undefined ? { signal: input.signal } : {}),
     });
     // Overwrite disk with the retry results.
-    await persistSeatResults(dirs, attempt2);
+    persistSeatResults(dirs, attempt2);
     seatA = attempt2.reviewerA;
     seatB = attempt2.reviewerB;
   }
@@ -398,7 +394,8 @@ export async function runRound(
   // Mark as complete before revise runs.
   const roundComplete: RoundSidecar = {
     round: roundNumber,
-    status: seatA.state === "ok" && seatB.state === "ok" ? "complete" : "partial",
+    status:
+      seatA.state === "ok" && seatB.state === "ok" ? "complete" : "partial",
     seats: {
       reviewer_a: seatToDiskStatus(seatA.state),
       reviewer_b: seatToDiskStatus(seatB.state),
@@ -524,7 +521,10 @@ async function runReviewersParallel(
 }
 
 function classifyReviewerError(err: unknown): SeatOutcomeState {
-  const msg = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  const msg =
+    err instanceof Error
+      ? err.message.toLowerCase()
+      : String(err).toLowerCase();
   if (msg.includes("schema")) return "schema_violation";
   if (msg.includes("timeout")) return "timeout";
   return "failed";
@@ -532,31 +532,33 @@ function classifyReviewerError(err: unknown): SeatOutcomeState {
 
 function seatToDiskStatus(
   s: SeatOutcomeState,
-):
-  | "ok"
-  | "failed"
-  | "schema_violation"
-  | "timeout" {
+): "ok" | "failed" | "schema_violation" | "timeout" {
   return s;
 }
 
 // ---------- persistence ----------
 
-async function persistSeatResults(
+function persistSeatResults(
   dirs: RoundDirs,
   results: { reviewerA: SeatOutcome; reviewerB: SeatOutcome },
-): Promise<void> {
+): void {
   // SPEC §7 atomicity: critique file write → fsync → round.json update
   // → fsync → next seat. The helper atomicWriteFile performs each file
   // write with an fsync; round.json updates come last per-seat.
   const current = readRoundJson(dirs.roundJson) ?? {
     round: 0,
     status: "running" as const,
-    seats: { reviewer_a: "pending", reviewer_b: "pending" } as RoundSidecar["seats"],
+    seats: {
+      reviewer_a: "pending",
+      reviewer_b: "pending",
+    } as RoundSidecar["seats"],
     started_at: "1970-01-01T00:00:00Z",
   };
 
-  if (results.reviewerA.state === "ok" && results.reviewerA.critique !== undefined) {
+  if (
+    results.reviewerA.state === "ok" &&
+    results.reviewerA.critique !== undefined
+  ) {
     atomicWriteFile(
       dirs.codexPath,
       renderCritiqueMarkdown(results.reviewerA.critique, "reviewer_a"),
@@ -571,7 +573,10 @@ async function persistSeatResults(
   };
   writeRoundJson(dirs.roundJson, nextA);
 
-  if (results.reviewerB.state === "ok" && results.reviewerB.critique !== undefined) {
+  if (
+    results.reviewerB.state === "ok" &&
+    results.reviewerB.critique !== undefined
+  ) {
     atomicWriteFile(
       dirs.claudePath,
       renderCritiqueMarkdown(results.reviewerB.critique, "reviewer_b"),
@@ -688,10 +693,7 @@ function isReviewDecision(v: unknown): v is ReviewDecision {
 
 // ---------- round dir formatter ----------
 
-export function roundDirsFor(
-  slugDir: string,
-  roundNumber: number,
-): RoundDirs {
+export function roundDirsFor(slugDir: string, roundNumber: number): RoundDirs {
   const padded = String(roundNumber).padStart(2, "0");
   const roundDir = path.join(slugDir, "reviews", `r${padded}`);
   return {

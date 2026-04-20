@@ -17,9 +17,7 @@ const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)$/;
 export function bumpMinor(semver: string): string {
   const m = SEMVER_RE.exec(semver);
   if (m === null) {
-    throw new Error(
-      `bumpMinor: expected X.Y.Z, received '${semver}'.`,
-    );
+    throw new Error(`bumpMinor: expected X.Y.Z, received '${semver}'.`);
   }
   const major = Number.parseInt(m[1] ?? "0", 10);
   const minor = Number.parseInt(m[2] ?? "0", 10);

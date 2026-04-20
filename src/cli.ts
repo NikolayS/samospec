@@ -321,7 +321,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
       continue;
     }
     if (t.startsWith("--")) continue;
-    if (slug === null) slug = t;
+    slug ??= t;
   }
   if (slug === null || slug.length === 0) {
     return "samospec iterate: missing <slug>";
@@ -379,9 +379,7 @@ function interactiveIterateResolvers(): IterateResolvers {
     },
     onDegraded: async (summary) => {
       process.stdout.write(`\n${summary}\n`);
-      const ans = (
-        await rl.question("[A]ccept / [B]bort [Enter=accept]: ")
-      )
+      const ans = (await rl.question("[A]ccept / [B]bort [Enter=accept]: "))
         .trim()
         .toLowerCase();
       if (ans === "b" || ans === "abort") return "abort";
@@ -391,9 +389,7 @@ function interactiveIterateResolvers(): IterateResolvers {
       process.stdout.write(
         `\nBoth reviewers failed after a whole-round retry.\n`,
       );
-      const ans = (
-        await rl.question("[C]ontinue / [A]bort [Enter=abort]: ")
-      )
+      const ans = (await rl.question("[C]ontinue / [A]bort [Enter=abort]: "))
         .trim()
         .toLowerCase();
       if (ans === "c" || ans === "continue") return "continue";

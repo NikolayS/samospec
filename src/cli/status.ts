@@ -22,6 +22,7 @@
 import { existsSync, readFileSync } from "node:fs";
 
 import type { Adapter, AuthStatus, Usage } from "../adapter/types.ts";
+import { stateSchema } from "../state/types.ts";
 import {
   detectDegradedResolution,
   formatDegradedSummary,
@@ -82,18 +83,26 @@ export async function runStatus(input: StatusInput): Promise<StatusResult> {
       stdout: "",
       stderr:
         `samospec: no spec found for slug '${input.slug}'. ` +
-          `Run \`samospec new ${input.slug}\` to start one.\n`,
+        `Run \`samospec new ${input.slug}\` to start one.\n`,
     };
   }
-  const state: State = JSON.parse(readFileSync(paths.statePath, "utf8"));
+  const parsedState = stateSchema.safeParse(
+    JSON.parse(readFileSync(paths.statePath, "utf8")) as unknown,
+  );
+  if (!parsedState.success) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `samospec: state.json at ${paths.statePath} is malformed.\n`,
+    };
+  }
+  const state: State = parsedState.data;
 
   const lines: string[] = [];
   lines.push(`samospec status — ${input.slug}`);
   lines.push("");
   lines.push(`- phase: ${state.phase}`);
-  lines.push(
-    `- round: ${String(state.round_index)} (${state.round_state})`,
-  );
+  lines.push(`- round: ${String(state.round_index)} (${state.round_state})`);
   lines.push(`- version: ${state.version}`);
 
   // Next action.
@@ -106,7 +115,12 @@ export async function runStatus(input: StatusInput): Promise<StatusResult> {
   const authPromises = input.adapters.map(async (b) => {
     try {
       const s = await b.adapter.auth_status();
-      return { role: b.role, vendor: b.adapter.vendor, status: s, usage: b.usage };
+      return {
+        role: b.role,
+        vendor: b.adapter.vendor,
+        status: s,
+        usage: b.usage,
+      };
     } catch {
       return {
         role: b.role,
@@ -117,7 +131,9 @@ export async function runStatus(input: StatusInput): Promise<StatusResult> {
     }
   });
   const auths = await Promise.all(authPromises);
-  const anySubscriptionAuth = auths.some((a) => a.status.subscription_auth === true);
+  const anySubscriptionAuth = auths.some(
+    (a) => a.status.subscription_auth === true,
+  );
 
   lines.push(`- running cost:`);
   for (const a of auths) {
@@ -168,10 +184,8 @@ export async function runStatus(input: StatusInput): Promise<StatusResult> {
   }
 
   // Degraded resolution — SPEC §11 required line form.
-  const resolutions = input.resolutions ?? inferStatusResolutions(
-    input.adapters,
-    state,
-  );
+  const resolutions =
+    input.resolutions ?? inferStatusResolutions(input.adapters, state);
   const deg = detectDegradedResolution(resolutions);
   if (deg.degraded) {
     lines.push(`- ${formatDegradedSummary(deg)}`);
@@ -229,9 +243,9 @@ function inferStatusResolutions(
   readonly reviewer_b: AdapterResolutionSnapshot;
   readonly coupled_fallback: boolean;
 } {
-  const roleOf = (role: "lead" | "reviewer_a" | "reviewer_b"):
-    | StatusAdapterBinding
-    | undefined => bindings.find((b) => b.role === role);
+  const roleOf = (
+    role: "lead" | "reviewer_a" | "reviewer_b",
+  ): StatusAdapterBinding | undefined => bindings.find((b) => b.role === role);
   const stateAdapters = state.adapters ?? {};
   return {
     lead: {
@@ -249,4 +263,3 @@ function inferStatusResolutions(
     coupled_fallback: state.coupled_fallback,
   };
 }
-

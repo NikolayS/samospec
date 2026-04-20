@@ -79,19 +79,13 @@ export interface AppendRoundDecisionsInput {
  * Append a round section to decisions.md. Creates the file if missing.
  * Returns the header line we wrote (useful for unit-test assertions).
  */
-export function appendRoundDecisions(
-  input: AppendRoundDecisionsInput,
-): string {
+export function appendRoundDecisions(input: AppendRoundDecisionsInput): string {
   const header = `## Round ${String(input.roundNumber)} — ${input.now}`;
   const lines: string[] = [];
   if (!existsSync(input.file)) {
     // Seed header only; skip the "populated during Sprint 3" placeholder
     // because we *are* populating it.
-    writeFileSync(
-      input.file,
-      ["# decisions", ""].join("\n"),
-      "utf8",
-    );
+    writeFileSync(input.file, ["# decisions", ""].join("\n"), "utf8");
   }
   lines.push("");
   lines.push(header);
