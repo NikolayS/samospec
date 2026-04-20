@@ -19,9 +19,11 @@
  * No commits, no network.
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 
 import type { Adapter, AuthStatus, Usage } from "../adapter/types.ts";
+import { loadPersistedConsent } from "../git/push-consent.ts";
 import { stateSchema } from "../state/types.ts";
 import {
   detectDegradedResolution,
@@ -191,6 +193,12 @@ export async function runStatus(input: StatusInput): Promise<StatusResult> {
     lines.push(`- ${formatDegradedSummary(deg)}`);
   }
 
+  // Push consent (SPEC §8) — one bullet per configured remote.
+  const consentLines = renderPushConsent(input.cwd);
+  for (const line of consentLines) {
+    lines.push(line);
+  }
+
   // Exit reason (when halted).
   if (state.exit !== null) {
     lines.push(
@@ -232,6 +240,41 @@ function computeNextAction(state: State, slug: string): string {
 function fmtMinutes(ms: number): string {
   const mins = ms / 60000;
   return `${mins.toFixed(1)}min`;
+}
+
+function renderPushConsent(cwd: string): string[] {
+  const remotes = listGitRemotes(cwd);
+  if (remotes.length === 0) return [];
+  const out: string[] = [];
+  out.push(`- push consent:`);
+  for (const { name, url } of remotes) {
+    let state: "granted" | "refused" | "not yet decided";
+    try {
+      const persisted = loadPersistedConsent({ repoPath: cwd, remoteUrl: url });
+      if (persisted === true) state = "granted";
+      else if (persisted === false) state = "refused";
+      else state = "not yet decided";
+    } catch {
+      state = "not yet decided";
+    }
+    out.push(`  - ${name} → ${state} (${url})`);
+  }
+  return out;
+}
+
+function listGitRemotes(cwd: string): { name: string; url: string }[] {
+  const res = spawnSync("git", ["remote", "-v"], { cwd, encoding: "utf8" });
+  if ((res.status ?? 1) !== 0) return [];
+  const seen = new Map<string, string>();
+  for (const line of (res.stdout ?? "").split("\n")) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 2) continue;
+    const name = parts[0];
+    const url = parts[1];
+    if (name === undefined || url === undefined) continue;
+    if (!seen.has(name)) seen.set(name, url);
+  }
+  return Array.from(seen, ([name, url]) => ({ name, url }));
 }
 
 function inferStatusResolutions(
