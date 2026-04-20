@@ -11,7 +11,12 @@ import { createFakeAdapter } from "./adapter/fake-adapter.ts";
 import type { Adapter } from "./adapter/types.ts";
 import { runInit } from "./cli/init.ts";
 import { runDoctor, type DoctorAdapterBinding } from "./cli/doctor.ts";
-import { runIterate, type IterateResolvers } from "./cli/iterate.ts";
+import {
+  runIterate,
+  type IterateResolvers,
+  type PushOptions,
+} from "./cli/iterate.ts";
+import { describePrCapability } from "./git/push-consent.ts";
 import { runNew, type ChoiceResolvers } from "./cli/new.ts";
 import {
   PERSONA_FORM_RE,
@@ -42,7 +47,8 @@ const USAGE =
   "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
   "  new <slug> [--idea ...]     Start a new spec (persona + 5-question interview).\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
-  "  iterate [<slug>] [--rounds] Run review rounds until a stopping condition fires.\n" +
+  "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>]\n" +
+  "                              Run review rounds until a stopping condition fires.\n" +
   "  status [<slug>]             Print phase, round, cost, wall-clock, and next action.\n" +
   "  version                     Print the samospec version and exit.\n";
 
@@ -298,11 +304,15 @@ async function runResumeCommand(rest: readonly string[]) {
 interface IterateArgs {
   readonly slug: string;
   readonly rounds?: number;
+  readonly noPush: boolean;
+  readonly remote: string;
 }
 
 function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let slug: string | null = null;
   let rounds: number | undefined;
+  let noPush = false;
+  let remote = "origin";
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) continue;
@@ -320,13 +330,32 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
       if (Number.isFinite(n) && n > 0) rounds = n;
       continue;
     }
+    if (t === "--no-push") {
+      noPush = true;
+      continue;
+    }
+    if (t === "--remote") {
+      const v = argv[i + 1];
+      i += 1;
+      if (v !== undefined && v.length > 0) remote = v;
+      continue;
+    }
+    if (t.startsWith("--remote=")) {
+      remote = t.slice("--remote=".length);
+      continue;
+    }
     if (t.startsWith("--")) continue;
     slug ??= t;
   }
   if (slug === null || slug.length === 0) {
     return "samospec iterate: missing <slug>";
   }
-  return rounds === undefined ? { slug } : { slug, rounds };
+  return {
+    slug,
+    noPush,
+    remote,
+    ...(rounds !== undefined ? { rounds } : {}),
+  };
 }
 
 function parseStatusArgs(argv: readonly string[]): { slug: string } | string {
@@ -395,6 +424,23 @@ function interactiveIterateResolvers(): IterateResolvers {
       if (ans === "c" || ans === "continue") return "continue";
       return "abort";
     },
+    onPushConsent: async (payload) => {
+      process.stdout.write(`\nFirst push in this repo — consent required.\n`);
+      process.stdout.write(`  remote: ${payload.remoteName}\n`);
+      process.stdout.write(`  remote URL: ${payload.remoteUrl}\n`);
+      process.stdout.write(`  branch: ${payload.targetBranch}\n`);
+      process.stdout.write(`  default branch: ${payload.defaultBranch}\n`);
+      process.stdout.write(`  ${describePrCapability(payload.prCapability)}\n`);
+      const ans = (
+        await rl.question(
+          "[A]ccept (persist) / [R]efuse (persist) [Enter=refuse]: ",
+        )
+      )
+        .trim()
+        .toLowerCase();
+      if (ans === "a" || ans === "accept") return "accept";
+      return "refuse";
+    },
   };
 }
 
@@ -404,12 +450,17 @@ async function runIterateCommand(rest: readonly string[]) {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
   const adapters = buildReviewLoopAdapters();
+  const pushOptions: PushOptions = {
+    remote: parsed.remote,
+    noPush: parsed.noPush,
+  };
   const result = await runIterate({
     cwd: process.cwd(),
     slug: parsed.slug,
     now: new Date().toISOString(),
     resolvers: interactiveIterateResolvers(),
     adapters,
+    pushOptions,
     ...(parsed.rounds !== undefined ? { maxRounds: parsed.rounds } : {}),
   });
   return {

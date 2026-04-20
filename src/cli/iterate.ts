@@ -30,10 +30,12 @@
  *   - NO reviewer system-prompt changes beyond wiring.
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Adapter, Finding } from "../adapter/types.ts";
+import { currentBranch } from "../git/branch.ts";
 import { specCommit } from "../git/commit.ts";
 import { ProtectedBranchError } from "../git/errors.ts";
 import {
@@ -41,6 +43,13 @@ import {
   detectManualEdits,
   type ManualEditChoice,
 } from "../git/manual-edit.ts";
+import { pushBranch, type PushBranchResult } from "../git/push.ts";
+import {
+  probePrCapability,
+  requestPushConsent,
+  type PushConsentDecision,
+  type PushConsentPrompt,
+} from "../git/push-consent.ts";
 import {
   shouldStartNextRound,
   type CallTimeoutsMs,
@@ -106,10 +115,28 @@ export type DegradeResolver = (summary: string) => Promise<DegradeChoice>;
 export type ContinueReviewersChoice = "continue" | "abort";
 export type ContinueReviewersResolver = () => Promise<ContinueReviewersChoice>;
 
+/** SPEC §8 — first-push consent resolver. See src/git/push-consent.ts. */
+export type PushConsentResolver = (
+  payload: PushConsentPrompt,
+) => Promise<PushConsentDecision>;
+
 export interface IterateResolvers {
   readonly onManualEdit: ManualEditResolver;
   readonly onDegraded: DegradeResolver;
   readonly onReviewerExhausted: ContinueReviewersResolver;
+  /**
+   * SPEC §8: first time a push would happen for a remote URL in this
+   * repo, invoke this resolver once. Persisted decisions silently
+   * short-circuit the resolver on later sessions.
+   */
+  readonly onPushConsent?: PushConsentResolver;
+}
+
+export interface PushOptions {
+  /** Remote name to target (e.g. `origin`). */
+  readonly remote: string;
+  /** `--no-push` invocation override; beats persisted consent per §8. */
+  readonly noPush: boolean;
 }
 
 export interface IterateInput {
@@ -143,6 +170,11 @@ export interface IterateInput {
   readonly degradeOnFirstRound?: boolean;
   /** A pre-fired signal for SIGINT-style tests. */
   readonly sigintSignal?: { readonly triggered: boolean };
+  /**
+   * SPEC §8 — when present, triggers the round-boundary push flow.
+   * Absent = local-only, no consent prompt, no push attempts.
+   */
+  readonly pushOptions?: PushOptions;
 }
 
 export interface IterateResult {
@@ -265,6 +297,11 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
     // Initial state tracking.
     let currentState: State = state;
     let currentSpec: string = readFileSync(paths.specPath, "utf8");
+    // SPEC §8 — session-scoped push-consent snapshot. `null` means "not
+    // yet resolved this session"; once resolved it's respected silently
+    // across the remaining round boundaries. The value here mirrors
+    // persisted state when present, or the prompt answer otherwise.
+    let pushGrantedThisSession: boolean | null = null;
     // SPEC §12 conditions 3 + 4 require round-(N-1) signals. The
     // classifier's "previous" is only a real round when
     // `hasPreviousRound === true`; round 1 passes synthetic signals
@@ -570,6 +607,52 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             notice(
               `committed spec(${input.slug}): refine ${formatVersionLabel(newVersion)} after review r${String(roundIndex).padStart(2, "0")}`,
             );
+
+            // SPEC §5 Phase 6 + §8 — round-boundary push. Exactly one
+            // push per `committed` transition; never per commit.
+            if (input.pushOptions !== undefined) {
+              const pushOutcome = await handleRoundBoundaryPush({
+                cwd: input.cwd,
+                slug: input.slug,
+                pushOptions: input.pushOptions,
+                onPushConsent: input.resolvers.onPushConsent,
+                sessionGranted: pushGrantedThisSession,
+                now: input.now,
+              });
+              if (pushOutcome.kind === "interrupt") {
+                const interrupted: State = {
+                  ...currentState,
+                  updated_at: input.now,
+                  exit: {
+                    code: 3,
+                    reason: "push-consent-interrupted",
+                    round_index: roundIndex,
+                  },
+                };
+                writeState(paths.statePath, interrupted);
+                error(
+                  `samospec: push-consent prompt interrupted (Ctrl-C).`,
+                );
+                return {
+                  exitCode: 3,
+                  stdout: lines.join("\n"),
+                  stderr: `${errLines.join("\n")}\n`,
+                  roundsRun,
+                  finalVersion: currentState.version,
+                };
+              }
+              if (pushOutcome.sessionGranted !== undefined) {
+                pushGrantedThisSession = pushOutcome.sessionGranted;
+              }
+              if (pushOutcome.pushResult !== undefined) {
+                emitPushNotice(
+                  notice,
+                  error,
+                  pushOutcome.pushResult,
+                  input.pushOptions.remote,
+                );
+              }
+            }
           } catch (err) {
             if (err instanceof ProtectedBranchError) {
               error(
@@ -692,6 +775,191 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
 
 function ensureTrailingNewline(s: string): string {
   return s.endsWith("\n") ? s : `${s}\n`;
+}
+
+// ---------- round-boundary push plumbing (SPEC §5 Phase 6 + §8) ----------
+
+interface HandlePushArgs {
+  readonly cwd: string;
+  readonly slug: string;
+  readonly pushOptions: PushOptions;
+  readonly onPushConsent: PushConsentResolver | undefined;
+  readonly sessionGranted: boolean | null;
+  readonly now: string;
+}
+
+interface PushResult {
+  readonly kind: "ok" | "interrupt";
+  /** Set when a decision was reached; propagates to the next round. */
+  readonly sessionGranted?: boolean;
+  readonly pushResult?: PushBranchResult;
+}
+
+/**
+ * Coordinate consent + push at a single round boundary. Returns
+ * `kind: "interrupt"` when the user Ctrl-C'd the consent prompt so
+ * the caller can emit exit 3 per SPEC §10. Otherwise returns a
+ * `pushResult` the caller can surface via notice/error.
+ *
+ * Idempotency: once the session has resolved consent (granted or
+ * refused), this short-circuits on subsequent rounds without calling
+ * the resolver again. Persisted choices on disk short-circuit the same
+ * way — the resolver is invoked at most once per session.
+ */
+async function handleRoundBoundaryPush(
+  args: HandlePushArgs,
+): Promise<PushResult> {
+  // `--no-push` invocation override: never pushes, never prompts. Beats
+  // persisted-accept and session-accept alike.
+  if (args.pushOptions.noPush) {
+    return {
+      kind: "ok",
+      ...(args.sessionGranted !== null
+        ? { sessionGranted: args.sessionGranted }
+        : {}),
+      pushResult: pushBranchSafely({
+        repoPath: args.cwd,
+        remote: args.pushOptions.remote,
+        branch: currentBranch(args.cwd),
+        granted: true,
+        noPush: true,
+      }),
+    };
+  }
+
+  const branch = currentBranch(args.cwd);
+  const remoteUrl = resolveRemoteUrl(args.cwd, args.pushOptions.remote);
+  if (remoteUrl === null) {
+    // Remote not configured — skip silently, like a refused consent.
+    return { kind: "ok" };
+  }
+
+  let granted: boolean;
+  let sessionGranted: boolean | undefined;
+  if (args.sessionGranted !== null) {
+    granted = args.sessionGranted;
+    sessionGranted = args.sessionGranted;
+  } else {
+    const resolver = args.onPushConsent;
+    const defaultBranch = resolveDefaultBranch(
+      args.cwd,
+      args.pushOptions.remote,
+    );
+    const capability = probePrCapability();
+    const outcome = await requestPushConsent({
+      repoPath: args.cwd,
+      remoteName: args.pushOptions.remote,
+      remoteUrl,
+      targetBranch: branch,
+      defaultBranch,
+      prCapability: capability,
+      prompt:
+        resolver ??
+        ((): Promise<PushConsentDecision> => Promise.resolve("refuse")),
+    });
+    if (outcome.decision === "interrupt") {
+      return { kind: "interrupt" };
+    }
+    granted = outcome.decision === "accept";
+    sessionGranted = granted;
+  }
+
+  const pushResult = pushBranchSafely({
+    repoPath: args.cwd,
+    remote: args.pushOptions.remote,
+    branch,
+    granted,
+    noPush: false,
+  });
+  return {
+    kind: "ok",
+    ...(sessionGranted !== undefined ? { sessionGranted } : {}),
+    pushResult,
+  };
+}
+
+function pushBranchSafely(args: {
+  readonly repoPath: string;
+  readonly remote: string;
+  readonly branch: string;
+  readonly granted: boolean;
+  readonly noPush: boolean;
+}): PushBranchResult {
+  try {
+    return pushBranch(args);
+  } catch (err) {
+    return {
+      state: "failed",
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function resolveRemoteUrl(cwd: string, remoteName: string): string | null {
+  const res = spawnSync("git", ["remote", "get-url", remoteName], {
+    cwd,
+    encoding: "utf8",
+  });
+  if ((res.status ?? 1) !== 0) return null;
+  const url = (res.stdout ?? "").trim();
+  return url.length > 0 ? url : null;
+}
+
+function resolveDefaultBranch(cwd: string, remoteName: string): string {
+  // `git symbolic-ref refs/remotes/<remote>/HEAD` → `refs/remotes/<remote>/<name>`
+  const head = spawnSync(
+    "git",
+    ["symbolic-ref", "--quiet", `refs/remotes/${remoteName}/HEAD`],
+    { cwd, encoding: "utf8" },
+  );
+  if ((head.status ?? 1) === 0) {
+    const ref = (head.stdout ?? "").trim();
+    const prefix = `refs/remotes/${remoteName}/`;
+    if (ref.startsWith(prefix)) {
+      return ref.slice(prefix.length);
+    }
+  }
+  // Fallback to the local config `init.defaultBranch`, then `main`.
+  const cfg = spawnSync("git", ["config", "--get", "init.defaultBranch"], {
+    cwd,
+    encoding: "utf8",
+  });
+  if ((cfg.status ?? 1) === 0) {
+    const value = (cfg.stdout ?? "").trim();
+    if (value.length > 0) return value;
+  }
+  return "main";
+}
+
+function emitPushNotice(
+  notice: (line: string) => void,
+  error: (line: string) => void,
+  result: PushBranchResult,
+  remote: string,
+): void {
+  switch (result.state) {
+    case "pushed":
+      notice(`pushed to ${remote}.`);
+      return;
+    case "skipped-no-push":
+      notice(`push skipped (--no-push).`);
+      return;
+    case "skipped-refused":
+      notice(`push skipped (consent refused).`);
+      return;
+    case "failed":
+      error(
+        `samospec: push to ${remote} failed: ${
+          result.message ?? "(no detail)"
+        }`,
+      );
+      return;
+    default: {
+      // Exhaustiveness check; unreachable.
+      const _never: never = result.state;
+      void _never;
+    }
+  }
 }
 
 function appendOrCreateChangelog(filePath: string, entry: string): void {
