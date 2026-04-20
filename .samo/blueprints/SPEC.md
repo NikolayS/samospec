@@ -476,47 +476,17 @@ This prevents the "silent thesis drift" case where lead + Reviewer B both degrad
 
 `effort_used` echoed on every work call; clamps are visible in `state.json` and `doctor`.
 
-### Subscription-auth — detected but not supported for non-interactive work
+### Subscription-auth escape
 
-samospec requires API-key authentication (`ANTHROPIC_API_KEY` for Claude,
-`OPENAI_API_KEY` for Codex). Subscription auth (Claude Max/Pro via the
-`claude` CLI, or ChatGPT-login via the `codex` CLI) is **detected** and
-**reported** but **cannot drive non-interactive work calls today**:
-`claude --print` rejects subscription tokens with
-`Invalid API key · Fix external API key` and the current Claude CLI
-(v2.1.x) has no flag for subscription-auth + headless invocation.
+Claude Max/Pro CLIs authenticate via subscription and do not expose token counts. When `auth_status().subscription_auth === true` **and** `usage` is consistently `null`:
 
-The same constraint applies to the Codex `exec` subcommand under
-ChatGPT-login.
+- Token budgets (`max_tokens_per_round`, `max_total_tokens_per_session`, `max_cost_usd`) are **disabled** for that adapter only.
+- `max_iterations`, `max_reviewers`, per-call `timeout`, and **`budget.max_wall_clock_minutes`** (default 240) are enforced normally.
+- `doctor` surfaces subscription-auth mode explicitly: `"Claude adapter is in subscription-auth mode. Token cost is not visible to samospec; wall-clock (Xh) and iteration (N) caps are enforced instead. A max-effort M-round run may consume a significant fraction of your daily subscription quota."`
+- `samospec status` shows `cost: unknown (subscription auth)` for that adapter in the running totals.
+- Preflight cost estimate shows `unknown — subscription auth` rather than a dollar band for that adapter, and `$Z` reflects only priced adapters.
 
-When an adapter reports `subscription_auth: true` AND no API key is
-present in the environment:
-
-- `auth_status()` returns `{ authenticated: true, subscription_auth: true,
-  usable_for_noninteractive: false }`.
-- `doctor` surfaces a **WARN-level** finding:
-  `"subscription auth detected; samospec requires ANTHROPIC_API_KEY for
-  non-interactive invocation"` (or `OPENAI_API_KEY` for Codex). This is a
-  WARN, not a FAIL — the CLI is not broken, it simply cannot run work calls.
-- Any attempt to call `ask()`, `critique()`, or `revise()` on that adapter
-  **fails fast** with a terminal error classified as
-  `subscription_auth_unsupported`, with a message pointing at the required
-  env var (console.anthropic.com / platform.openai.com).
-- `samospec new` / `samospec iterate` exit 4 with sub-reason
-  `subscription_auth_unsupported` and do NOT create partial artifacts beyond
-  the initial lockfile/state.json (cleanup or recording is handled per the
-  standard exit-4 path).
-- Preflight cost estimate shows `unknown — subscription auth (API key
-  required)` per affected adapter; `$Z` reflects only priced adapters;
-  warnings list includes the gap.
-
-When `ANTHROPIC_API_KEY` IS set (regardless of subscription state), `doctor`
-reports OK for that adapter and all work calls proceed normally using the
-API-key auth path — the subscription token is effectively shadowed by the
-API key in that scenario.
-
-**Preflight for API-key adapters is unchanged** — token budgets, dollar
-estimates, and consent gates apply as specified above.
+This is the only exception to "fail-closed without accounting". It exists because the rule otherwise excludes the majority of Claude CLI users. Non-subscription adapters with missing `usage` still fail closed.
 
 ### Budget guardrails
 
@@ -724,7 +694,6 @@ v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh rep
 - **`--context` vs `.samo-ignore` precedence.** v1 intent: explicit `--context` wins. Document and test in Sprint 3.
 - **Redaction scope.** Currently covers transcripts and prompts. Paths in `context.json` and text in `decisions.md` are committed and not redacted. Low-risk but uncovered; revisit if the field shows real leakage.
 - **`samospec doctor` auto-run.** Currently only runs on explicit invocation. Consider a minimal `doctor` check on first `new` in a repo so warnings aren't missed. Decide after first-user telemetry.
-- **Non-interactive subscription-auth support (Claude Max/Pro, Codex ChatGPT-subscription)** — blocked until vendor CLIs expose subscription-compatible headless modes. `claude --print` currently rejects subscription tokens; there is no flag for subscription-auth + non-interactive invocation in Claude CLI v2.1.x. Track progress upstream (Anthropic claude-code issue tracker / OpenAI codex issue tracker). Until resolved, samospec requires API keys for all work calls. See §11 subscription-auth detection notes and `docs/troubleshooting.md`.
 
 ## 19. Comparison with v0.5
 
