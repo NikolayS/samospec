@@ -29,8 +29,9 @@ describe("context/ignore — patterns (SPEC §7)", () => {
     expect(patterns).toContain("/build/");
     expect(patterns).toContain("!keep.md");
     expect(patterns).toContain("#literal-hash.md");
-    // comments & blanks are dropped.
-    expect(patterns.some((s) => s.startsWith("#"))).toBe(false);
+    // The first-line comment is dropped (different wording from the
+    // escaped-# literal pattern).
+    expect(patterns).not.toContain("# comment");
   });
 
   test("DEFAULT_DENYLIST excludes node_modules/ and *.lock and *.min.*", () => {
