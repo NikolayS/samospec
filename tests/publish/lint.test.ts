@@ -128,7 +128,9 @@ describe("publishLint — soft warnings: unknown commands", () => {
       "```",
     ].join("\n");
     const report = publishLint(spec, baseRepoState({ repoRoot: fx.dir }));
-    const soft = report.softWarnings.filter((w) => w.kind === "unknown-command");
+    const soft = report.softWarnings.filter(
+      (w) => w.kind === "unknown-command",
+    );
     const cmds = soft.map((w) => w.message);
     expect(cmds.some((m) => m.includes("rm"))).toBe(true);
     expect(cmds.some((m) => m.includes("samospec"))).toBe(false);
@@ -189,7 +191,9 @@ describe("publishLint — soft warnings: unknown commands", () => {
       "```",
     ].join("\n");
     const report = publishLint(spec, baseRepoState({ repoRoot: fx.dir }));
-    const soft = report.softWarnings.filter((w) => w.kind === "unknown-command");
+    const soft = report.softWarnings.filter(
+      (w) => w.kind === "unknown-command",
+    );
     expect(soft.length).toBe(0);
   });
 });
@@ -334,11 +338,9 @@ describe("publishLint — report shape", () => {
       expect(typeof w.message).toBe("string");
     }
     for (const w of report.softWarnings) {
-      expect([
-        "unknown-command",
-        "ghost-branch",
-        "adapter-drift",
-      ]).toContain(w.kind);
+      expect(["unknown-command", "ghost-branch", "adapter-drift"]).toContain(
+        w.kind,
+      );
     }
     // Missing-path extracted + unknown-command `zzzz` both present.
     expect(report.hardWarnings.length).toBeGreaterThan(0);

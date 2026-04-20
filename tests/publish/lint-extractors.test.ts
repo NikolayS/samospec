@@ -48,13 +48,9 @@ describe("extractPaths — inclusion rule (a): fenced code blocks", () => {
   });
 
   test("records the line number of the extracted path", () => {
-    const spec = [
-      "line 1",
-      "line 2",
-      "```text",
-      "src/foo.ts",
-      "```",
-    ].join("\n");
+    const spec = ["line 1", "line 2", "```text", "src/foo.ts", "```"].join(
+      "\n",
+    );
     const extracted = extractPaths(spec);
     const found = extracted.find((p) => p.path === "src/foo.ts");
     expect(found).toBeDefined();
@@ -113,11 +109,7 @@ describe("extractPaths — inclusion rule (c): bulleted lines under Files/Layout
   });
 
   test("bulleted path under a `Storage` suffix-insensitive header", () => {
-    const spec = [
-      "### State Storage",
-      "",
-      "- .samospec/state.json",
-    ].join("\n");
+    const spec = ["### State Storage", "", "- .samospec/state.json"].join("\n");
     const paths = extractPaths(spec).map((p) => p.path);
     expect(paths).toContain(".samospec/state.json");
   });

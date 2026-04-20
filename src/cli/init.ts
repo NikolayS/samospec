@@ -65,6 +65,16 @@ export interface ConvergenceDefaults {
   readonly min_delta_lines: number;
 }
 
+/**
+ * Sprint 4 #33 — publish lint. The `allowed_commands` array is additive
+ * (user entries layer on top of the hardcoded allowlist in
+ * `src/publish/lint.ts`). Defaults to empty so the hardcoded list is the
+ * baseline; users extend for custom shell helpers.
+ */
+export interface PublishLintDefaults {
+  readonly allowed_commands: readonly string[];
+}
+
 export interface DefaultConfig {
   readonly schema_version: typeof CONFIG_SCHEMA_VERSION;
   readonly adapters: {
@@ -76,6 +86,7 @@ export interface DefaultConfig {
   readonly git: GitDefaults;
   readonly context: ContextDefaults;
   readonly convergence: ConvergenceDefaults;
+  readonly publish_lint: PublishLintDefaults;
 }
 
 /**
@@ -126,6 +137,9 @@ export const DEFAULT_CONFIG: DefaultConfig = {
   },
   convergence: {
     min_delta_lines: 20,
+  },
+  publish_lint: {
+    allowed_commands: [],
   },
 };
 
