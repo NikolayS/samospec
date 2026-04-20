@@ -62,11 +62,33 @@ export type ReviewerSeat = "reviewer_a" | "reviewer_b";
 
 export type SeatOutcomeState = "ok" | "failed" | "schema_violation" | "timeout";
 
+/**
+ * Terminal error reason for a reviewer seat (Issue #52).
+ * Covers the same classes the adapters can throw, plus unknown.
+ */
+export type SeatErrorReason =
+  | "cli_error"
+  | "schema_violation"
+  | "timeout"
+  | "auth_failed"
+  | "unknown";
+
+/**
+ * Diagnostic payload carried on a failed seat (Issue #52).
+ * `message` is the first 500 chars of the adapter error with ANSI stripped.
+ */
+export interface SeatErrorDetail {
+  readonly reason: SeatErrorReason;
+  readonly message: string;
+}
+
 export interface SeatOutcome {
   readonly seat: ReviewerSeat;
   readonly state: SeatOutcomeState;
   readonly critique?: CritiqueOutput;
   readonly error?: string;
+  /** Structured error detail for non-ok seats (Issue #52). */
+  readonly errorDetail?: SeatErrorDetail;
 }
 
 export interface RoundAdapters {
@@ -268,22 +290,27 @@ export function recoverCritiqueFromFile(file: string): CritiqueOutput | null {
 
 // ---------- round.json helpers ----------
 
+/**
+ * Seat value in round.json (Issue #52).
+ * Plain string for pending/ok; object for failure states to carry error detail.
+ * Older consumers that only read the string value will see an object and
+ * can safely ignore the extra field (no schema breakage for new writes).
+ */
+export type RoundSidecarSeat =
+  | "pending"
+  | "ok"
+  | { readonly status: "failed" | "schema_violation" | "timeout"; readonly error: SeatErrorDetail }
+  // Plain-string failure values kept for forward-compat when reading old files.
+  | "failed"
+  | "schema_violation"
+  | "timeout";
+
 export interface RoundSidecar {
   readonly round: number;
   readonly status: "planned" | "running" | "complete" | "partial" | "abandoned";
   readonly seats: {
-    readonly reviewer_a:
-      | "pending"
-      | "ok"
-      | "failed"
-      | "schema_violation"
-      | "timeout";
-    readonly reviewer_b:
-      | "pending"
-      | "ok"
-      | "failed"
-      | "schema_violation"
-      | "timeout";
+    readonly reviewer_a: RoundSidecarSeat;
+    readonly reviewer_b: RoundSidecarSeat;
   };
   readonly started_at: string;
   readonly completed_at?: string;
@@ -381,8 +408,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       ...initial,
       status: "abandoned",
       seats: {
-        reviewer_a: seatToDiskStatus(seatA.state),
-        reviewer_b: seatToDiskStatus(seatB.state),
+        reviewer_a: seatToDiskStatus(seatA),
+        reviewer_b: seatToDiskStatus(seatB),
       },
       completed_at: now,
     });
@@ -404,8 +431,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
     status:
       seatA.state === "ok" && seatB.state === "ok" ? "complete" : "partial",
     seats: {
-      reviewer_a: seatToDiskStatus(seatA.state),
-      reviewer_b: seatToDiskStatus(seatB.state),
+      reviewer_a: seatToDiskStatus(seatA),
+      reviewer_b: seatToDiskStatus(seatB),
     },
     started_at: now,
     completed_at: now,
@@ -505,6 +532,7 @@ async function runReviewersParallel(
       seat: "reviewer_a",
       state: classifyReviewerError(err),
       error: err instanceof Error ? err.message : String(err),
+      errorDetail: buildSeatErrorDetail(err),
     }));
 
   const callB = input.adapters.reviewerB
@@ -522,10 +550,33 @@ async function runReviewersParallel(
       seat: "reviewer_b",
       state: classifyReviewerError(err),
       error: err instanceof Error ? err.message : String(err),
+      errorDetail: buildSeatErrorDetail(err),
     }));
 
   const [reviewerA, reviewerB] = await Promise.all([callA, callB]);
   return { reviewerA, reviewerB };
+}
+
+// ANSI escape sequence regex — strip before storing error messages.
+const ANSI_STRIP_RE = /\x1b\[[0-9;]*[a-zA-Z]/g;
+
+/**
+ * Strip ANSI escape codes and truncate to 500 chars (Issue #52).
+ */
+function sanitizeErrorMessage(raw: string): string {
+  return raw.replace(ANSI_STRIP_RE, "").slice(0, 500);
+}
+
+/**
+ * Map error message keywords to a SeatErrorReason (Issue #52).
+ */
+function classifyErrorReason(msg: string): SeatErrorReason {
+  const lower = msg.toLowerCase();
+  if (lower.includes("schema")) return "schema_violation";
+  if (lower.includes("timeout")) return "timeout";
+  if (lower.includes("auth") || lower.includes("unauthorized")) return "auth_failed";
+  if (lower.includes("cli_error") || lower.includes("exit 1") || lower.includes("exit code")) return "cli_error";
+  return "unknown";
 }
 
 function classifyReviewerError(err: unknown): SeatOutcomeState {
@@ -538,10 +589,30 @@ function classifyReviewerError(err: unknown): SeatOutcomeState {
   return "failed";
 }
 
-function seatToDiskStatus(
-  s: SeatOutcomeState,
-): "ok" | "failed" | "schema_violation" | "timeout" {
-  return s;
+/**
+ * Build a SeatErrorDetail from a caught error (Issue #52).
+ */
+function buildSeatErrorDetail(err: unknown): SeatErrorDetail {
+  const raw =
+    err instanceof Error ? err.message : String(err);
+  const message = sanitizeErrorMessage(raw);
+  const reason = classifyErrorReason(raw);
+  return { reason, message };
+}
+
+function seatToDiskStatus(seat: SeatOutcome): RoundSidecarSeat {
+  if (seat.state === "ok") return "ok";
+  const errorDetail = seat.errorDetail;
+  if (errorDetail !== undefined) {
+    const status = seat.state === "schema_violation"
+      ? "schema_violation" as const
+      : seat.state === "timeout"
+        ? "timeout" as const
+        : "failed" as const;
+    return { status, error: errorDetail };
+  }
+  // Fallback: plain string (legacy path).
+  return seat.state;
 }
 
 // ---------- persistence ----------
@@ -576,7 +647,7 @@ function persistSeatResults(
     ...current,
     seats: {
       ...current.seats,
-      reviewer_a: seatToDiskStatus(results.reviewerA.state),
+      reviewer_a: seatToDiskStatus(results.reviewerA),
     },
   };
   writeRoundJson(dirs.roundJson, nextA);
@@ -594,7 +665,7 @@ function persistSeatResults(
     ...nextA,
     seats: {
       ...nextA.seats,
-      reviewer_b: seatToDiskStatus(results.reviewerB.state),
+      reviewer_b: seatToDiskStatus(results.reviewerB),
     },
   };
   writeRoundJson(dirs.roundJson, nextB);

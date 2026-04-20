@@ -536,8 +536,8 @@ export class CodexAdapter implements Adapter {
       ...CODEX_NON_INTERACTIVE_FLAGS,
       "--model",
       args.model,
-      "--reasoning_effort",
-      reasoning,
+      "-c",
+      `model_reasoning_effort=${reasoning}`,
     ];
     const input: SpawnCliInput = {
       cmd,

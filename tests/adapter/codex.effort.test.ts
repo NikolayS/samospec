@@ -99,13 +99,13 @@ describe("CodexAdapter effort-level mapping (SPEC §11 table)", () => {
       await adapter.ask(sampleAskWithEffort(level));
 
       // The work-call includes the model id plus the reasoning-effort
-      // value, positional-paired after `--reasoning_effort`.
+      // value, passed as `-c model_reasoning_effort=<level>` (Issue #52).
       const work = spy.calls[0];
       expect(work).toBeDefined();
       if (work === undefined) return;
-      const idx = work.cmd.findIndex((c) => c === "--reasoning_effort");
+      const idx = work.cmd.findIndex((c) => c === "-c");
       expect(idx).toBeGreaterThan(-1);
-      expect(work.cmd[idx + 1]).toBe(expected);
+      expect(work.cmd[idx + 1]).toBe(`model_reasoning_effort=${expected}`);
     });
   }
 });

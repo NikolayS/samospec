@@ -14,6 +14,7 @@ import {
   runIterate,
   type IterateResolvers,
   type PushOptions,
+  type SeatDiagnostics,
 } from "./cli/iterate.ts";
 import { describePrCapability } from "./git/push-consent.ts";
 import { runNew, type ChoiceResolvers } from "./cli/new.ts";
@@ -419,10 +420,28 @@ function interactiveIterateResolvers(): IterateResolvers {
       if (ans === "b" || ans === "abort") return "abort";
       return "accept";
     },
-    onReviewerExhausted: async () => {
+    onReviewerExhausted: async (diag?: SeatDiagnostics) => {
       process.stdout.write(
         `\nBoth reviewers failed after a whole-round retry.\n`,
       );
+      // Per-seat diagnostics (Issue #52).
+      if (diag !== undefined) {
+        for (const [seatKey, seat] of [
+          ["reviewer_a", diag.reviewer_a],
+          ["reviewer_b", diag.reviewer_b],
+        ] as const) {
+          if (seat.errorDetail !== undefined) {
+            const truncated = seat.errorDetail.message.slice(0, 120);
+            process.stdout.write(
+              `  ${seatKey} (${seat.vendor}): ${seat.errorDetail.reason} — "${truncated}"\n`,
+            );
+          } else {
+            process.stdout.write(
+              `  ${seatKey} (${seat.vendor}): no detail available\n`,
+            );
+          }
+        }
+      }
       const ans = (await rl.question("[C]ontinue / [A]bort [Enter=abort]: "))
         .trim()
         .toLowerCase();

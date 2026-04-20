@@ -82,6 +82,7 @@ import {
   countNonSummaryCategoriesWithFindings,
   roundDirsFor,
   runRound,
+  type SeatErrorDetail,
 } from "../loop/round.ts";
 import {
   classifyAllStops,
@@ -113,7 +114,24 @@ export type ManualEditResolver = (
 ) => Promise<ManualEditChoice>;
 export type DegradeResolver = (summary: string) => Promise<DegradeChoice>;
 export type ContinueReviewersChoice = "continue" | "abort";
-export type ContinueReviewersResolver = () => Promise<ContinueReviewersChoice>;
+
+/**
+ * Per-seat diagnostic payload for the reviewer-exhausted prompt (Issue #52).
+ */
+export interface SeatDiagnostics {
+  readonly reviewer_a: {
+    readonly vendor: string;
+    readonly errorDetail?: SeatErrorDetail;
+  };
+  readonly reviewer_b: {
+    readonly vendor: string;
+    readonly errorDetail?: SeatErrorDetail;
+  };
+}
+
+export type ContinueReviewersResolver = (
+  diag?: SeatDiagnostics,
+) => Promise<ContinueReviewersChoice>;
 
 /** SPEC §8 — first-push consent resolver. See src/git/push-consent.ts. */
 export type PushConsentResolver = (
@@ -492,8 +510,21 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         if (
           roundOutcome.roundStopReason === "both_seats_failed_even_after_retry"
         ) {
-          // Prompt the user per SPEC §7 / #6.
-          const cont = await input.resolvers.onReviewerExhausted();
+          // Prompt the user per SPEC §7 / #6. Pass per-seat diagnostics
+          // so the CLI can display error reason + message (Issue #52).
+          const edA = roundOutcome.seats.reviewer_a.errorDetail;
+          const edB = roundOutcome.seats.reviewer_b.errorDetail;
+          const seatDiag: SeatDiagnostics = {
+            reviewer_a: {
+              vendor: input.adapters.reviewerA.vendor,
+              ...(edA !== undefined ? { errorDetail: edA } : {}),
+            },
+            reviewer_b: {
+              vendor: input.adapters.reviewerB.vendor,
+              ...(edB !== undefined ? { errorDetail: edB } : {}),
+            },
+          };
+          const cont = await input.resolvers.onReviewerExhausted(seatDiag);
           if (cont === "abort") {
             return finishIterate({
               reason: "reviewers-exhausted",
