@@ -13,7 +13,7 @@ import {
   type CheckResult,
 } from "./doctor-format.ts";
 import { checkCliAvailability } from "./doctor-checks/availability.ts";
-import { checkAuthStatus } from "./doctor-checks/auth.ts";
+import { checkAuthStatus, type ProbeResult } from "./doctor-checks/auth.ts";
 import { checkGitHealth } from "./doctor-checks/git.ts";
 import { checkLockfile } from "./doctor-checks/lock.ts";
 import { checkConfig } from "./doctor-checks/config.ts";
@@ -58,6 +58,14 @@ export interface RunDoctorArgs {
     stdout: string;
     stderr: string;
   };
+  /**
+   * Injectable auth probe for testability (SPEC §11).
+   * Spawns a tiny prompt through the named adapter CLI and returns the
+   * result. Tests inject a mock; production wires the real spawn-based
+   * probe. When omitted, no live probe is executed and auth is checked
+   * via auth_status() only.
+   */
+  readonly authProbe?: (label: string) => Promise<ProbeResult>;
 }
 
 export interface RunDoctorResult {
@@ -163,7 +171,12 @@ export async function runDoctor(args: RunDoctorArgs): Promise<RunDoctorResult> {
   const results: CheckResult[] = [];
 
   results.push(await checkCliAvailability({ adapters: args.adapters }));
-  results.push(await checkAuthStatus({ adapters: args.adapters }));
+  results.push(
+    await checkAuthStatus({
+      adapters: args.adapters,
+      ...(args.authProbe !== undefined ? { probe: args.authProbe } : {}),
+    }),
+  );
   results.push(
     checkGitHealth({
       isGitRepo,

@@ -18,7 +18,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { runDoctor } from "../../src/cli/doctor.ts";
-import { CheckStatus } from "../../src/cli/doctor-format.ts";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import { runInit } from "../../src/cli/init.ts";
 
@@ -103,9 +102,7 @@ describe("runDoctor — wires authProbe into checkAuthStatus (#48)", () => {
 
     expect(result.exitCode).toBe(0);
     // Auth row should be OK (authenticated, no WARN from probe).
-    const authLine = result.stdout
-      .split("\n")
-      .find((l) => l.includes("auth"));
+    const authLine = result.stdout.split("\n").find((l) => l.includes("auth"));
     expect(authLine).toBeDefined();
     expect(authLine).toContain("OK");
   });
