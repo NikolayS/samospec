@@ -1,0 +1,125 @@
+# Troubleshooting
+
+Copyright 2026 Nikolay Samokhvalov.
+
+Common failures and how to recover.
+
+## Adapter not found
+
+```
+FAIL  availability  claude: not installed
+```
+
+Install Claude Code from https://claude.ai/download and ensure the `claude`
+binary is on your `PATH`. Then run `samospec doctor` again.
+
+For Codex:
+
+```
+FAIL  availability  codex: not installed
+```
+
+Install the OpenAI CLI: https://platform.openai.com/docs/guides/codex.
+
+## Auth refused
+
+```
+FAIL  auth  claude: not authenticated
+```
+
+Run `claude auth login` or `claude login` per the Claude Code documentation.
+For Codex, run `codex auth login` with a valid `OPENAI_API_KEY` in your
+environment.
+
+## lead_terminal
+
+```
+samospec: lead_terminal — lead refused or schema-validation failed.
+Exit code: 4.
+```
+
+This means the lead adapter returned an unrecoverable error (refusal, or two
+consecutive schema-validation failures on the same call). The session is paused.
+
+Recovery options:
+
+- Write v0.1 manually in `.samo/spec/<slug>/SPEC.md`, then run
+  `samospec iterate <slug>`.
+- Check `samospec status <slug>` for the last committed version.
+- Check adapter logs for rate-limit or content-policy messages.
+
+Note: `samospec resume <slug>` re-enters from the last committed round — it
+will not retry the lead_terminal call automatically. You must edit SPEC.md
+first.
+
+## Consent refused — push skipped
+
+```
+samospec: push skipped — consent refused.
+PR cannot be opened without remote push.
+```
+
+You refused push consent when prompted. The session continues local-only.
+To push later:
+
+```bash
+git push origin samospec/<slug>
+gh pr create --base main --head samospec/<slug>
+```
+
+Or re-run `samospec publish <slug>` after clearing the stored refusal:
+
+```bash
+# Edit .samo/config.json, remove the git.push_consent entry for your remote.
+samospec publish <slug>
+```
+
+## Stale lockfile
+
+```
+FAIL  lock  stale .samo/.lock (pid 99999, dead) — run `rm .samo/.lock` to clear.
+```
+
+A previous session crashed without releasing the lock. Remove it:
+
+```bash
+rm .samo/.lock
+```
+
+Then re-run your command.
+
+## Offline resume
+
+If your network connection drops mid-session:
+
+```
+samospec: remote unreachable — continuing offline (remote_stale: true).
+```
+
+The session continues locally. On reconnection, run `samospec resume <slug>`
+to fetch remote changes and reconcile. If the remote HEAD moved (non-fast-
+forward), the resume halts with:
+
+```
+samospec: remote HEAD moved; cannot fast-forward. Resolve manually.
+```
+
+Merge or rebase the remote changes onto your local `samospec/<slug>` branch,
+then re-run resume.
+
+## Global config contamination
+
+```
+WARN  global-config  ~/.claude/CLAUDE.md detected — may steer AI behavior
+```
+
+A global `CLAUDE.md` or Codex preamble in your home directory can override
+system-prompt hardening and steer adapter behavior in ways `samospec` cannot
+see. Consider removing or scoping the file to specific projects. See
+`.samo/blueprints/SPEC.md §14` for details.
+
+## TODO: weekly live CI
+
+A weekly workflow against real CLIs with a fixed prompt corpus is not yet
+implemented. This is a post-v0.1 operational task. See
+[docs/security.md](security.md) for the current CI posture.
