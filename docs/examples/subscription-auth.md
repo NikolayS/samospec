@@ -3,48 +3,66 @@
 Copyright 2026 Nikolay Samokhvalov.
 
 Claude Max and Claude Pro users authenticate via subscription rather than an
-API key. This changes how `samospec` reports costs and enforces limits.
+API key. samospec **detects** subscription auth and reports it via
+`samospec doctor`, but **cannot drive non-interactive work calls** under
+subscription auth in v1.
 
-## What changes
+## Why subscription auth doesn't work for work calls
 
-When Claude Code is authenticated via subscription, the adapter returns
-`subscription_auth: true` and cannot report token counts. `samospec` detects
-this automatically and applies the subscription-auth escape (SPEC §11):
-
-- Token budgets are replaced by wall-clock and iteration caps.
-- Wall-clock cap: 240 minutes per session (same as API users).
-- Iteration cap: enforced per round via the configured `policy.max_rounds`.
-- Cost summaries show `(subscription; cost not tracked)` instead of a USD value.
-
-## Doctor output
-
-`samospec doctor` surfaces subscription auth explicitly:
+`claude --print` (the non-interactive mode samospec uses for all work calls)
+rejects subscription tokens:
 
 ```
-WARN  auth  claude: authenticated via subscription (user@example.com)
-            — token cost not visible; wall-clock + iteration caps enforced
+Invalid API key · Fix external API key
 ```
 
-This is a WARN, not a FAIL. The session continues normally.
+The current Claude CLI (v2.1.x) has no flag for subscription-auth + headless
+invocation. The same applies to the `codex exec` subcommand under ChatGPT
+login. Until vendor CLIs expose a subscription-compatible headless mode,
+samospec requires API-key auth for all work calls.
 
-## Session experience
+See SPEC §18 for the open question tracking upstream resolution.
 
-The workflow is identical to API-key auth. The only visible differences:
+## What doctor reports
 
-- No cost estimate at preflight (shows `N/A — subscription auth`).
-- Round cost summaries show `subscription; cost not tracked`.
-- `state.json` records `calibration.cost_per_run_usd` as `0` for
-  subscription sessions (so calibration arrays stay in sync).
+When Claude Code is authenticated via subscription and `ANTHROPIC_API_KEY` is
+not set, `samospec doctor` surfaces:
 
-## Mixed auth (subscription lead, API reviewer)
+```
+WARN  auth  claude: subscription auth detected; samospec requires
+            ANTHROPIC_API_KEY for non-interactive invocation
+```
 
-If the lead is on subscription and Reviewer A (Codex) is on an API key, the
-lead runs under subscription-auth escape while Reviewer A reports token usage
-normally. The combined cost summary shows the Codex cost and `N/A` for Claude.
+This is a WARN, not a FAIL — the CLI is installed and authenticated, it just
+cannot run work calls without an API key.
 
-## Calibration note
+## How to fix it
 
-Subscription-auth sessions still record calibration samples (rounds to
-converge, rough token counts estimated from context sizes). After 3+ sessions
-the preflight estimate improves for iteration and timing — even without cost
-visibility.
+Set the API key env var:
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."   # get at console.anthropic.com
+export OPENAI_API_KEY="sk-..."          # get at platform.openai.com
+```
+
+Then confirm with `samospec doctor`:
+
+```
+OK    auth  claude: authenticated
+OK    auth  codex: authenticated
+```
+
+Now `samospec new` and `samospec iterate` will work normally.
+
+## Mixed auth
+
+If Claude is on subscription without an API key and Codex has `OPENAI_API_KEY`
+set, doctor will WARN on the Claude adapter but OK on Codex. `new` will still
+fail fast (at the Claude lead call) with `subscription_auth_unsupported`.
+
+## What changes when API key is present
+
+When `ANTHROPIC_API_KEY` is set, samospec uses API-key auth for all work calls
+regardless of subscription state. Token budgets, dollar estimates, and the
+consent gate all apply normally (API-key path is the default, fully supported
+path). Subscription quota is not consumed via samospec in this mode.

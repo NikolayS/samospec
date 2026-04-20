@@ -36,9 +36,20 @@ samospec new my-feature --idea "Describe the feature here"
 samospec iterate
 ```
 
-**Prerequisites:** a real [Claude Code](https://claude.ai/download) and
-[Codex](https://platform.openai.com/docs/guides/codex) installation, both
-authenticated. `samospec doctor` checks everything before you start.
+**Prerequisites:**
+
+- A real [Claude Code](https://claude.ai/download) installation with
+  `ANTHROPIC_API_KEY` set (get a key at
+  [console.anthropic.com](https://console.anthropic.com)).
+- A real [Codex](https://platform.openai.com/docs/guides/codex) installation
+  with `OPENAI_API_KEY` set (get a key at
+  [platform.openai.com](https://platform.openai.com)).
+- Both env vars must be present for non-interactive work calls. Subscription
+  auth (Claude Max/Pro, ChatGPT login) is **detected** by `samospec doctor`
+  but **cannot drive work calls** in v1 — `claude --print` rejects subscription
+  tokens. See [docs/troubleshooting.md](docs/troubleshooting.md).
+
+`samospec doctor` checks everything before you start.
 
 - `samospec init` — initialise `.samo/` in the current git repo (idempotent).
 - `samospec new <slug> --idea "..."` — start a new spec; leads you through
