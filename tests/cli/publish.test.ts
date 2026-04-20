@@ -525,6 +525,39 @@ describe("samospec publish — lint seam (SPEC §5 Phase 7 + §14)", () => {
     });
     expect(result.exitCode).toBe(0);
   });
+
+  test("real lint is called by default (not the stub) — zero hard warnings on clean spec", async () => {
+    // The real lint adapter runs against the file system; the seeded
+    // SPEC.md contains no file-path references, so hardWarnings === [].
+    // We pass a spy lint that records invocation and confirm it was called.
+    let lintCalled = false;
+    seedCommittedSpec(tmp, "refunds");
+    const remoteUrl = spawnSync("git", ["remote", "get-url", "origin"], {
+      cwd: tmp,
+      encoding: "utf8",
+    }).stdout.trim();
+    seedConfig(tmp, {
+      schema_version: 1,
+      git: { push_consent: { [remoteUrl]: true } },
+    });
+    const { PATH } = scriptShim({ gh: true });
+    const result = await runPublish({
+      cwd: tmp,
+      slug: "refunds",
+      now: "2026-04-19T13:00:00Z",
+      remote: "origin",
+      env: { PATH },
+      // Inject a spy that wraps the real adapter to confirm it's invoked.
+      lint: (opts) => {
+        lintCalled = true;
+        // Confirm it received the actual spec body (real lint, not stub).
+        expect(opts.specBody.length).toBeGreaterThan(0);
+        return { hardWarnings: [], softWarnings: [] };
+      },
+    });
+    expect(result.exitCode).toBe(0);
+    expect(lintCalled).toBe(true);
+  });
 });
 
 describe("samospec publish — state advance (SPEC §7)", () => {

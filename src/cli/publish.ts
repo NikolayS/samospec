@@ -63,10 +63,10 @@ import { specPaths } from "./new.ts";
 import { buildPrBody } from "../publish/body.ts";
 import { promoteSpecToBlueprint } from "../publish/blueprints.ts";
 import {
-  publishLintStub,
   type PublishLint,
   type PublishLintReport,
 } from "../publish/lint-stub.ts";
+import { publishLintReal } from "../publish/lint-adapter.ts";
 import {
   buildCompareUrl,
   openPullRequest,
@@ -82,7 +82,7 @@ export interface PublishInput {
   readonly env?: NodeJS.ProcessEnv;
   /** `--no-lint` — skip the lint call entirely. */
   readonly noLint?: boolean;
-  /** Lint injection seam. Defaults to the stub (Issue #33 replaces). */
+  /** Lint injection seam. Defaults to the real lint (Issue #33). */
   readonly lint?: PublishLint;
   /** PR-capability probe override — tests use a deterministic probe. */
   readonly probePrCapability?: () => PrCapabilityProbe;
@@ -270,7 +270,7 @@ export async function runPublish(input: PublishInput): Promise<PublishResult> {
   // -- lint seam --
   let lintReport: PublishLintReport = { hardWarnings: [], softWarnings: [] };
   if (input.noLint !== true) {
-    const lint: PublishLint = input.lint ?? publishLintStub;
+    const lint: PublishLint = input.lint ?? publishLintReal;
     lintReport = lint({
       specBody: readFileSync(paths.specPath, "utf8"),
       repoPath: input.cwd,
