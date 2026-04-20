@@ -1,0 +1,17 @@
+{
+  "_comment": "Dogfood scorecard frozen template for SamoSpec SPEC v1.0. Update alongside SPEC version bumps.",
+  "spec_version": "v1.0",
+  "required_headings": [
+    "## Goal",
+    "## Scope",
+    "## Architecture",
+    "## Non-goals",
+    "## Risks"
+  ],
+  "min_rounds_complete": 3,
+  "context_json_required_fields": ["files", "risk_flags"],
+  "decisions_required": {
+    "min_accepted": 1,
+    "min_rejected_or_deferred": 1
+  }
+}
