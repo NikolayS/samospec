@@ -18,12 +18,7 @@
 // Fixtures live under tests/fixtures/claude-fixtures/.
 
 import { afterAll, describe, expect, test } from "bun:test";
-import {
-  mkdtempSync,
-  writeFileSync,
-  chmodSync,
-  rmSync,
-} from "node:fs";
+import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -48,10 +43,8 @@ const BUN_DIR = dirname(process.execPath);
 const FAKE_CLI = new URL("../fixtures/fake-cli.ts", import.meta.url).pathname;
 
 function claudeFixture(name: string): string {
-  return new URL(
-    `../fixtures/claude-fixtures/${name}`,
-    import.meta.url,
-  ).pathname;
+  return new URL(`../fixtures/claude-fixtures/${name}`, import.meta.url)
+    .pathname;
 }
 
 const TMP: string[] = [];
@@ -110,7 +103,7 @@ function makeSpy(
       extraAllowedEnvKeys: [...(input.extraAllowedEnvKeys ?? [])],
     });
     const result = Array.isArray(scripted)
-      ? scripted[calls.length - 1] ?? scripted[scripted.length - 1]!
+      ? (scripted[calls.length - 1] ?? scripted[scripted.length - 1]!)
       : (scripted as SpawnCliResult);
     return Promise.resolve(result);
   };
@@ -149,8 +142,7 @@ function makeFakeCliSpy(opts: {
       ...(input.host ?? {}),
     };
     const hostPath = hostSnapshot["PATH"] ?? "";
-    const mergedPath =
-      hostPath === "" ? BUN_DIR : `${BUN_DIR}:${hostPath}`;
+    const mergedPath = hostPath === "" ? BUN_DIR : `${BUN_DIR}:${hostPath}`;
     hostSnapshot["PATH"] = mergedPath;
 
     const rewritten: SpawnCliInput = {
@@ -353,9 +345,7 @@ describe("ClaudeAdapter schema-violation repair (SPEC §7)", () => {
   });
 
   test("schema-violation then repair: first call garbage, second valid", async () => {
-    const stateFile = mkdtempSync(
-      join(tmpdir(), "samospec-claude-state-"),
-    );
+    const stateFile = mkdtempSync(join(tmpdir(), "samospec-claude-state-"));
     TMP.push(stateFile);
     const stateJson = join(stateFile, "call-state.json");
     writeFileSync(stateJson, JSON.stringify({ call: 0 }));

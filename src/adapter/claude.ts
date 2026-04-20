@@ -333,9 +333,7 @@ export class ClaudeAdapter implements Adapter {
       attempts: outcome.attempts,
     };
     throw new ClaudeAdapterError(
-      outcome.detail !== undefined
-        ? { ...base, detail: outcome.detail }
-        : base,
+      outcome.detail !== undefined ? { ...base, detail: outcome.detail } : base,
     );
   }
 
@@ -463,7 +461,7 @@ function buildCritiquePrompt(input: CritiqueInput): string {
 function buildRevisePrompt(input: ReviseInput): string {
   return (
     "You are the samospec lead. Emit the FULL revised SPEC.md text — " +
-    "not a patch. Return ONLY a JSON object: { \"spec\": <full text>, " +
+    'not a patch. Return ONLY a JSON object: { "spec": <full text>, ' +
     '"ready": boolean, "rationale": string, "usage": null, ' +
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code ` +
     `fences.\n\nCurrent spec:\n${input.spec}\n\nReviews (JSON):\n` +
@@ -537,10 +535,7 @@ function normalizeUsageAndEffort(
 
 // ---------- error classification ----------
 
-function classifyExit(
-  exitCode: number,
-  stderr: string,
-): AttemptResult<string> {
+function classifyExit(exitCode: number, stderr: string): AttemptResult<string> {
   // Stderr-heuristic classification per SPEC §7 failure classes.
   // Non-zero exit is terminal unless stderr matches a known retryable
   // pattern (rate limit, network, 5xx).
