@@ -47,7 +47,8 @@ const BUN_DIR = dirname(process.execPath);
 const FAKE_CLI = new URL("../fixtures/fake-cli.ts", import.meta.url).pathname;
 
 function codexFixture(name: string): string {
-  return new URL(`../fixtures/codex-fixtures/${name}`, import.meta.url).pathname;
+  return new URL(`../fixtures/codex-fixtures/${name}`, import.meta.url)
+    .pathname;
 }
 
 const TMP: string[] = [];

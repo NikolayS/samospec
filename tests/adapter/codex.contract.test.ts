@@ -22,7 +22,8 @@ const FAKE_CLI = new URL("../fixtures/fake-cli.ts", import.meta.url).pathname;
 const BUN_DIR = dirname(process.execPath);
 
 function codexFixture(name: string): string {
-  return new URL(`../fixtures/codex-fixtures/${name}`, import.meta.url).pathname;
+  return new URL(`../fixtures/codex-fixtures/${name}`, import.meta.url)
+    .pathname;
 }
 
 const TMP: string[] = [];
@@ -61,7 +62,9 @@ function makeHost(): Record<string, string | undefined> {
 function makeDelegator(
   fixture: string,
 ): (i: SpawnCliInput) => Promise<SpawnCliResult> {
-  const stateDir = mkdtempSync(join(tmpdir(), "samospec-codex-contract-state-"));
+  const stateDir = mkdtempSync(
+    join(tmpdir(), "samospec-codex-contract-state-"),
+  );
   TMP.push(stateDir);
   const stateFile = join(stateDir, "state.json");
   writeFileSync(stateFile, JSON.stringify({ call: 0 }));

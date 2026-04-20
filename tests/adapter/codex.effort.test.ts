@@ -54,7 +54,7 @@ function scriptedSpy(responses: readonly SpawnCliResult[]): Spy {
   const calls: SpyCall[] = [];
   const spawn = (input: SpawnCliInput): Promise<SpawnCliResult> => {
     calls.push({ cmd: [...input.cmd] });
-    const r = responses[calls.length - 1] ?? responses[responses.length - 1]!;
+    const r = responses[calls.length - 1] ?? responses[responses.length - 1];
     return Promise.resolve(r);
   };
   return { spawn, calls };
@@ -76,7 +76,7 @@ function sampleAskWithEffort(level: EffortLevel): AskInput {
 }
 
 describe("CodexAdapter effort-level mapping (SPEC §11 table)", () => {
-  const cases: ReadonlyArray<[EffortLevel, string]> = [
+  const cases: readonly [EffortLevel, string][] = [
     ["max", "high"],
     ["high", "high"],
     ["medium", "medium"],
