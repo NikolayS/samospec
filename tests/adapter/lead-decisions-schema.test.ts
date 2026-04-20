@@ -171,7 +171,9 @@ describe("ReviseOutputSchema — decisions array (optional)", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       // decisions should be absent or undefined
-      expect(result.data.decisions === undefined || result.data.decisions === null).toBe(true);
+      expect(
+        result.data.decisions === undefined || result.data.decisions === null,
+      ).toBe(true);
     }
   });
 });

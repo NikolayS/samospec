@@ -24,7 +24,11 @@ import {
 } from "node:fs";
 import { z } from "zod";
 
-import type { Finding, FindingCategory } from "../adapter/types.ts";
+import type {
+  Finding,
+  FindingCategory,
+  ReviseDecision,
+} from "../adapter/types.ts";
 
 export const ReviewDecisionSchema = z.object({
   finding_ref: z.string().min(1),
@@ -104,6 +108,24 @@ export function appendRoundDecisions(input: AppendRoundDecisionsInput): string {
   lines.push("");
   appendFileSync(input.file, lines.join("\n"), "utf8");
   return header;
+}
+
+/**
+ * Convert a ReviseOutput.decisions array (v0.2.0+) to ReviewDecision[]
+ * compatible with appendRoundDecisions. When decisions is absent or empty,
+ * returns [] which triggers the "no decisions recorded" fallback.
+ */
+export function reviseDecisionsToReviewDecisions(
+  decisions: readonly ReviseDecision[] | undefined | null,
+): ReviewDecision[] {
+  if (decisions === undefined || decisions === null || decisions.length === 0) {
+    return [];
+  }
+  return decisions.map((d) => ({
+    finding_ref: d.finding_id ?? `${d.category}#?`,
+    decision: d.verdict,
+    rationale: d.rationale,
+  }));
 }
 
 /** Seed a fresh decisions.md when the new flow didn't write one. */

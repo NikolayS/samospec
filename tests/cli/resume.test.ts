@@ -196,7 +196,7 @@ describe("samospec resume — interview already complete", () => {
     );
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toLowerCase()).toMatch(
-      /ready for review loop|sprint 3/,
+      /samospec iterate|committed|review loop/,
     );
   });
 });

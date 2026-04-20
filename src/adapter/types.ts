@@ -135,19 +135,71 @@ export const DecisionSchema = z.object({
   rationale: z.string(),
 });
 
+// SPEC §7 baseline section opt-out list (v0.2.0+).
+// Known baseline section names (lowercase, canonical form).
+export const BASELINE_SECTION_NAMES = [
+  "version header",
+  "goal",
+  "user stories",
+  "architecture",
+  "implementation details",
+  "tests",
+  "team",
+  "sprints",
+  "changelog",
+] as const;
+export type BaselineSectionName = (typeof BASELINE_SECTION_NAMES)[number];
+
 export const ReviseInputSchema = z.object({
   spec: z.string().min(1),
   reviews: z.array(CritiqueOutputSchema),
   decisions_history: z.array(DecisionSchema),
   opts: WorkOptsSchema,
+  /**
+   * Optional list of baseline section names to exclude from the
+   * mandatory section requirement (SPEC §7 v0.2.0 --skip opt-out).
+   * Names are matched case-insensitively against BASELINE_SECTION_NAMES.
+   */
+  skipSections: z.array(z.string()).optional(),
 });
 export type ReviseInput = z.infer<typeof ReviseInputSchema>;
 
+// SPEC §7 v0.2.0: per-finding decision emitted by the lead on revise().
+export const ReviseDecisionSchema = z.object({
+  /**
+   * Seat + ordinal of the finding, e.g. "codex#1" or "claude#2".
+   * Optional: may be absent if the lead refers to a finding category
+   * rather than a numbered finding.
+   */
+  finding_id: z.string().optional(),
+  /**
+   * Review taxonomy category the decision addresses.
+   */
+  category: z.string().min(1),
+  /**
+   * Lead's ruling on this finding.
+   */
+  verdict: z.enum(["accepted", "rejected", "deferred"]),
+  /**
+   * One-sentence reason for the decision.
+   */
+  rationale: z.string().min(1),
+});
+export type ReviseDecision = z.infer<typeof ReviseDecisionSchema>;
+
 // Lead-ready protocol: `ready` + `rationale` inline on revise().
+// v0.2.0: optional `decisions` array for per-finding verdicts.
 export const ReviseOutputSchema = z.object({
   spec: z.string().min(1),
   ready: z.boolean(),
   rationale: z.string(),
+  /**
+   * Optional per-finding decisions emitted by the lead (SPEC §7 v0.2.0).
+   * When present, the loop serializes these to decisions.md and uses
+   * the counts in the changelog entry. When absent, the loop falls back
+   * to "no decisions recorded this round".
+   */
+  decisions: z.array(ReviseDecisionSchema).optional(),
   usage: UsageSchema,
   effort_used: EffortLevelSchema,
 });

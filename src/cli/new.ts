@@ -16,10 +16,9 @@
 //   - first commit `spec(<slug>): draft v0.1` on samospec/<slug>
 //   - session-end calibration sample (src/policy/calibration.ts)
 //
-// Scope guardrails for Sprint 2 exit:
-//   - NO push (Sprint 3 adds the consent-gated push).
-//   - NO review loop (Sprint 3).
-//   - NO reviewer adapters (Sprint 3).
+// Notes:
+//   - Push is consent-gated (first push per remote prompts for consent).
+//   - Review loop runs via `samospec iterate`.
 //   - The safety invariant from Issue #3 holds: never commit on a
 //     protected branch (createSpecBranch throws with exit 2; specCommit
 //     additionally refuses).
@@ -114,8 +113,16 @@ export interface RunNewInput {
   readonly maxWallClockMinutes?: number;
   /** Test seam: injects the consent-gate answer when the gate fires. */
   readonly consentAnswer?: ConsentAnswer;
-  /** Always `true` in v1 per Issue #15 scope (consent-gated push is Sprint 3). */
+  /**
+   * When true, suppress push. Push is consent-gated by default per
+   * SPEC §8. This flag is an explicit per-invocation override.
+   */
   readonly noPush?: boolean;
+  /**
+   * Optional list of baseline section names to skip (SPEC §7 v0.2.0
+   * --skip opt-out). Passed through to the draft prompt builder.
+   */
+  readonly skipSections?: string[];
 }
 
 // ---------- CLI entry ----------
@@ -451,10 +458,10 @@ export async function runNew(
     const tldr = renderTldr(draft.spec, { slug: input.slug });
     writeFileSync(tldrPath, tldr, "utf8");
 
-    // decisions.md: empty seed with a "no decisions yet" preamble.
+    // decisions.md: empty seed; populated by the review loop.
     writeFileSync(
       decisionsPath,
-      `# decisions\n\n- No review-loop decisions yet. Populated during Sprint 3.\n`,
+      `# decisions\n\n- No review-loop decisions yet.\n`,
       "utf8",
     );
 
@@ -567,15 +574,9 @@ export async function runNew(
     notice("TL;DR");
     notice(tldr);
     notice(
-      `next: \`samospec resume ${input.slug}\` (review loop lands in Sprint 3).`,
+      `next: \`samospec iterate ${input.slug}\` to start the review loop, ` +
+        `or \`samospec resume ${input.slug}\` to pick up later.`,
     );
-
-    if (input.noPush !== false) {
-      // SPEC §8 + Issue #15 scope: no push in this sprint.
-      notice(
-        `(--no-push default active; push consent gate ships in Sprint 3.)`,
-      );
-    }
 
     return {
       exitCode: 0,

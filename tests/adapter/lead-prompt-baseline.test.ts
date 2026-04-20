@@ -120,7 +120,9 @@ describe("buildRevisePrompt — baseline sections", () => {
 
   test("empty skipSections has same mandatory list as undefined", () => {
     const promptNone = buildRevisePrompt(makeReviseInput());
-    const promptEmpty = buildRevisePrompt(makeReviseInput({ skipSections: [] }));
+    const promptEmpty = buildRevisePrompt(
+      makeReviseInput({ skipSections: [] }),
+    );
     expect(promptNone).toEqual(promptEmpty);
   });
 });

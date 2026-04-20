@@ -5,14 +5,15 @@
 // counts from the round's decisions array.
 
 import { test, expect, describe } from "bun:test";
-import { countDecisions, type DecisionCounts } from "../../src/loop/decisions.ts";
+import {
+  countDecisions,
+  type DecisionCounts,
+} from "../../src/loop/decisions.ts";
 import type { ReviewDecision } from "../../src/loop/decisions.ts";
 import type { ReviseOutput } from "../../src/adapter/types.ts";
 
 // Helper: build ReviewDecision[] from ReviseOutput.decisions
-function toReviewDecisions(
-  reviseOutput: ReviseOutput,
-): ReviewDecision[] {
+function toReviewDecisions(reviseOutput: ReviseOutput): ReviewDecision[] {
   if (!reviseOutput.decisions || reviseOutput.decisions.length === 0) {
     return [];
   }
@@ -45,8 +46,18 @@ describe("changelog counts from ReviseOutput.decisions", () => {
       usage: null,
       effort_used: "max",
       decisions: [
-        { finding_id: "codex#1", category: "missing-requirement", verdict: "accepted", rationale: "r1" },
-        { finding_id: "codex#2", category: "ambiguity", verdict: "accepted", rationale: "r2" },
+        {
+          finding_id: "codex#1",
+          category: "missing-requirement",
+          verdict: "accepted",
+          rationale: "r1",
+        },
+        {
+          finding_id: "codex#2",
+          category: "ambiguity",
+          verdict: "accepted",
+          rationale: "r2",
+        },
       ],
     };
     const decisions = toReviewDecisions(revise);
@@ -69,10 +80,30 @@ describe("changelog counts from ReviseOutput.decisions", () => {
       usage: null,
       effort_used: "max",
       decisions: [
-        { finding_id: "codex#1", category: "missing-requirement", verdict: "accepted", rationale: "r1" },
-        { finding_id: "claude#1", category: "weak-testing", verdict: "rejected", rationale: "r2" },
-        { finding_id: "claude#2", category: "ambiguity", verdict: "deferred", rationale: "r3" },
-        { finding_id: "codex#3", category: "missing-risk", verdict: "accepted", rationale: "r4" },
+        {
+          finding_id: "codex#1",
+          category: "missing-requirement",
+          verdict: "accepted",
+          rationale: "r1",
+        },
+        {
+          finding_id: "claude#1",
+          category: "weak-testing",
+          verdict: "rejected",
+          rationale: "r2",
+        },
+        {
+          finding_id: "claude#2",
+          category: "ambiguity",
+          verdict: "deferred",
+          rationale: "r3",
+        },
+        {
+          finding_id: "codex#3",
+          category: "missing-risk",
+          verdict: "accepted",
+          rationale: "r4",
+        },
       ],
     };
     const decisions = toReviewDecisions(revise);

@@ -31,10 +31,22 @@ import { type CritiqueInput, type CritiqueOutput } from "./types.ts";
 
 // SPEC §7: literal persona prefix applied to Reviewer B critique()
 // calls. The wording is fixed — spec compliance is verified in tests.
+//
+// v0.2.0 addition: Reviewer B explicitly checks for missing baseline
+// sections (SPEC §7 baseline section template) and raises
+// `missing-requirement` findings when any mandatory section is absent.
 export const REVIEWER_B_PERSONA_PREFIX =
   "Focus especially on ambiguity, contradiction, and weak-testing. " +
   "You may surface findings in other categories when warranted, but " +
-  "weight your effort toward these.";
+  "weight your effort toward these. " +
+  "Additionally, check that the spec includes all nine mandatory baseline " +
+  "sections: (1) version header, (2) goal & why it's needed, " +
+  "(3) user stories (≥3 with persona+action+outcome), (4) architecture, " +
+  "(5) implementation details, (6) tests plan with red/green TDD call-out, " +
+  "(7) team of veteran experts (count + skill labels), " +
+  "(8) implementation plan with sprints + parallelization, " +
+  "(9) embedded changelog. " +
+  "Raise a missing-requirement finding for each absent mandatory section.";
 
 // ---------- ClaudeReviewerBAdapter ----------
 

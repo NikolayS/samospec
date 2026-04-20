@@ -351,7 +351,7 @@ describe("resume idempotency — kill between interview and draft write", () => 
     );
     expect(second.exitCode).toBe(0);
     expect(second.stdout.toLowerCase()).toMatch(
-      /ready for review loop|sprint 3/,
+      /samospec iterate|committed|review loop/,
     );
   });
 });
