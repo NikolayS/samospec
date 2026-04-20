@@ -32,14 +32,25 @@ describe("detectSubscriptionAuth (SPEC §11 escape)", () => {
     expect(r).toBe(false);
   });
 
-  test("codex + authenticated + no OPENAI_API_KEY -> NOT subscription auth", () => {
-    // Codex does not currently support subscription auth; only Claude does.
+  test("codex + authenticated + OPENAI_API_KEY set -> NOT subscription auth", () => {
+    const r = detectSubscriptionAuth({
+      vendor: "codex",
+      authenticated: true,
+      env: { OPENAI_API_KEY: "sk-..." },
+    });
+    expect(r).toBe(false);
+  });
+
+  test("codex + authenticated + no OPENAI_API_KEY -> subscription auth (ChatGPT login)", () => {
+    // As of Sprint 3 (#23), Codex CLI supports ChatGPT-subscription auth
+    // in addition to the API-key path. With no API-key env var and an
+    // authenticated CLI, treat as subscription auth (usage: null path).
     const r = detectSubscriptionAuth({
       vendor: "codex",
       authenticated: true,
       env: {},
     });
-    expect(r).toBe(false);
+    expect(r).toBe(true);
   });
 
   test("claude + authenticated + ANTHROPIC_API_KEY empty string -> subscription auth", () => {

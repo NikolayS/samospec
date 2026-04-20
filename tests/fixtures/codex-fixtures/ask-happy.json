@@ -1,0 +1,9 @@
+{
+  "script": [
+    {
+      "type": "stdout",
+      "text": "{\"answer\":\"hello from codex\",\"usage\":null,\"effort_used\":\"high\"}"
+    },
+    { "type": "exit", "code": 0 }
+  ]
+}
