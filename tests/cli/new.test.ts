@@ -14,11 +14,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
@@ -300,6 +303,69 @@ describe("samospec new — slug collision (SPEC §10)", () => {
   });
 });
 
+// ---------- --force flag (issue #63) ----------
+
+describe("samospec new --force (issue #63)", () => {
+  test("force=true archives existing slug dir and exits 0", async () => {
+    const slugDir = path.join(tmp, ".samo", "spec", "demo");
+    mkdirSync(slugDir, { recursive: true });
+    // Sentinel file to confirm the old dir was archived.
+    writeFileSync(path.join(slugDir, "state.json"), '{"old":true}', "utf8");
+
+    const { adapter } = makeLeadAdapter([
+      personaJson("CLI engineer"),
+      questionsJson([{ id: "q1", text: "framework?" }]),
+    ]);
+    const result = await runNew(
+      {
+        cwd: tmp,
+        slug: "demo",
+        idea: "force-test idea",
+        explain: false,
+        resolvers: acceptResolver(),
+        now: "2026-04-19T12:00:00Z",
+        force: true,
+      },
+      adapter,
+    );
+
+    // Should succeed — not fail with "already exists".
+    expect(result.exitCode).toBe(0);
+
+    // New slug dir must exist with fresh state.
+    const newStatePath = path.join(slugDir, "state.json");
+    expect(existsSync(newStatePath)).toBe(true);
+    const stateRaw = readFileSync(newStatePath, "utf8");
+    const content = JSON.parse(stateRaw) as Record<string, unknown>;
+    expect(content).not.toHaveProperty("old");
+
+    // A bak dir matching the pattern must exist.
+    const specDir = path.join(tmp, ".samo", "spec");
+    const entries = readdirSync(specDir);
+    const bakDirs = entries.filter((e) => e.startsWith("demo.bak."));
+    expect(bakDirs.length).toBe(1);
+  });
+
+  test("force=false + existing dir => exit 1 (unchanged behaviour)", async () => {
+    mkdirSync(path.join(tmp, ".samo", "spec", "demo"), { recursive: true });
+    const { adapter } = makeLeadAdapter([personaJson("CLI engineer")]);
+    const result = await runNew(
+      {
+        cwd: tmp,
+        slug: "demo",
+        idea: "x",
+        explain: false,
+        resolvers: acceptResolver(),
+        now: "2026-04-19T12:00:00Z",
+        force: false,
+      },
+      adapter,
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr.toLowerCase()).toMatch(/resume|already exists/);
+  });
+});
+
 // ---------- lock contention ----------
 
 describe("samospec new — repo lock (SPEC §7 lockfile)", () => {
@@ -382,5 +448,62 @@ describe("samospec new — branch creation guarded by flag (scope guard)", () =>
       adapter,
     );
     expect(invoked).toBe(1);
+  });
+});
+
+// ---------- empty-repo guard (Issue #65) ----------
+
+describe("samospec new — empty repo (no commits, Issue #65)", () => {
+  let repoDir: string;
+  let repoCleanup: () => void;
+
+  beforeEach(() => {
+    // Create a fresh git repo with NO commits on a non-protected branch.
+    repoDir = mkdtempSync(path.join(tmpdir(), "samospec-empty-repo-new-"));
+    const gitEnv = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Samospec Test",
+      GIT_AUTHOR_EMAIL: "test@example.invalid",
+      GIT_COMMITTER_NAME: "Samospec Test",
+      GIT_COMMITTER_EMAIL: "test@example.invalid",
+    };
+    const gitRun = (args: string[]) =>
+      spawnSync("git", args, { cwd: repoDir, encoding: "utf8", env: gitEnv });
+    // Use a non-protected branch name so createSpecBranch doesn't refuse
+    // and the run can complete with exit 0.
+    gitRun(["init", "--initial-branch", "feature/project-setup", repoDir]);
+    gitRun(["config", "user.name", "Samospec Test"]);
+    gitRun(["config", "user.email", "test@example.invalid"]);
+    gitRun(["config", "commit.gpgsign", "false"]);
+    // Deliberately NO commit — HEAD is unresolvable.
+    runInit({ cwd: repoDir });
+    repoCleanup = () => rmSync(repoDir, { recursive: true, force: true });
+  });
+  afterEach(() => repoCleanup());
+
+  test("exits 0 and logs initial-commit notice on empty repo", async () => {
+    const { adapter } = makeLeadAdapter([
+      personaJson("CLI engineer"),
+      questionsJson([{ id: "q1", text: "framework?" }]),
+    ]);
+    const result = await runNew(
+      {
+        cwd: repoDir,
+        slug: "emptydemo",
+        idea: "test empty repo fix",
+        explain: false,
+        resolvers: acceptResolver(),
+        now: "2026-04-20T00:00:00Z",
+      },
+      adapter,
+    );
+
+    // Must not crash with a confusing HEAD error — exit 0 means success.
+    expect(result.exitCode).toBe(0);
+
+    // The notice "No commits found — created initial commit." must appear.
+    expect(result.stdout).toContain(
+      "No commits found — created initial commit.",
+    );
   });
 });
