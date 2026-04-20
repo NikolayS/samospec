@@ -128,6 +128,38 @@ describe("state/types — state.json zod schema (SPEC §5, §7)", () => {
     });
     expect(parsed.exit?.code).toBe(4);
   });
+
+  // SPEC §5 Phase 7 + Issue #32 — publish state advance.
+  test("accepts published_at + published_version + published_pr_url", () => {
+    const parsed = stateSchema.parse({
+      ...minimalState,
+      published_at: "2026-04-19T13:00:00Z",
+      published_version: "v0.2",
+      published_pr_url: "https://github.com/demo/demo/pull/1",
+    });
+    expect(parsed.published_at).toBe("2026-04-19T13:00:00Z");
+    expect(parsed.published_version).toBe("v0.2");
+    expect(parsed.published_pr_url).toBe("https://github.com/demo/demo/pull/1");
+  });
+
+  test("allows published_pr_url to be absent (compare-URL fallback)", () => {
+    const parsed = stateSchema.parse({
+      ...minimalState,
+      published_at: "2026-04-19T13:00:00Z",
+      published_version: "v0.2",
+    });
+    expect(parsed.published_pr_url).toBeUndefined();
+  });
+
+  test("rejects published_version that does not start with `v`", () => {
+    expect(() =>
+      stateSchema.parse({
+        ...minimalState,
+        published_at: "2026-04-19T13:00:00Z",
+        published_version: "0.2",
+      }),
+    ).toThrow();
+  });
 });
 
 describe("state/types — round.json zod schema (SPEC §7)", () => {

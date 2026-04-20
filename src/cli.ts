@@ -18,6 +18,7 @@ import {
 } from "./cli/iterate.ts";
 import { describePrCapability } from "./git/push-consent.ts";
 import { runNew, type ChoiceResolvers } from "./cli/new.ts";
+import { runPublish } from "./cli/publish.ts";
 import {
   PERSONA_FORM_RE,
   extractSkill,
@@ -50,6 +51,8 @@ const USAGE =
   "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>]\n" +
   "                              Run review rounds until a stopping condition fires.\n" +
   "  status [<slug>]             Print phase, round, cost, wall-clock, and next action.\n" +
+  "  publish [<slug>] [--no-lint] [--remote <name>]\n" +
+  "                              Promote to blueprints/<slug>/SPEC.md, commit, push, open PR.\n" +
   "  version                     Print the samospec version and exit.\n";
 
 /**
@@ -114,6 +117,10 @@ export async function runCli(argv: readonly string[]): Promise<CliResult> {
 
   if (command === "status") {
     return runStatusCommand(rest);
+  }
+
+  if (command === "publish") {
+    return runPublishCommand(rest);
   }
 
   return {
@@ -486,5 +493,57 @@ async function runStatusCommand(rest: readonly string[]) {
     slug: parsed.slug,
     now: new Date().toISOString(),
     adapters: bindings,
+  });
+}
+
+// ---------- publish ----------
+
+interface PublishArgs {
+  readonly slug: string;
+  readonly noLint: boolean;
+  readonly remote: string;
+}
+
+function parsePublishArgs(argv: readonly string[]): PublishArgs | string {
+  let slug: string | null = null;
+  let noLint = false;
+  let remote = "origin";
+  for (let i = 0; i < argv.length; i += 1) {
+    const t = argv[i];
+    if (t === undefined) continue;
+    if (t === "--no-lint") {
+      noLint = true;
+      continue;
+    }
+    if (t === "--remote") {
+      const v = argv[i + 1];
+      i += 1;
+      if (v !== undefined && v.length > 0) remote = v;
+      continue;
+    }
+    if (t.startsWith("--remote=")) {
+      remote = t.slice("--remote=".length);
+      continue;
+    }
+    if (t.startsWith("--")) continue;
+    slug ??= t;
+  }
+  if (slug === null || slug.length === 0) {
+    return "samospec publish: missing <slug>";
+  }
+  return { slug, noLint, remote };
+}
+
+async function runPublishCommand(rest: readonly string[]) {
+  const parsed = parsePublishArgs(rest);
+  if (typeof parsed === "string") {
+    return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
+  }
+  return runPublish({
+    cwd: process.cwd(),
+    slug: parsed.slug,
+    now: new Date().toISOString(),
+    remote: parsed.remote,
+    noLint: parsed.noLint,
   });
 }
