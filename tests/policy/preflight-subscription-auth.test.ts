@@ -72,8 +72,8 @@ describe("preflight — subscription-auth shows 'API key required' in per-adapte
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, REVB]);
-    const hasApiKeyWarning = r.warnings.some(
-      (w) => w.toLowerCase().includes("api key"),
+    const hasApiKeyWarning = r.warnings.some((w) =>
+      w.toLowerCase().includes("api key"),
     );
     expect(hasApiKeyWarning).toBe(true);
   });

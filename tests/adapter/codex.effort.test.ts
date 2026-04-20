@@ -32,6 +32,10 @@ function makeFakeBinaryDir(): { dir: string; binary: string } {
   return { dir, binary };
 }
 
+// Fake API key so auth_status() returns usable_for_noninteractive:true.
+// Effort tests exercise spawn behavior, not subscription-auth gating.
+const FAKE_API_HOST = { OPENAI_API_KEY: "sk-openai-test-fake-key" };
+
 afterAll(() => {
   for (const d of TMP) {
     try {
@@ -89,7 +93,7 @@ describe("CodexAdapter effort-level mapping (SPEC §11 table)", () => {
       const spy = scriptedSpy([HAPPY]);
       const { dir } = makeFakeBinaryDir();
       const adapter = new CodexAdapter({
-        host: { PATH: dir, HOME: "/tmp" },
+        host: { PATH: dir, HOME: "/tmp", ...FAKE_API_HOST },
         spawn: spy.spawn,
       });
       await adapter.ask(sampleAskWithEffort(level));
@@ -119,7 +123,7 @@ describe("CodexAdapter fallback-chain ordering (SPEC §11)", () => {
     const spy = scriptedSpy([reject, reject]);
     const { dir } = makeFakeBinaryDir();
     const adapter = new CodexAdapter({
-      host: { PATH: dir, HOME: "/tmp" },
+      host: { PATH: dir, HOME: "/tmp", ...FAKE_API_HOST },
       spawn: spy.spawn,
     });
 
@@ -149,7 +153,7 @@ describe("CodexAdapter fallback-chain ordering (SPEC §11)", () => {
     const spy = scriptedSpy([reject, reject, reject]);
     const { dir } = makeFakeBinaryDir();
     const adapter = new CodexAdapter({
-      host: { PATH: dir, HOME: "/tmp" },
+      host: { PATH: dir, HOME: "/tmp", ...FAKE_API_HOST },
       spawn: spy.spawn,
       models: custom,
       defaultModel: "custom-a",

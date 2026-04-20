@@ -7,7 +7,7 @@
 // ask(), critique(), or revise() must throw a ClaudeAdapterError with
 // reason "subscription_auth_unsupported" — WITHOUT spawning the CLI.
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +16,16 @@ import { ClaudeAdapter, ClaudeAdapterError } from "../../src/adapter/claude.ts";
 import type { SpawnCliInput, SpawnCliResult } from "../../src/adapter/spawn.ts";
 
 const TMP: string[] = [];
+
+afterAll(() => {
+  for (const d of TMP) {
+    try {
+      rmSync(d, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+});
 
 function makeFakeBinary(name: string, script: string): string {
   const dir = mkdtempSync(join(tmpdir(), "samospec-sub-fail-"));
@@ -157,7 +167,7 @@ describe("ClaudeAdapter — subscription_auth_unsupported fail-fast", () => {
     // and the work call should proceed (or fail for other reasons, not sub-auth).
     const dir = makeFakeBinary("claude", 'echo "2.1.114"');
     const spawnCalls: number[] = [];
-    const countingSpawn = (input: SpawnCliInput): Promise<SpawnCliResult> => {
+    const countingSpawn = (_input: SpawnCliInput): Promise<SpawnCliResult> => {
       spawnCalls.push(1);
       // Simulate a failed call so we don't need real output parsing.
       return Promise.resolve({

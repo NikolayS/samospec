@@ -167,7 +167,15 @@ function makeInstalledHost(): {
 } {
   const { dir, binary } = makeFakeBinaryDir("codex", 'echo "0.41.0"');
   return {
-    host: { PATH: dir, HOME: "/tmp" },
+    // Include a fake API key so auth_status() returns
+    // usable_for_noninteractive:true. Work-call tests exercise spawn
+    // behavior, not subscription-auth gating; the key is never used
+    // for a real API call (no real codex binary is invoked).
+    host: {
+      PATH: dir,
+      HOME: "/tmp",
+      OPENAI_API_KEY: "sk-openai-test-fake-key",
+    },
     binaryPath: binary,
   };
 }
@@ -216,10 +224,14 @@ describe("CodexAdapter.auth_status (SPEC §11 subscription-auth)", () => {
 
   test("binary present + no API key -> subscription_auth=true (ChatGPT login assumed)", async () => {
     const { host } = makeInstalledHost();
-    const adapter = new CodexAdapter({ host });
+    // Strip the API key that makeInstalledHost() now includes so we can
+    // test the subscription-auth heuristic in isolation.
+    const noKeyHost = { ...host, OPENAI_API_KEY: undefined };
+    const adapter = new CodexAdapter({ host: noKeyHost });
     const result = await adapter.auth_status();
     expect(result.authenticated).toBe(true);
     expect(result.subscription_auth).toBe(true);
+    expect(result.usable_for_noninteractive).toBe(false);
   });
 });
 

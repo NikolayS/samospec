@@ -243,13 +243,13 @@ describe("computePreflight — calibrated (sample_count >= 10)", () => {
 // ---------- subscription-auth escape ----------
 
 describe("computePreflight — subscription-auth escape", () => {
-  test("per-adapter cost is the 'unknown — subscription auth' string", () => {
+  test("per-adapter cost is the 'unknown — subscription auth (API key required)' string", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, REVB]);
     const perLead = r.perAdapter["lead"];
     expect(perLead).toBeDefined();
-    expect(perLead?.usd).toBe("unknown — subscription auth");
+    expect(perLead?.usd).toBe("unknown — subscription auth (API key required)");
   });
 
   test("warning lists how many adapters are under subscription-auth", () => {
@@ -275,7 +275,7 @@ describe("computePreflight — subscription-auth escape", () => {
     expect(rSub.likelyUsd).toBeLessThan(rAll.likelyUsd);
   });
 
-  test("pretty-printer renders 'unknown — subscription auth' for the subbed adapter line", () => {
+  test("pretty-printer renders subscription auth label for the subbed adapter line", () => {
     const subLead = mkAdapter("lead", "claude", true, "lead");
     const cfg = mkConfig();
     const r = computePreflight(cfg, [subLead, REVA, REVB]);

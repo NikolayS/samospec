@@ -46,12 +46,23 @@ export const DetectResultSchema = z.discriminatedUnion("installed", [
 ]);
 export type DetectResult = z.infer<typeof DetectResultSchema>;
 
-// SPEC §7 auth lifecycle + §11 subscription-auth escape.
+// SPEC §7 auth lifecycle + §11 subscription-auth detection.
+//
+// `usable_for_noninteractive` is false when subscription_auth:true and no
+// API key env var is present (ANTHROPIC_API_KEY for Claude,
+// OPENAI_API_KEY for Codex). In that state the adapter is authenticated
+// but cannot drive non-interactive work calls — `claude --print` / `codex
+// exec` reject subscription tokens. When false, work calls fail fast with
+// `subscription_auth_unsupported`.
 export const AuthStatusSchema = z.object({
   authenticated: z.boolean(),
   account: z.string().optional(),
   expires_at: z.string().optional(),
   subscription_auth: z.boolean().optional(),
+  // true  → API key present; work calls can proceed
+  // false → subscription-only; work calls will be blocked
+  // omitted → legacy / unknown (treated as true for back-compat)
+  usable_for_noninteractive: z.boolean().optional(),
 });
 export type AuthStatus = z.infer<typeof AuthStatusSchema>;
 

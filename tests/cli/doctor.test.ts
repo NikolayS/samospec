@@ -135,11 +135,15 @@ describe("doctor-checks / auth", () => {
     expect(result.status).toBe(CheckStatus.Ok);
   });
 
-  test("WARN when authenticated via subscription (surfacing subscription-auth)", async () => {
+  test("WARN when subscription-auth without API key (SPEC §11 updated)", async () => {
+    // subscription_auth:true + usable_for_noninteractive:false triggers
+    // WARN with guidance on the required env var. The old "wall-clock +
+    // iteration caps" messaging is replaced by the API key requirement.
     const claude = createFakeAdapter({
       auth: {
         authenticated: true,
         subscription_auth: true,
+        usable_for_noninteractive: false,
       },
     });
     const result = await checkAuthStatus({
@@ -147,8 +151,8 @@ describe("doctor-checks / auth", () => {
     });
     expect(result.status).toBe(CheckStatus.Warn);
     expect(result.message.toLowerCase()).toContain("subscription");
-    // UX copy per SPEC §11 mentions wall-clock enforcement.
-    expect(result.message.toLowerCase()).toMatch(/wall-clock|iteration/);
+    // Updated UX copy: points at ANTHROPIC_API_KEY, not wall-clock.
+    expect(result.message).toContain("ANTHROPIC_API_KEY");
   });
 
   test("FAIL when not authenticated", async () => {
@@ -471,6 +475,7 @@ describe("runDoctor aggregator", () => {
                 authenticated: true,
                 account: "u@e.com",
                 subscription_auth: true,
+                usable_for_noninteractive: false,
               },
             }),
           },
