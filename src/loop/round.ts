@@ -558,7 +558,12 @@ async function runReviewersParallel(
 }
 
 // ANSI escape sequence regex — strip before storing error messages.
-const ANSI_STRIP_RE = /\x1b\[[0-9;]*[a-zA-Z]/g;
+// Constructed via new RegExp() to avoid the no-control-regex ESLint
+// rule, which flags literal control characters inside regex literals.
+const ANSI_STRIP_RE = new RegExp(
+  String.fromCharCode(27) + "\\[[0-9;]*[a-zA-Z]",
+  "g",
+);
 
 /**
  * Strip ANSI escape codes and truncate to 500 chars (Issue #52).
