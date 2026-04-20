@@ -49,6 +49,12 @@ export interface BudgetDefaults {
 export interface GitDefaults {
   readonly remote_probe: boolean;
   readonly protected_branches: readonly string[];
+  /**
+   * SPEC §8 — `git fetch` timeout during `samospec resume` remote
+   * reconciliation. On timeout / failure, the caller flips
+   * `state.json.remote_stale = true` and continues local-only.
+   */
+  readonly fetch_timeout_seconds: number;
 }
 
 export interface ContextDefaults {
@@ -113,6 +119,7 @@ export const DEFAULT_CONFIG: DefaultConfig = {
   git: {
     remote_probe: false,
     protected_branches: [],
+    fetch_timeout_seconds: 5,
   },
   context: {
     injection_threshold: 5,
