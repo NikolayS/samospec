@@ -4,10 +4,14 @@ import { homedir } from "node:os";
 import * as readline from "node:readline/promises";
 
 import { ClaudeAdapter } from "./adapter/claude.ts";
+import { ClaudeResolver } from "./adapter/claude-resolver.ts";
+import { ClaudeReviewerBAdapter } from "./adapter/claude-reviewer-b.ts";
+import { CodexAdapter } from "./adapter/codex.ts";
 import { createFakeAdapter } from "./adapter/fake-adapter.ts";
 import type { Adapter } from "./adapter/types.ts";
 import { runInit } from "./cli/init.ts";
 import { runDoctor, type DoctorAdapterBinding } from "./cli/doctor.ts";
+import { runIterate, type IterateResolvers } from "./cli/iterate.ts";
 import { runNew, type ChoiceResolvers } from "./cli/new.ts";
 import {
   PERSONA_FORM_RE,
@@ -16,6 +20,7 @@ import {
   type PersonaProposal,
 } from "./cli/persona.ts";
 import { runResume } from "./cli/resume.ts";
+import { runStatus, type StatusAdapterBinding } from "./cli/status.ts";
 import packageJson from "../package.json" with { type: "json" };
 
 export interface CliResult {
@@ -37,6 +42,8 @@ const USAGE =
   "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
   "  new <slug> [--idea ...]     Start a new spec (persona + 5-question interview).\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
+  "  iterate [<slug>] [--rounds] Run review rounds until a stopping condition fires.\n" +
+  "  status [<slug>]             Print phase, round, cost, wall-clock, and next action.\n" +
   "  version                     Print the samospec version and exit.\n";
 
 /**
@@ -93,6 +100,14 @@ export async function runCli(argv: readonly string[]): Promise<CliResult> {
 
   if (command === "resume") {
     return runResumeCommand(rest);
+  }
+
+  if (command === "iterate") {
+    return runIterateCommand(rest);
+  }
+
+  if (command === "status") {
+    return runStatusCommand(rest);
   }
 
   return {
@@ -276,4 +291,153 @@ async function runResumeCommand(rest: readonly string[]) {
     },
     adapter,
   );
+}
+
+// ---------- iterate / status ----------
+
+interface IterateArgs {
+  readonly slug: string;
+  readonly rounds?: number;
+}
+
+function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
+  let slug: string | null = null;
+  let rounds: number | undefined;
+  for (let i = 0; i < argv.length; i += 1) {
+    const t = argv[i];
+    if (t === undefined) continue;
+    if (t === "--rounds") {
+      const v = argv[i + 1];
+      i += 1;
+      if (v !== undefined) {
+        const n = Number.parseInt(v, 10);
+        if (Number.isFinite(n) && n > 0) rounds = n;
+      }
+      continue;
+    }
+    if (t.startsWith("--rounds=")) {
+      const n = Number.parseInt(t.slice("--rounds=".length), 10);
+      if (Number.isFinite(n) && n > 0) rounds = n;
+      continue;
+    }
+    if (t.startsWith("--")) continue;
+    if (slug === null) slug = t;
+  }
+  if (slug === null || slug.length === 0) {
+    return "samospec iterate: missing <slug>";
+  }
+  return rounds === undefined ? { slug } : { slug, rounds };
+}
+
+function parseStatusArgs(argv: readonly string[]): { slug: string } | string {
+  let slug: string | null = null;
+  for (const t of argv) {
+    if (t.startsWith("--")) continue;
+    slug ??= t;
+  }
+  if (slug === null || slug.length === 0) {
+    return "samospec status: missing <slug>";
+  }
+  return { slug };
+}
+
+function buildReviewLoopAdapters(): {
+  readonly lead: Adapter;
+  readonly reviewerA: Adapter;
+  readonly reviewerB: Adapter;
+} {
+  // Share one ClaudeResolver between lead + reviewer B to express the
+  // SPEC §11 coupled-fallback linkage.
+  const resolver = new ClaudeResolver();
+  const lead = new ClaudeAdapter({ resolver });
+  const reviewerA = new CodexAdapter();
+  const reviewerB = new ClaudeReviewerBAdapter({ resolver });
+  return { lead, reviewerA, reviewerB };
+}
+
+function interactiveIterateResolvers(): IterateResolvers {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  return {
+    onManualEdit: async (files) => {
+      process.stdout.write(
+        `\nUncommitted edits detected under .samospec/spec/ (${String(files.length)} file(s)):\n`,
+      );
+      for (const f of files) process.stdout.write(`  - ${f}\n`);
+      const ans = (
+        await rl.question(
+          "[I]ncorporate / [O]verwrite / [A]bort [Enter=incorporate]: ",
+        )
+      )
+        .trim()
+        .toLowerCase();
+      if (ans === "o" || ans === "overwrite") return "overwrite";
+      if (ans === "a" || ans === "abort") return "abort";
+      return "incorporate";
+    },
+    onDegraded: async (summary) => {
+      process.stdout.write(`\n${summary}\n`);
+      const ans = (
+        await rl.question("[A]ccept / [B]bort [Enter=accept]: ")
+      )
+        .trim()
+        .toLowerCase();
+      if (ans === "b" || ans === "abort") return "abort";
+      return "accept";
+    },
+    onReviewerExhausted: async () => {
+      process.stdout.write(
+        `\nBoth reviewers failed after a whole-round retry.\n`,
+      );
+      const ans = (
+        await rl.question("[C]ontinue / [A]bort [Enter=abort]: ")
+      )
+        .trim()
+        .toLowerCase();
+      if (ans === "c" || ans === "continue") return "continue";
+      return "abort";
+    },
+  };
+}
+
+async function runIterateCommand(rest: readonly string[]) {
+  const parsed = parseIterateArgs(rest);
+  if (typeof parsed === "string") {
+    return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
+  }
+  const adapters = buildReviewLoopAdapters();
+  const result = await runIterate({
+    cwd: process.cwd(),
+    slug: parsed.slug,
+    now: new Date().toISOString(),
+    resolvers: interactiveIterateResolvers(),
+    adapters,
+    ...(parsed.rounds !== undefined ? { maxRounds: parsed.rounds } : {}),
+  });
+  return {
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+async function runStatusCommand(rest: readonly string[]) {
+  const parsed = parseStatusArgs(rest);
+  if (typeof parsed === "string") {
+    return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
+  }
+  const adapters = buildReviewLoopAdapters();
+  const bindings: readonly StatusAdapterBinding[] = [
+    { role: "lead", adapter: adapters.lead },
+    { role: "reviewer_a", adapter: adapters.reviewerA },
+    { role: "reviewer_b", adapter: adapters.reviewerB },
+  ];
+  return runStatus({
+    cwd: process.cwd(),
+    slug: parsed.slug,
+    now: new Date().toISOString(),
+    adapters: bindings,
+  });
 }
