@@ -111,7 +111,7 @@ Before any paid lead call, run the **preflight cost estimate** (§11). Uses scaf
 
 **Phase 4 — Strategic interview.** Up to **5** high-signal questions, each with standard options plus three escape hatches: `decide for me`, `not sure — defer`, `custom`. Hard cap: 5.
 
-**Phase 5 — v0.1 draft.** Lead drafts v0.1 against the interview answers and context bundle; commits locally. On a `terminal` lead failure here (refusal, schema fail after repair, invalid input), the session enters the `lead_terminal` state (§7) and halts.
+**Phase 5 — v0.1 draft.** Lead drafts v0.1 against the interview answers and context bundle; commits locally. The lead prompt mandates the **baseline section template** (§7 revise contract) unless the user passed `--skip <list>`. On a `terminal` lead failure here (refusal, schema fail after repair, invalid input), the session enters the `lead_terminal` state (§7) and halts.
 
 **Phase 6 — Review loop.** Round state machine (§7). Before each round, detect manual edits to `SPEC.md` since last commit; if present, prompt `incorporate`/`overwrite`/`abort` (default `incorporate`). After each round, emit a one-line cost summary. After two consecutive low-delta rounds, suggest (do not force) an effort downshift via `--effort high`.
 
@@ -205,7 +205,38 @@ Slimmer than v0.4 — three lifecycle probes and the `usage` return collapse int
 Return shape: `{ ..., usage?, effort_used }`. `usage: null` means the adapter cannot report token/cost for this call (subscription auth, buggy adapter, etc.); the policy component treats `null` as "no token budget applies to this call" but still enforces iteration, reviewer, timeout, and wall-clock caps.
 
 - `critique()` must validate against the review-taxonomy JSON schema; single repair retry on schema violation; `terminal` on second failure for that seat.
-- `revise()` **emits the full spec text each round, not a structured patch**. Rationale: patch/diff discipline across LLM outputs is brittle (misapplied hunks, whitespace drift); a full rewrite keeps the contract simple and the spec internally coherent. The token cost is counted in budgets (§11). Revise returns `{ spec, ready, rationale, usage?, effort_used }`; the ready/rationale fields are inline (no separate `is_ready()` call).
+- `revise()` **emits the full spec text each round, not a structured patch**. Rationale: patch/diff discipline across LLM outputs is brittle (misapplied hunks, whitespace drift); a full rewrite keeps the contract simple and the spec internally coherent. The token cost is counted in budgets (§11). Revise returns `{ spec, ready, rationale, decisions?, usage?, effort_used }`; the ready/rationale fields are inline (no separate `is_ready()` call).
+
+**Baseline section template (v0.2.0+).** Every generated SPEC.md MUST include the following sections unless the user opts out via `--skip <comma-separated-list>`. The lead prompt explicitly names them; Reviewer B raises a `missing-requirement` finding when any is absent.
+
+1. **Version header** at the top of the file — initially `v0.1`; bumped each round.
+2. **Goal & why it's needed** — explicit "why this exists" framing, not just "Purpose".
+3. **User stories** — at least 3, each with persona + action + outcome; used for manual testing.
+4. **Architecture** — components, boundaries, key abstractions.
+5. **Implementation details** — data flow, state transitions, key algorithms.
+6. **Tests plan** — CI tests needed AND explicit red/green TDD call-out for which pieces are built test-first.
+7. **Team** — list of veteran experts to hire (count + skill labels).
+8. **Implementation plan** — organized in multiple sprints with parallelization and ordering.
+9. **Embedded Changelog** — version history mirroring `changelog.md`, one line per change.
+
+Sections are named in the prompt literally. Unknown section names in `--skip` are an error (exit 1). Additional topic-specific sections beyond these nine are always permitted.
+
+**Optional `decisions` array on `revise()`.** The `revise()` response may include a structured `decisions` array so the loop can populate `decisions.md` with per-finding verdicts:
+
+```json
+{
+  "decisions": [
+    {
+      "finding_id": "codex#1",
+      "category": "missing-requirement",
+      "verdict": "accepted",
+      "rationale": "Added rate-limit handling section to the spec."
+    }
+  ]
+}
+```
+
+Fields: `finding_id?` (seat + ordinal, e.g. `"codex#1"`, `"claude#2"`), `category` (review-taxonomy string), `verdict` (`"accepted"` | `"rejected"` | `"deferred"`), `rationale` (one-sentence reason). When the array is absent, the loop falls back to `"no decisions recorded this round"`. The loop serializes decisions to `decisions.md` under a per-round `## Round N` header and updates `changelog.md` with real accepted/rejected/deferred counts.
 
 **Cross-cutting:**
 
@@ -735,6 +766,12 @@ v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh rep
 - **Redaction scope.** Currently covers transcripts and prompts. Paths in `context.json` and text in `decisions.md` are committed and not redacted. Low-risk but uncovered; revisit if the field shows real leakage.
 - **`samospec doctor` auto-run.** Currently only runs on explicit invocation. Consider a minimal `doctor` check on first `new` in a repo so warnings aren't missed. Decide after first-user telemetry.
 - **Vendor support for per-call token/cost visibility in OAuth (subscription) sessions** — currently unavailable; the vendor CLI does not report token counts when running under an OAuth session (`claude -p` without `ANTHROPIC_API_KEY`). samospec uses wall-clock + iteration caps as a substitute (§11 subscription-auth escape). Track upstream progress at the Anthropic claude-code issue tracker / OpenAI codex issue tracker. When vendors expose token counts for OAuth sessions, samospec can re-enable token budget enforcement without any user-facing change.
+
+## 18a. v0.2.0 changes (batch fix — #58 #59 #60)
+
+- **Baseline section template (#58):** `revise()` and draft prompts now mandate nine baseline sections (version header, goal & why, user stories ≥3, architecture, implementation details, tests+TDD, team, sprints, embedded changelog). `--skip <list>` opt-out. Reviewer B raises `missing-requirement` for absent sections. See §7 revise contract.
+- **Decisions array (#59):** `ReviseOutput` gains an optional `decisions` array `[{ finding_id?, category, verdict, rationale }]`. Loop serializes to `decisions.md` with per-round headers; `changelog.md` line shows real accepted/rejected/deferred counts. Backward-compat: absent array falls back to "no decisions recorded this round".
+- **Stale text cleanup (#60):** removed "Sprint 3" and "--no-push default active" scaffolding text from `samospec new` / `samospec resume` stdout. Replaced with accurate post-v1 next-step hints.
 
 ## 19. Comparison with v0.5
 
