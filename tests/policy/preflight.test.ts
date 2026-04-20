@@ -259,9 +259,7 @@ describe("computePreflight — subscription-auth escape", () => {
     const r = computePreflight(cfg, [subLead, REVA, subRevB]);
     expect(r.warnings.some((w) => w.includes("subscription"))).toBe(true);
     expect(
-      r.warnings.some(
-        (w) => w.includes("2") && /subscription/i.test(w),
-      ),
+      r.warnings.some((w) => w.includes("2") && /subscription/i.test(w)),
     ).toBe(true);
   });
 
@@ -302,9 +300,11 @@ describe("computePreflight — per-adapter breakdown", () => {
   test("lead spend > reviewer spend (lead carries draft + revision per round)", () => {
     const cfg = mkConfig();
     const r = computePreflight(cfg, FLEET);
-    const lead = r.perAdapter["lead"]!;
-    const revA = r.perAdapter["reviewer_a"]!;
-    expect(lead.tokens).toBeGreaterThan(revA.tokens);
+    const lead = r.perAdapter["lead"];
+    const revA = r.perAdapter["reviewer_a"];
+    expect(lead).toBeDefined();
+    expect(revA).toBeDefined();
+    expect(lead?.tokens).toBeGreaterThan(revA?.tokens ?? Infinity);
   });
 });
 
