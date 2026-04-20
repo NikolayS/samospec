@@ -5,9 +5,9 @@ node_modules/
 dist/
 
 # samospec runtime artefacts (per SPEC §9)
-.samospec/transcripts/
-.samospec/cache/
-.samospec/.lock
+.samo/transcripts/
+.samo/cache/
+.samo/.lock
 
 # Editor / OS
 .DS_Store

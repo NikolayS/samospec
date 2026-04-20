@@ -5,7 +5,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["node_modules/**", "dist/**", "coverage/**", ".samospec/**"],
+    ignores: ["node_modules/**", "dist/**", "coverage/**", ".samo/**"],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

@@ -32,7 +32,7 @@ Four claims flow from this:
 
 1. **Asymmetric roles beat round-table chat.** The lead owns the document and the decisions; reviewers only critique. The default reviewer pair (Codex + a second Claude session) gives **cross-vendor diversity on one axis** (via Codex) and **distinct personas on both**. Full model independence requires a third vendor: once Gemini or OpenCode ships in v1.1+, the second reviewer seat auto-prefers it. The v1 claim is **persona orthogonality**, not full model orthogonality — the second Claude reviewer is role-diversified, not model-diversified.
 2. **Maximum model capability by default.** Spec authoring and review are the opposite of high-throughput inference — quality and reasoning depth matter more than cost and latency. Lead and reviewers run on the **strongest, latest model from each vendor, at maximum reasoning/thinking effort**. Downshifting is a conscious user choice, not a silent default.
-3. **Git is the database.** No external store, no hidden state. Drafts, reviews, decisions, and summaries live under `.samospec/spec/` and are committed on every material step. A reviewer with zero tool access can read the repo and reconstruct what happened.
+3. **Git is the database.** No external store, no hidden state. Drafts, reviews, decisions, and summaries live under `.samo/spec/` and are committed on every material step. A reviewer with zero tool access can read the repo and reconstruct what happened.
 4. **Safe by default, networked by consent.** Auto-commit locally, never to protected branches. First push per repo requires explicit consent. Raw transcripts stay local unless opted in. Before the first paid loop, show a cost estimate.
 
 ## 4. Scope and ICP
@@ -98,16 +98,16 @@ flowchart TD
 
 **Phase 0 — Detect environment.** Record installed CLIs and versions. Refuse to start if the **lead** is unavailable or unauthenticated. Probe each adapter for model availability, reasoning-effort support, and whether calls return `usage` (token counts). If the configured effort is not supported, surface the mismatch — never silently clamp. If an adapter reports `subscription_auth: true` (Claude Max/Pro) and cannot return `usage`, the loop applies the **subscription-auth escape** (§11): iteration, reviewer, per-call timeout, and session wall-clock caps replace token budgets for that adapter. Reviewers degrade to `N=1` with warning if only one is available; refuse the review loop if zero.
 
-**Phase 1 — Branch, lock, and preflight.** Acquire a repo-level lock at `.samospec/.lock` (JSON: `{ pid, started_at, slug }`); a second concurrent `samospec` invocation in the same repo exits with code 2. Create `samospec/<slug>` off the current branch. Protected-branch detection has an explicit **precedence**:
+**Phase 1 — Branch, lock, and preflight.** Acquire a repo-level lock at `.samo/.lock` (JSON: `{ pid, started_at, slug }`); a second concurrent `samospec` invocation in the same repo exits with code 2. Create `samospec/<slug>` off the current branch. Protected-branch detection has an explicit **precedence**:
 
 1. **Local checks (sufficient for safety):** hardcoded list `main|master|develop|trunk` ∪ `git config branch.<name>.protected` ∪ user config `git.protected_branches`.
 2. **Remote API probe (best-effort, disabled by default in v1):** `gh api repos/.../branches/<name>/protection` or `glab` equivalent; 2s timeout; failure/timeout never weakens protection. Off by default to avoid GitHub audit-log entries on every invocation (§14). Opt in via `samospec config set git.remote_probe true`.
 
-Before any paid lead call, run the **preflight cost estimate** (§11). Uses scaffold-only inputs (persona skeleton, estimated context size, iteration cap, per-vendor coefficients) — does not require the interview or context phases first. If the estimate exceeds `budget.preflight_confirm_usd` (default $20), or any adapter returns `usage: null`, prompt for consent — exit 5 on refusal. Calibration data from prior runs in the same repo (`.samospec/config.json` `calibration.*`) tightens the estimate.
+Before any paid lead call, run the **preflight cost estimate** (§11). Uses scaffold-only inputs (persona skeleton, estimated context size, iteration cap, per-vendor coefficients) — does not require the interview or context phases first. If the estimate exceeds `budget.preflight_confirm_usd` (default $20), or any adapter returns `usage: null`, prompt for consent — exit 5 on refusal. Calibration data from prior runs in the same repo (`.samo/config.json` `calibration.*`) tightens the estimate.
 
 **Phase 2 — Lead persona.** Lead proposes a persona in the form `Veteran "<skill>" expert`. User accepts, edits the quoted skill inline, or replaces. Choice persisted in `state.json`. This is the first paid lead call.
 
-**Phase 3 — Context discovery.** See §7 context subsystem. Reads = `git ls-files` ∪ `git ls-files --others --exclude-standard` (tracked + untracked-but-unignored — staged changes to tracked files are naturally seen via the working tree), minus `.gitignore`/`.samospec-ignore` and the hard-coded no-read list. Produces `context.json` with provenance, budget accounting, and a `risk_flags` array.
+**Phase 3 — Context discovery.** See §7 context subsystem. Reads = `git ls-files` ∪ `git ls-files --others --exclude-standard` (tracked + untracked-but-unignored — staged changes to tracked files are naturally seen via the working tree), minus `.gitignore`/`.samo-ignore` and the hard-coded no-read list. Produces `context.json` with provenance, budget accounting, and a `risk_flags` array.
 
 **Phase 4 — Strategic interview.** Up to **5** high-signal questions, each with standard options plus three escape hatches: `decide for me`, `not sure — defer`, `custom`. Hard cap: 5.
 
@@ -138,7 +138,7 @@ Before any paid lead call, run the **preflight cost estimate** (§11). Uses scaf
 | `cli` | argument parsing, subcommand dispatch, interactive prompts |
 | `env` | detect installed AI CLIs + versions, guard missing tools, warn on global config contamination |
 | `git` | branch creation, commits, pushes, PR opening, protected-branch detection, remote reconciliation, manual-edit detection |
-| `state` | read/write `.samospec/spec/<slug>/state.json`, phase machine, round state machine, repo lockfile |
+| `state` | read/write `.samo/spec/<slug>/state.json`, phase machine, round state machine, repo lockfile |
 | `context` | discover + rank + budget repo content, write `context.json`, blob-hash gist cache, untrusted-data envelope |
 | `persona` | propose, confirm, persist lead persona |
 | `interview` | 5-question loop with escape hatches |
@@ -218,12 +218,12 @@ Return shape: `{ ..., usage?, effort_used }`. `usage: null` means the adapter ca
 ### Context subsystem
 
 - **Reads:** `git ls-files` ∪ `git ls-files --others --exclude-standard`. Covers tracked files + untracked-but-unignored files. Staged edits to tracked files are naturally visible through the working tree read path. No reads outside the repo root. Symlinks resolving outside the repo refused.
-- **Hard-coded no-read list** (cannot be overridden by `.samospec-ignore`), path-suffix match, case-insensitive:
+- **Hard-coded no-read list** (cannot be overridden by `.samo-ignore`), path-suffix match, case-insensitive:
   - `.env*`, `.npmrc`, `.pypirc`, `.netrc`, `.aws/credentials`, `.aws/config`, `.ssh/*`, `.kube/config`, `.docker/config.json`, `.dockercfg`
   - `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `credentials*`
   - anything under `.git/` (`git ls-files` does not return it; list makes future relaxations safe)
 - **Discovery buckets:** `README.md`/`README.*`, `CONTRIBUTING.md`, package manifests (`package.json`, `Cargo.toml`, `go.mod`, `pyproject.toml`, `requirements*.txt`, `Gemfile`, not lockfiles), top-level docs (`docs/`, `ARCHITECTURE.md`, `*.adoc`), user-selected source dirs via `--context "src/auth,src/billing"`.
-- **Ignore defaults:** `.gitignore` + `.samospec-ignore` + denylist (`node_modules/`, `vendor/`, `dist/`, `build/`, `*.lock`, binaries, `*.min.*`, `*.generated.*`, assets >100KB, files >1000 lines pre-truncated — see below).
+- **Ignore defaults:** `.gitignore` + `.samo-ignore` + denylist (`node_modules/`, `vendor/`, `dist/`, `build/`, `*.lock`, binaries, `*.min.*`, `*.generated.*`, assets >100KB, files >1000 lines pre-truncated — see below).
 - **Large-file truncation** (files >1000 lines). For Markdown: keep lines containing `^#`/`^##` headers + the 50 lines following each (preserves section structure and intro). For code: keep the first 100 lines (imports/exports/top-level definitions) + the last 100 lines + any region matching recent git blame (last 30 days). For other text: head 100 + tail 100. Each truncated file is flagged `large_file_truncated` in `context.json.risk_flags` so reviewers know the lead saw a summary, not the full file.
 - **Ranking:** README > manifests > architecture docs > user-selected source > the rest. **Tie-break: `git authordate` recency only** (path shallowness dropped; it's a weak signal).
 - **Batched metadata:** one `git log --format='%at %H' --name-only HEAD` invocation at phase start, parsed by entry (not truncated mid-entry); file → last-authored-at map built in-process. Scope is `HEAD` (not `--all`) to avoid dragging in unrelated feature-branch history. No per-file `git log` spawns.
@@ -231,7 +231,7 @@ Return shape: `{ ..., usage?, effort_used }`. `usage: null` means the adapter ca
 - **Gists for excluded files:**
   - **Deterministic gist first:** path, size, line count, last-authored date, parsed imports/exports if cheap. Zero model tokens. Applied to all excluded files.
   - **Model gist second:** only on top 20 excluded files by rank, and only when the lead's revision call explicitly requests deeper context on a specific file. Counted against budget.
-  - **Cache:** gists stored at `.samospec/cache/gists/<blob-sha>.md`, keyed by git blob hash. Cache directory is `.gitignore`d; survives resumes within the same blob, invalidated automatically on file change. Prevents punishing latency on every loop.
+  - **Cache:** gists stored at `.samo/cache/gists/<blob-sha>.md`, keyed by git blob hash. Cache directory is `.gitignore`d; survives resumes within the same blob, invalidated automatically on file change. Prevents punishing latency on every loop.
 - **Untrusted-data envelope:** every repo-file block passed to an adapter is wrapped with a **content-unique delimiter** (first 8 chars of the file's blob SHA appended to the tag name) so a file containing the literal string `</repo_content>` cannot spoof envelope termination:
   ```
   <repo_content_a1b2c3d4 trusted="false" path="<path>" sha="<blob>">
@@ -268,7 +268,7 @@ Return shape: `{ ..., usage?, effort_used }`. `usage: null` means the adapter ca
 
 Partial outputs on disk are preserved for post-mortem but never read as complete critiques — only a `status: complete` round contributes to lead revision.
 
-**Manual-edit detection** runs at the start of `samospec iterate` and on `samospec resume` before the next round enters `running`. Scope: `git status --porcelain -- .samospec/spec/<slug>/` — detects edits to committed artifacts **and** new untracked files under the spec directory (e.g., a `NOTES.md` the user dropped in between rounds). Plain `git diff HEAD` would miss the latter and violate user story 8's "never silently loses work" claim.
+**Manual-edit detection** runs at the start of `samospec iterate` and on `samospec resume` before the next round enters `running`. Scope: `git status --porcelain -- .samo/spec/<slug>/` — detects edits to committed artifacts **and** new untracked files under the spec directory (e.g., a `NOTES.md` the user dropped in between rounds). Plain `git diff HEAD` would miss the latter and violate user story 8's "never silently loses work" claim.
 
 - `SPEC.md` edits trigger the three-option prompt (`incorporate`/`overwrite`/`abort`; default `incorporate`). On `incorporate`, the next `revise()` call gets an explicit directive: *"The user has manually edited sections {N} of the spec since the last round. Treat their exact wording as final for those sections; do not rewrite them."*
 - Edits to other committed artifacts (`decisions.md`, `changelog.md`, `TLDR.md`, `interview.json`) trigger a **warn-and-confirm** prompt: "you edited X; the next round will regenerate these files and lose your changes — continue?" `samospec` is the owner of these derived artifacts.
@@ -286,7 +286,7 @@ Both paths commit the user's changes before the next round runs, with a `user-ed
 - **Lead `terminal` failure** (refusal, schema fail, invalid input): state transitions to `lead_terminal`; loop halts with exit 4; user edits `SPEC.md` manually and runs `samospec iterate` to retry.
 - **Commit/push fails:** state stays at `lead_revised`; next run retries commit first, then push.
 
-**Exit-4 messaging is mandatorily specific per sub-reason**: refusal (`model refused — edit SPEC.md to remove sensitive content or retry`), schema-fail (`adapter returned invalid structured output — file a samospec bug or switch adapter`), invalid-input (`spec too large or malformed — check .samospec/spec/<slug>/SPEC.md`), budget (`budget cap hit — downshift via --effort or raise budget.*`), wall-clock (`session wall-clock hit — resume to continue`). One exit code, distinct messages.
+**Exit-4 messaging is mandatorily specific per sub-reason**: refusal (`model refused — edit SPEC.md to remove sensitive content or retry`), schema-fail (`adapter returned invalid structured output — file a samospec bug or switch adapter`), invalid-input (`spec too large or malformed — check .samo/spec/<slug>/SPEC.md`), budget (`budget cap hit — downshift via --effort or raise budget.*`), wall-clock (`session wall-clock hit — resume to continue`). One exit code, distinct messages.
 
 ### Review taxonomy
 
@@ -310,7 +310,7 @@ Reviewer system prompts bias emphasis (see Model roles) but do not forbid any ca
 
 - **Auto-branch.** Every `samospec new` creates `samospec/<slug>` off the current branch. Never commits to any detected-protected branch (§5 Phase 1).
 - **Auto-commit.** Every material step commits. Messages: `spec(<slug>): <action> v<version>`.
-- **First push is consent-gated.** The first push in a repo prompts once, showing remote name, target branch, default branch, and PR capability. Choice persisted at `.samospec/config.json` `git.push_consent.<remote>`. Stored choice respected silently on later sessions.
+- **First push is consent-gated.** The first push in a repo prompts once, showing remote name, target branch, default branch, and PR capability. Choice persisted at `.samo/config.json` `git.push_consent.<remote>`. Stored choice respected silently on later sessions.
 - **Push cadence after consent:** round boundaries + publish — not per commit.
 - **No force pushes.** Ever.
 - **`--no-push` / `--no-commit`** override per invocation; `--no-commit` implies `--no-push`.
@@ -326,7 +326,7 @@ Reviewer system prompts bias emphasis (see Model roles) but do not forbid any ca
 
 ### Manual edits between rounds
 
-`samospec iterate` and `samospec resume` detect uncommitted or newly-created files under `.samospec/spec/<slug>/` via `git status --porcelain`. Three options (for `SPEC.md`; other artifacts use the warn-and-confirm path — see §7 manual-edit detection):
+`samospec iterate` and `samospec resume` detect uncommitted or newly-created files under `.samo/spec/<slug>/` via `git status --porcelain`. Three options (for `SPEC.md`; other artifacts use the warn-and-confirm path — see §7 manual-edit detection):
 
 1. **Incorporate** (default) — commit the edits as a version bump with a `user-edit` changelog entry, then run the round.
 2. **Overwrite** — discard the edits, run the round.
@@ -340,7 +340,7 @@ Reviewer system prompts bias emphasis (see Model roles) but do not forbid any ca
 
 ### Concurrency
 
-Repo-level lockfile at `.samospec/.lock` (`{ pid, started_at, slug }`) acquired at invocation and released at exit. Second concurrent `samospec` process in the same repo exits with code 2 and a message pointing at the current holder.
+Repo-level lockfile at `.samo/.lock` (`{ pid, started_at, slug }`) acquired at invocation and released at exit. Second concurrent `samospec` process in the same repo exits with code 2 and a message pointing at the current holder.
 
 **Stale-lockfile detection.** A lockfile is considered stale and auto-removed if **either** condition holds:
 
@@ -361,7 +361,7 @@ Stale removal is logged; the new process writes its own lockfile.
 ## 9. Storage and retention
 
 ```text
-.samospec/
+.samo/
   config.json                    # per-repo config (models, budgets, push consent)
   .lock                          # repo-level lockfile; gitignored
   .gitignore                     # ignores transcripts/, full/, cache/, .lock
@@ -408,7 +408,7 @@ blueprints/
 **v1 surface:**
 
 ```
-samospec init                        # register .samospec/ in an existing repo; idempotent
+samospec init                        # register .samo/ in an existing repo; idempotent
 samospec new <slug> [--idea "..."] [--persona "..."] [--effort max|high|medium|low]
                     [--context "<paths>"] [--no-commit] [--no-push] [--explain]
 samospec resume [<slug>]             # resume last or named spec
@@ -422,13 +422,13 @@ samospec config get|set <key> [<value>]
 samospec version
 ```
 
-**`samospec init` is idempotent.** Re-running on an existing `.samospec/` merges: user-set keys in `config.json` are preserved, missing defaults filled in, schema migrations applied, and any changes printed in a diff.
+**`samospec init` is idempotent.** Re-running on an existing `.samo/` merges: user-set keys in `config.json` are preserved, missing defaults filled in, schema migrations applied, and any changes printed in a diff.
 
-**`samospec new <existing-slug>`**: if `.samospec/spec/<slug>/` already exists, exits with code 1 and suggests `samospec resume <slug>` or `samospec new <slug> --force` (the `--force` variant archives the old directory to `.samospec/spec/<slug>.archived-<timestamp>/`). Prevents accidental overwrite of in-progress work.
+**`samospec new <existing-slug>`**: if `.samo/spec/<slug>/` already exists, exits with code 1 and suggests `samospec resume <slug>` or `samospec new <slug> --force` (the `--force` variant archives the old directory to `.samo/spec/<slug>.archived-<timestamp>/`). Prevents accidental overwrite of in-progress work.
 
 **`samospec iterate` preconditions**: exits with code 1 if no spec exists; suggests `samospec new <slug>`.
 
-**Deferred to v1.1+:** `experts set`, `spec compare`, `spec diff`, `spec export` (md/pdf/html), `spec review --rounds N`, `spec ready`, `--sandbox`, non-software persona packs, OpenCode/Gemini adapters, Homebrew/apt/standalone-binary distribution. `experts set` is deferred because v1 ships only two adapter families — the one meaningful user choice (swap lead/reviewer between Claude and Codex) can be done by editing `.samospec/config.json`; the command earns its keep once v1.1 ships Gemini/OpenCode. PDF/HTML drags in pandoc or Chromium headless — disproportionate dependency footprint for v1.
+**Deferred to v1.1+:** `experts set`, `spec compare`, `spec diff`, `spec export` (md/pdf/html), `spec review --rounds N`, `spec ready`, `--sandbox`, non-software persona packs, OpenCode/Gemini adapters, Homebrew/apt/standalone-binary distribution. `experts set` is deferred because v1 ships only two adapter families — the one meaningful user choice (swap lead/reviewer between Claude and Codex) can be done by editing `.samo/config.json`; the command earns its keep once v1.1 ships Gemini/OpenCode. PDF/HTML drags in pandoc or Chromium headless — disproportionate dependency footprint for v1.
 
 **Interactive prompts** use plain numbered menus. Every prompt has a default in brackets; `Enter` does the safe, obvious thing.
 
@@ -452,7 +452,7 @@ The resolved `{ adapter, model_id, effort_requested, effort_used }` for each rol
 ### Resume policy on model resolution change
 
 - **Same family, patch/minor bump** (e.g. `claude-opus-4-7 → claude-opus-4-8`): record the new resolution, continue, note in changelog.
-- **Major family change** (e.g. `claude-opus-* → claude-haiku-*`): halt and ask. User can accept, abort, or manually edit `.samospec/config.json` (since `experts set` is deferred to v1.1).
+- **Major family change** (e.g. `claude-opus-* → claude-haiku-*`): halt and ask. User can accept, abort, or manually edit `.samo/config.json` (since `experts set` is deferred to v1.1).
 
 ### Degraded-resolution visibility
 
@@ -507,7 +507,7 @@ Runs at the end of Phase 1 (before any paid lead call). Uses scaffold-only input
 
 **First-run preflight is inherently weak.** The scaffold is identical across users of the same repo until the persona and interview run; the first estimate is primarily a **consent ceremony** around order-of-magnitude cost awareness. Estimate quality emerges from run 2 onward.
 
-**Calibration.** Each completed session writes actual token/cost counts to `.samospec/config.json` `calibration.{sample_count, tokens_per_round[], rounds_to_converge[]}`. Calibration only influences the estimate **after `sample_count ≥ 3`** — fewer samples are noisy. Below the floor, preflight uses per-vendor release-metadata coefficients and shows "first runs; estimate is approximate" inline. Between 3 and 10 samples, calibration is blended 50/50 with defaults; above 10, calibration dominates.
+**Calibration.** Each completed session writes actual token/cost counts to `.samo/config.json` `calibration.{sample_count, tokens_per_round[], rounds_to_converge[]}`. Calibration only influences the estimate **after `sample_count ≥ 3`** — fewer samples are noisy. Below the floor, preflight uses per-vendor release-metadata coefficients and shows "first runs; estimate is approximate" inline. Between 3 and 10 samples, calibration is blended 50/50 with defaults; above 10, calibration dominates.
 
 Formula:
 
@@ -545,7 +545,7 @@ Every exit is recorded in `state.json` with a reason string and round index.
 2. **Git branch safety (integration).** Real local bare repo + scripted `gh` stub. Every dirty-tree option × every branch-selection flag × every protected-branch source (hardcoded / `git config` / user config / remote API).
 3. **Stopping conditions.** One test per exit reason. Condition 4 uses a trigram-Jaccard fixture with designed overlaps.
 4. **Adapter contract.** Shared contract test every adapter must pass. Fake-CLI harness (Bun script). Covers: schema-violation path (one repair retry then terminal), **capped timeout retry** (original → +50% retry → original-timeout retry, then terminal), Markdown-code-fence wrapping stripped, `usage: null` path, `subscription_auth` detection, non-interactive spawn verification.
-5. **Resume idempotency (formally defined).** Equality between an uninterrupted run and a kill+resume run is: identical phase sequence, identical version count, identical decision-category distribution, identical file set under `.samospec/spec/<slug>/`, identical `state.json` keys. **Exclusion list** (nondeterministic): `context.json.usage.*`, `round.json.started_at`, `round.json.completed_at`, `state.json.remote_stale`, timestamps in commit metadata. Spec prose is not required to match.
+5. **Resume idempotency (formally defined).** Equality between an uninterrupted run and a kill+resume run is: identical phase sequence, identical version count, identical decision-category distribution, identical file set under `.samo/spec/<slug>/`, identical `state.json` keys. **Exclusion list** (nondeterministic): `context.json.usage.*`, `round.json.started_at`, `round.json.completed_at`, `state.json.remote_stale`, timestamps in commit metadata. Spec prose is not required to match.
 6. **Remote reconciliation.** FF success, non-FF halt, fetch-timeout → local-only + `remote_stale` flag, HEAD-mismatch halt.
 7. **Redaction regex corpus — two-directional.** Direction A (positive): strings matching each pattern from `tests/fixtures/redaction/known.txt` (sourced from gitleaks / truffleHog) are redacted. Direction B (negative): strings *not* matching any pattern satisfy `redact(s) === s` — no false positives. Direction B is where the over-broad v0.4 JWT regex would have been caught.
 8. **Trigram-Jaccard boundary fixture.** §12 condition 4. Fixture includes: identical strings (J=1.0), zero overlap (J=0.0), just-below threshold (J≈0.79), just-above (J≈0.81), normalized-vs-raw pairs (`"the spec"` vs `"The spec."` — must tie after normalization). Normalization is tested explicitly.
@@ -599,7 +599,7 @@ v1 ships lead + two reviewers + local commits + consent-gated push. No Gemini, n
 - `samospec init`, `samospec version`, `samospec doctor` (basic).
 - Phase machine + `state.json`; round state machine skeleton including `lead_terminal`.
 - Git layer: protected-branch detection (local precedence + remote API probe w/ 2s timeout), commit, refusal, dirty-tree defaults.
-- Repo lockfile at `.samospec/.lock`.
+- Repo lockfile at `.samo/.lock`.
 - Property-based phase-machine tests; fake adapter harness; subscription-auth detection stub.
 
 **Exit:** `samospec init` + `doctor` green on Linux + macOS; property tests + concurrency test pass.
@@ -691,7 +691,7 @@ v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh rep
 - Guided-mode graduation past `--explain`: decide after v1 telemetry.
 - **`lead_terminal` recovery after v0.1 draft refusal.** Phase 5 can enter `lead_terminal` before any round exists. `iterate` is a review-round command; there's nothing to review. Either `iterate` learns to re-trigger `revise()` when no reviews exist yet, or a dedicated `samospec draft` command lands in v1.1. For now, the recovery path is: user writes v0.1 manually, then `iterate`.
 - **Single-file context budget overflow.** A `README.md` >30K tokens can blow the draft budget on its own. Current behavior: large-file truncation (>1000 lines) handles the common case, but shorter files with heavy prose can still overrun. Decide v1.1 whether to: excluded-and-gisted, hard-truncate with a risk flag, or error.
-- **`--context` vs `.samospec-ignore` precedence.** v1 intent: explicit `--context` wins. Document and test in Sprint 3.
+- **`--context` vs `.samo-ignore` precedence.** v1 intent: explicit `--context` wins. Document and test in Sprint 3.
 - **Redaction scope.** Currently covers transcripts and prompts. Paths in `context.json` and text in `decisions.md` are committed and not redacted. Low-risk but uncovered; revisit if the field shows real leakage.
 - **`samospec doctor` auto-run.** Currently only runs on explicit invocation. Consider a minimal `doctor` check on first `new` in a repo so warnings aren't missed. Decide after first-user telemetry.
 
@@ -720,7 +720,7 @@ v1 must reproduce this spec. A Sprint 4 exit test runs `samospec` on a fresh rep
 | Remote probe default | Opt-out (on by default) | **Off by default** in v1 (avoids audit-log entries); opt-in |
 | `experts set` CLI | Present | **Deferred to v1.1** (meaningful only with >2 adapter families) |
 | `samospec new <existing-slug>` | Unspecified | Error; suggest `resume` or `--force` |
-| `samospec init` on existing `.samospec/` | Unspecified | Idempotent merge; user keys preserved; diff printed |
+| `samospec init` on existing `.samo/` | Unspecified | Idempotent merge; user keys preserved; diff printed |
 | Publish lint severity | Single warning tier | Hard (missing path) vs soft (commands/branches/adapters) |
 | Publish lint command check | Allowed via `$PATH` | Hardcoded allowlist only (user-controlled `$PATH` not trusted) |
 | Dogfood scorecard | v0.5-specific | Version-agnostic; frozen template per release |
@@ -790,7 +790,7 @@ Round-4 editorial pass: **v1 distribution scoped to npm** (`bunx` / `bun install
 
 ### v0.5 — 2026-04-19
 
-Round-2 review findings applied. Full per-change deltas: see §19a. Summary: reviewer-B thesis honesty; Codex pinned; context subsystem tightened (staged reads, expanded no-read list, blob-hash gist cache, untrusted envelope); manual-edit detection; repo lockfile; offline resume; adapter contract slimmed (`accounting`/`is_ready`/`is_latest` removed); subscription-auth escape for Claude Max/Pro; per-call timeouts; preflight cost estimate; wall-clock session cap; repeat-findings algorithm; `lead_terminal` round state + `round.json` sidecar; publish lint broadened; redaction corpus + tightened JWT regex; 5-point dogfood scorecard; CLI renamed `samo` → `samospec` (drop middle `spec` in subcommands; `.samo/` → `.samospec/`; branch `samo/spec/<slug>` → `samospec/<slug>`).
+Round-2 review findings applied. Full per-change deltas: see §19a. Summary: reviewer-B thesis honesty; Codex pinned; context subsystem tightened (staged reads, expanded no-read list, blob-hash gist cache, untrusted envelope); manual-edit detection; repo lockfile; offline resume; adapter contract slimmed (`accounting`/`is_ready`/`is_latest` removed); subscription-auth escape for Claude Max/Pro; per-call timeouts; preflight cost estimate; wall-clock session cap; repeat-findings algorithm; `lead_terminal` round state + `round.json` sidecar; publish lint broadened; redaction corpus + tightened JWT regex; 5-point dogfood scorecard; CLI renamed `samo` → `samospec` (drop middle `spec` in subcommands; `.samo/` → `.samo/`; branch `samo/spec/<slug>` → `samospec/<slug>`).
 
 ### v0.4 — 2026-04-19
 
@@ -812,7 +812,7 @@ Enriched with ideas from `SPEC.md` (v0.2):
 ### v0.2 (alt) — 2026-04-19
 
 - Initial alternative spec authored in parallel to `SPEC.md`.
-- Fixed hidden working area at `.samospec/spec/<slug>/`.
+- Fixed hidden working area at `.samo/spec/<slug>/`.
 - Fixed auto-branch / auto-commit / auto-push as safe defaults.
 - Defined full CLI surface and adapter contract.
 - Defined structured review layout and convergence rules.
