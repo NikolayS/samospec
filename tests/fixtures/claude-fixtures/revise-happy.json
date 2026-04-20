@@ -1,0 +1,9 @@
+{
+  "script": [
+    {
+      "type": "stdout",
+      "text": "{\"spec\":\"# SPEC\\n\\nrevised.\",\"ready\":true,\"rationale\":\"ok\",\"usage\":null,\"effort_used\":\"max\"}"
+    },
+    { "type": "exit", "code": 0 }
+  ]
+}

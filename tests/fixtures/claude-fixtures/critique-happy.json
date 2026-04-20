@@ -1,0 +1,9 @@
+{
+  "script": [
+    {
+      "type": "stdout",
+      "text": "{\"findings\":[{\"category\":\"ambiguity\",\"text\":\"'significant' — how significant?\",\"severity\":\"minor\"}],\"summary\":\"one minor ambiguity\",\"suggested_next_version\":\"0.1.1\",\"usage\":null,\"effort_used\":\"max\"}"
+    },
+    { "type": "exit", "code": 0 }
+  ]
+}

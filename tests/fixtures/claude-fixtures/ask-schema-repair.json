@@ -1,0 +1,19 @@
+{
+  "branches": {
+    "0": {
+      "script": [
+        { "type": "stdout", "text": "this is not json at all" },
+        { "type": "exit", "code": 0 }
+      ]
+    },
+    "default": {
+      "script": [
+        {
+          "type": "stdout",
+          "text": "{\"answer\":\"repaired\",\"usage\":null,\"effort_used\":\"max\"}"
+        },
+        { "type": "exit", "code": 0 }
+      ]
+    }
+  }
+}
