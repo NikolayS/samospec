@@ -31,38 +31,31 @@ Run `claude auth login` or `claude login` per the Claude Code documentation.
 For Codex, run `codex auth login` with a valid `OPENAI_API_KEY` in your
 environment.
 
-## Subscription auth — API key required
+## Stale ANTHROPIC_API_KEY preempting OAuth
 
 ```
-WARN  auth  claude: subscription auth detected; samospec requires ANTHROPIC_API_KEY
-            for non-interactive invocation
+WARN  auth  claude: claude -p probe failed with 'Invalid API key'. If you're
+            using OAuth (claude /login), a stale ANTHROPIC_API_KEY env var may
+            be preempting it — try unsetting it.
 ```
 
-You are authenticated via subscription (Claude Max/Pro or ChatGPT login) but no
-API key is present. The `claude --print` non-interactive mode rejects subscription
-tokens; samospec requires API-key auth for all work calls in v1.
+A stale or invalid `ANTHROPIC_API_KEY` in your environment is overriding the
+OAuth session set up by `claude /login`. The Claude CLI prefers the env var
+over the OAuth keychain session.
 
-**Fix:** set the API key env var and re-run doctor:
+**Fix:** unset the env var and let OAuth take over:
 
 ```bash
-export ANTHROPIC_API_KEY="sk-ant-..."   # get at console.anthropic.com
-export OPENAI_API_KEY="sk-..."          # get at platform.openai.com
+unset ANTHROPIC_API_KEY
 samospec doctor
 ```
 
-If `new` or `iterate` already ran and exited 4 with `subscription_auth_unsupported`,
-no partial artifacts beyond the initial lockfile were created (or they were cleaned
-up). Retry after setting the env var.
+Or, if you do want API-key auth, provide a valid key:
 
-## lead_terminal — subscription_auth_unsupported
-
+```bash
+export ANTHROPIC_API_KEY="sk-ant-..."   # get at console.anthropic.com
+samospec doctor
 ```
-samospec: lead_terminal — subscription_auth_unsupported
-Exit code: 4.
-```
-
-The lead adapter cannot run in non-interactive mode under subscription auth.
-See the "Subscription auth — API key required" section above.
 
 ## lead_terminal — other causes
 

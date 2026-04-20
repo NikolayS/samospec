@@ -38,16 +38,16 @@ samospec iterate
 
 **Prerequisites:**
 
-- A real [Claude Code](https://claude.ai/download) installation with
-  `ANTHROPIC_API_KEY` set (get a key at
-  [console.anthropic.com](https://console.anthropic.com)).
-- A real [Codex](https://platform.openai.com/docs/guides/codex) installation
-  with `OPENAI_API_KEY` set (get a key at
-  [platform.openai.com](https://platform.openai.com)).
-- Both env vars must be present for non-interactive work calls. Subscription
-  auth (Claude Max/Pro, ChatGPT login) is **detected** by `samospec doctor`
-  but **cannot drive work calls** in v1 — `claude --print` rejects subscription
-  tokens. See [docs/troubleshooting.md](docs/troubleshooting.md).
+samospec requires authenticated `claude` and `codex` CLIs on PATH.
+The primary auth mode is OAuth — run `claude /login` (or equivalent
+for Codex) interactively once; samospec inherits that session for
+non-interactive work calls. Alternatively, export
+`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`.
+
+- [Claude Code](https://claude.ai/download) — OAuth via `claude /login`,
+  or `export ANTHROPIC_API_KEY=sk-ant-...`
+- [Codex](https://platform.openai.com/docs/guides/codex) — OAuth via
+  `codex auth`, or `export OPENAI_API_KEY=sk-...`
 
 `samospec doctor` checks everything before you start.
 

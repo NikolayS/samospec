@@ -5,6 +5,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **OAuth is the primary auth mode** (#48): reverts PR #47's architectural
+  error. `claude /login` OAuth sessions are now fully supported for
+  non-interactive work calls — no `ANTHROPIC_API_KEY` required. Stale env
+  vars preempt OAuth; `samospec doctor` warns with unset guidance.
+- Preflight cost label for OAuth adapters changed from
+  `unknown — subscription auth (API key required)` to
+  `unknown — OAuth (no per-token cost visibility)`.
+- Doctor auth check now runs a live probe (`echo "probe" | claude -p`)
+  and classifies the result: OK on success, WARN with specific guidance on
+  `Invalid API key` (stale env var), not-authenticated (run `claude /login`),
+  or other failure (generic message).
+- SPEC §11 rewritten: OAuth is primary; API key is alternative; §18 open
+  question refined to per-call token visibility (not whether non-interactive
+  works at all).
+
+---
+
 ## [0.1.0] - 2026-04-19
 
 First public release. v1.0 feature set per `.samo/blueprints/SPEC.md`.
