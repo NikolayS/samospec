@@ -217,6 +217,14 @@ describe("applyManualEdit — three-option flow for SPEC.md edits", () => {
     expect(outcome.leadDirective).toContain(
       "Treat their exact wording as final for those sections; do not rewrite them.",
     );
+    // REV blocking finding — the section-name heuristic must surface the
+    // actual H1/H2 header whose body the user rewrote. Only "## Goals" was
+    // edited in this fixture; "## Scope" was left intact. A directive
+    // falling back to "(unidentified)" (because gitShowHead ran AFTER the
+    // commit) proves the ordering bug. The directive must name "Goals"
+    // and MUST NOT say "(unidentified)" for this fixture.
+    expect(outcome.leadDirective).toContain("Goals");
+    expect(outcome.leadDirective).not.toContain("(unidentified)");
   });
 
   test("'overwrite' discards user edits and does not commit", () => {
