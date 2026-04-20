@@ -201,7 +201,10 @@ describe("doctor-checks / calibration", () => {
 // ─── pr-capability ─────────────────────────────────────────────────────────
 
 describe("doctor-checks / pr-capability", () => {
-  test("FAIL when neither gh nor glab is installed", () => {
+  test("WARN when neither gh nor glab is installed (optional feature)", () => {
+    // Per review: PR creation is a convenience, not a required
+    // capability. Missing gh/glab is WARN, not FAIL — so the overall
+    // `samospec doctor` exit code is 0 when this is the only gap.
     const result = checkPrCapability({
       gh: () => {
         throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
@@ -210,7 +213,7 @@ describe("doctor-checks / pr-capability", () => {
         throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
       },
     });
-    expect(result.status).toBe(CheckStatus.Fail);
+    expect(result.status).toBe(CheckStatus.Warn);
     expect(result.label).toBe("pr-capability");
     expect(result.message.toLowerCase()).toMatch(/not found|gh.*glab/);
   });
@@ -295,6 +298,50 @@ describe("runDoctor — new checks wired into aggregator", () => {
       expect(result.stdout).toContain("push-consent");
       expect(result.stdout).toContain("calibration");
       expect(result.stdout).toContain("pr-capability");
+    } finally {
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
+  });
+
+  test("missing gh/glab yields WARN aggregate — doctor still exits 0", async () => {
+    // Reviewer BLOCKING: a missing optional PR tool must not flip the
+    // overall doctor exit to 1. The aggregator treats WARN as non-fatal.
+    runInit({ cwd: tmp });
+    const fakeHome = mkdtempSync(path.join(tmpdir(), "samospec-home-"));
+    try {
+      const result = await runDoctor({
+        cwd: tmp,
+        homeDir: fakeHome,
+        adapters: [
+          {
+            label: "claude",
+            adapter: createFakeAdapter({
+              auth: {
+                authenticated: true,
+                account: "u@e.com",
+                subscription_auth: false,
+              },
+            }),
+          },
+        ],
+        isGitRepo: () => true,
+        currentBranch: () => "feature/demo",
+        hasRemote: () => false,
+        remoteUrl: () => null,
+        isProtected: () => false,
+        remotes: [],
+        // Neither gh nor glab installed.
+        ghRunner: () => {
+          throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        },
+        glabRunner: () => {
+          throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        },
+      });
+      // pr-capability is WARN (not FAIL) when both are absent.
+      expect(result.stdout).toContain("pr-capability");
+      // Overall exit stays 0 because WARN is non-fatal.
+      expect(result.exitCode).toBe(0);
     } finally {
       rmSync(fakeHome, { recursive: true, force: true });
     }
