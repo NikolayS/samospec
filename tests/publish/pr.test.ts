@@ -197,90 +197,81 @@ describe("openPullRequest", () => {
 });
 
 describe("openPullRequest — base branch auto-push (Issue #66)", () => {
-  test(
-    "pushes base branch before gh pr create when base has no remote ref",
-    () => {
-      const calls: string[] = [];
-      const pushedBranches: string[] = [];
+  test("pushes base branch before gh pr create when base has no remote ref", () => {
+    const calls: string[] = [];
+    const pushedBranches: string[] = [];
 
-      const pusher: BaseBranchPusher = (branch) => {
-        pushedBranches.push(branch);
-      };
+    const pusher: BaseBranchPusher = (branch) => {
+      pushedBranches.push(branch);
+    };
 
-      openPullRequest({
-        capability: { available: true, tool: "gh" },
-        title: "spec(vibeify): publish v0.1",
-        bodyFile: "/tmp/body.md",
-        branch: "samospec/vibeify",
-        defaultBranch: "main",
-        remoteUrl: "git@github.com:NikolayS/samospec.git",
-        gh: fakeRunner("gh", calls),
-        glab: fakeRunner("glab", calls),
-        hasRemoteBase: () => false,
-        pushBaseBranch: pusher,
-      });
+    openPullRequest({
+      capability: { available: true, tool: "gh" },
+      title: "spec(vibeify): publish v0.1",
+      bodyFile: "/tmp/body.md",
+      branch: "samospec/vibeify",
+      defaultBranch: "main",
+      remoteUrl: "git@github.com:NikolayS/samospec.git",
+      gh: fakeRunner("gh", calls),
+      glab: fakeRunner("glab", calls),
+      hasRemoteBase: () => false,
+      pushBaseBranch: pusher,
+    });
 
-      expect(pushedBranches).toEqual(["main"]);
-      const prCall = calls.find((c) => c.startsWith("gh pr create"));
-      expect(prCall).toBeDefined();
-    },
-  );
+    expect(pushedBranches).toEqual(["main"]);
+    const prCall = calls.find((c) => c.startsWith("gh pr create"));
+    expect(prCall).toBeDefined();
+  });
 
-  test(
-    "does NOT push base branch when it already has a remote ref",
-    () => {
-      const calls: string[] = [];
-      const pushedBranches: string[] = [];
+  test("does NOT push base branch when it already has a remote ref", () => {
+    const calls: string[] = [];
+    const pushedBranches: string[] = [];
 
-      const pusher: BaseBranchPusher = (branch) => {
-        pushedBranches.push(branch);
-      };
+    const pusher: BaseBranchPusher = (branch) => {
+      pushedBranches.push(branch);
+    };
 
-      openPullRequest({
-        capability: { available: true, tool: "gh" },
-        title: "spec(vibeify): publish v0.1",
-        bodyFile: "/tmp/body.md",
-        branch: "samospec/vibeify",
-        defaultBranch: "main",
-        remoteUrl: "git@github.com:NikolayS/samospec.git",
-        gh: fakeRunner("gh", calls),
-        glab: fakeRunner("glab", calls),
-        hasRemoteBase: () => true,
-        pushBaseBranch: pusher,
-      });
+    openPullRequest({
+      capability: { available: true, tool: "gh" },
+      title: "spec(vibeify): publish v0.1",
+      bodyFile: "/tmp/body.md",
+      branch: "samospec/vibeify",
+      defaultBranch: "main",
+      remoteUrl: "git@github.com:NikolayS/samospec.git",
+      gh: fakeRunner("gh", calls),
+      glab: fakeRunner("glab", calls),
+      hasRemoteBase: () => true,
+      pushBaseBranch: pusher,
+    });
 
-      expect(pushedBranches).toEqual([]);
-      const prCall = calls.find((c) => c.startsWith("gh pr create"));
-      expect(prCall).toBeDefined();
-    },
-  );
+    expect(pushedBranches).toEqual([]);
+    const prCall = calls.find((c) => c.startsWith("gh pr create"));
+    expect(prCall).toBeDefined();
+  });
 
-  test(
-    "pushes base branch before glab mr create when base has no remote ref",
-    () => {
-      const calls: string[] = [];
-      const pushedBranches: string[] = [];
+  test("pushes base branch before glab mr create when base has no remote ref", () => {
+    const calls: string[] = [];
+    const pushedBranches: string[] = [];
 
-      const pusher: BaseBranchPusher = (branch) => {
-        pushedBranches.push(branch);
-      };
+    const pusher: BaseBranchPusher = (branch) => {
+      pushedBranches.push(branch);
+    };
 
-      openPullRequest({
-        capability: { available: true, tool: "glab" },
-        title: "spec(vibeify): publish v0.1",
-        bodyFile: "/tmp/body.md",
-        branch: "samospec/vibeify",
-        defaultBranch: "main",
-        remoteUrl: "git@gitlab.com:group/project.git",
-        gh: fakeRunner("gh", calls),
-        glab: fakeRunner("glab", calls),
-        hasRemoteBase: () => false,
-        pushBaseBranch: pusher,
-      });
+    openPullRequest({
+      capability: { available: true, tool: "glab" },
+      title: "spec(vibeify): publish v0.1",
+      bodyFile: "/tmp/body.md",
+      branch: "samospec/vibeify",
+      defaultBranch: "main",
+      remoteUrl: "git@gitlab.com:group/project.git",
+      gh: fakeRunner("gh", calls),
+      glab: fakeRunner("glab", calls),
+      hasRemoteBase: () => false,
+      pushBaseBranch: pusher,
+    });
 
-      expect(pushedBranches).toEqual(["main"]);
-      const mrCall = calls.find((c) => c.startsWith("glab mr create"));
-      expect(mrCall).toBeDefined();
-    },
-  );
+    expect(pushedBranches).toEqual(["main"]);
+    const mrCall = calls.find((c) => c.startsWith("glab mr create"));
+    expect(mrCall).toBeDefined();
+  });
 });

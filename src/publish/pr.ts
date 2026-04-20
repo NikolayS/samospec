@@ -296,19 +296,15 @@ function parseRemote(url: string): ParsedRemote | null {
  */
 function defaultHasRemoteBase(opts: OpenPrOpts): BaseBranchChecker {
   return (base: string): boolean => {
-    const res = spawnSync(
-      "git",
-      ["rev-parse", "--verify", `origin/${base}`],
-      {
-        ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          GIT_TERMINAL_PROMPT: "0",
-          ...(opts.env ?? {}),
-        },
+    const res = spawnSync("git", ["rev-parse", "--verify", `origin/${base}`], {
+      ...(opts.cwd !== undefined ? { cwd: opts.cwd } : {}),
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        ...(opts.env ?? {}),
       },
-    );
+    });
     return (res.status ?? 1) === 0;
   };
 }
@@ -339,10 +335,8 @@ function defaultPushBaseBranch(opts: OpenPrOpts): BaseBranchPusher {
  * error (Issue #66).
  */
 function ensureBaseBranchOnRemote(opts: OpenPrOpts): void {
-  const checker =
-    opts.hasRemoteBase ?? defaultHasRemoteBase(opts);
-  const pusher =
-    opts.pushBaseBranch ?? defaultPushBaseBranch(opts);
+  const checker = opts.hasRemoteBase ?? defaultHasRemoteBase(opts);
+  const pusher = opts.pushBaseBranch ?? defaultPushBaseBranch(opts);
   if (!checker(opts.defaultBranch)) {
     pusher(opts.defaultBranch);
   }
