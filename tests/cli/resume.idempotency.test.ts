@@ -5,7 +5,7 @@
 // Equality between an uninterrupted run and a kill+resume run:
 //   - identical phase sequence,
 //   - identical version count,
-//   - identical file set under .samospec/spec/<slug>/,
+//   - identical file set under .samo/spec/<slug>/,
 //   - identical state.json keys,
 //   - timestamps excluded (they are nondeterministic).
 //
@@ -136,8 +136,8 @@ beforeEach(() => {
   repo = createTempRepo({ initialBranch: "work" });
   tmp = repo.dir;
   runInit({ cwd: tmp });
-  repo.run(["add", ".samospec"]);
-  repo.run(["commit", "-m", "chore: init .samospec"]);
+  repo.run(["add", ".samo"]);
+  repo.run(["commit", "-m", "chore: init .samo"]);
 });
 
 afterEach(() => {
@@ -166,7 +166,7 @@ describe("resume idempotency — kill mid-interview", () => {
       }),
     );
     expect(first.exitCode).not.toBe(0);
-    const slugDir = path.join(tmp, ".samospec", "spec", "refunds");
+    const slugDir = path.join(tmp, ".samo", "spec", "refunds");
     expect(existsSync(path.join(slugDir, "state.json"))).toBe(true);
     expect(existsSync(path.join(slugDir, "interview.json"))).toBe(false);
     expect(existsSync(path.join(slugDir, "SPEC.md"))).toBe(false);
@@ -215,7 +215,7 @@ describe("resume idempotency — kill mid-interview", () => {
     // Run A: uninterrupted.
     const repoA = createTempRepo({ initialBranch: "work" });
     runInit({ cwd: repoA.dir });
-    repoA.run(["add", ".samospec"]);
+    repoA.run(["add", ".samo"]);
     repoA.run(["commit", "-m", "chore: init"]);
     try {
       const resultA = await runNew(
@@ -275,8 +275,8 @@ describe("resume idempotency — kill mid-interview", () => {
       );
       expect(resumeB.exitCode).toBe(0);
 
-      const slugA = path.join(repoA.dir, ".samospec", "spec", "refunds");
-      const slugB = path.join(tmp, ".samospec", "spec", "refunds");
+      const slugA = path.join(repoA.dir, ".samo", "spec", "refunds");
+      const slugB = path.join(tmp, ".samo", "spec", "refunds");
       const filesA = listFilesRecursive(slugA);
       const filesB = listFilesRecursive(slugB);
       // Exclude tmp dotfile leftovers that the atomic-write code may
@@ -416,7 +416,7 @@ describe("resume idempotency — committed state is stable", () => {
     expect(first.exitCode).toBe(0);
 
     const specBefore = readFileSync(
-      path.join(tmp, ".samospec", "spec", "refunds", "SPEC.md"),
+      path.join(tmp, ".samo", "spec", "refunds", "SPEC.md"),
       "utf8",
     );
 
@@ -443,7 +443,7 @@ describe("resume idempotency — committed state is stable", () => {
     expect(rB.exitCode).toBe(0);
 
     const specAfter = readFileSync(
-      path.join(tmp, ".samospec", "spec", "refunds", "SPEC.md"),
+      path.join(tmp, ".samo", "spec", "refunds", "SPEC.md"),
       "utf8",
     );
     expect(specAfter).toBe(specBefore);

@@ -127,7 +127,7 @@ describe("samospec resume — kill after persona, before interview", () => {
     // A kill mid-interview is a non-zero exit (interrupted, exit 3).
     expect(first.exitCode).not.toBe(0);
 
-    const slugDir = path.join(tmp, ".samospec", "spec", "demo");
+    const slugDir = path.join(tmp, ".samo", "spec", "demo");
     const st = readState(path.join(slugDir, "state.json"));
     expect(st).not.toBeNull();
     expect(st!.persona).not.toBeNull();

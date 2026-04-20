@@ -204,9 +204,9 @@ describe("doctor-checks / git", () => {
 
 describe("doctor-checks / lock", () => {
   test("OK when no .lock file exists", () => {
-    mkdirSync(path.join(tmp, ".samospec"), { recursive: true });
+    mkdirSync(path.join(tmp, ".samo"), { recursive: true });
     const result = checkLockfile({
-      lockPath: path.join(tmp, ".samospec", ".lock"),
+      lockPath: path.join(tmp, ".samo", ".lock"),
       now: Date.now(),
       maxWallClockMinutes: 240,
     });
@@ -215,8 +215,8 @@ describe("doctor-checks / lock", () => {
   });
 
   test("WARN when a live lock is held by another process", () => {
-    mkdirSync(path.join(tmp, ".samospec"), { recursive: true });
-    const lockPath = path.join(tmp, ".samospec", ".lock");
+    mkdirSync(path.join(tmp, ".samo"), { recursive: true });
+    const lockPath = path.join(tmp, ".samo", ".lock");
     const lock = {
       pid: 1, // PID 1 always alive on POSIX.
       started_at: new Date().toISOString(),
@@ -236,8 +236,8 @@ describe("doctor-checks / lock", () => {
   });
 
   test("FAIL when a stale lock is present (dead pid)", () => {
-    mkdirSync(path.join(tmp, ".samospec"), { recursive: true });
-    const lockPath = path.join(tmp, ".samospec", ".lock");
+    mkdirSync(path.join(tmp, ".samo"), { recursive: true });
+    const lockPath = path.join(tmp, ".samo", ".lock");
     const lock = {
       pid: 99999,
       started_at: new Date().toISOString(),
@@ -256,8 +256,8 @@ describe("doctor-checks / lock", () => {
   });
 
   test("FAIL when lock is too old (age_exceeded)", () => {
-    mkdirSync(path.join(tmp, ".samospec"), { recursive: true });
-    const lockPath = path.join(tmp, ".samospec", ".lock");
+    mkdirSync(path.join(tmp, ".samo"), { recursive: true });
+    const lockPath = path.join(tmp, ".samo", ".lock");
     // 400 minutes ago; buffer = 30; max = 240 — expect age_exceeded.
     const now = Date.now();
     const started = new Date(now - 400 * 60_000).toISOString();
@@ -282,28 +282,28 @@ describe("doctor-checks / config", () => {
   test("OK when config.json parses and pinned models match", () => {
     runInit({ cwd: tmp });
     const result = checkConfig({
-      configPath: path.join(tmp, ".samospec", "config.json"),
+      configPath: path.join(tmp, ".samo", "config.json"),
     });
     expect(result.status).toBe(CheckStatus.Ok);
   });
 
   test("FAIL when config.json is missing", () => {
     const result = checkConfig({
-      configPath: path.join(tmp, ".samospec", "config.json"),
+      configPath: path.join(tmp, ".samo", "config.json"),
     });
     expect(result.status).toBe(CheckStatus.Fail);
     expect(result.message.toLowerCase()).toMatch(/not found|missing|run.*init/);
   });
 
   test("FAIL when config.json is malformed", () => {
-    mkdirSync(path.join(tmp, ".samospec"), { recursive: true });
+    mkdirSync(path.join(tmp, ".samo"), { recursive: true });
     writeFileSync(
-      path.join(tmp, ".samospec", "config.json"),
+      path.join(tmp, ".samo", "config.json"),
       "{ broken",
       "utf8",
     );
     const result = checkConfig({
-      configPath: path.join(tmp, ".samospec", "config.json"),
+      configPath: path.join(tmp, ".samo", "config.json"),
     });
     expect(result.status).toBe(CheckStatus.Fail);
     expect(result.message.toLowerCase()).toMatch(/malformed|parse|invalid/);
@@ -312,7 +312,7 @@ describe("doctor-checks / config", () => {
   test("WARN when pinned lead model differs from release metadata", () => {
     runInit({ cwd: tmp });
     // Tamper: set a non-pinned model.
-    const cfgPath = path.join(tmp, ".samospec", "config.json");
+    const cfgPath = path.join(tmp, ".samo", "config.json");
     const cfg = JSON.parse(readFileSync(cfgPath, "utf8")) as Record<
       string,
       unknown

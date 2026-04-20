@@ -148,7 +148,7 @@ describe("context/discover — end-to-end (SPEC §7)", () => {
     // context.json was written at the canonical path.
     const ctxPath = path.join(
       repo.dir,
-      ".samospec",
+      ".samo",
       "spec",
       "demo",
       "context.json",

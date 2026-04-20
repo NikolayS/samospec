@@ -50,7 +50,7 @@ function initRepo(cwd: string): void {
 }
 
 function seedSpec(cwd: string, slug: string): void {
-  const slugDir = path.join(cwd, ".samospec", "spec", slug);
+  const slugDir = path.join(cwd, ".samo", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   writeFileSync(path.join(slugDir, "SPEC.md"), "# SPEC\n\nv0.1 body\n", "utf8");
   writeFileSync(path.join(slugDir, "TLDR.md"), "# TLDR\n", "utf8");
@@ -160,7 +160,7 @@ describe("loop/sigint — SPEC §12 condition 5", () => {
 
     const finalState: State = JSON.parse(
       readFileSync(
-        path.join(tmp, ".samospec", "spec", "refunds", "state.json"),
+        path.join(tmp, ".samo", "spec", "refunds", "state.json"),
         "utf8",
       ),
     );

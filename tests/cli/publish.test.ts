@@ -83,7 +83,7 @@ function seedCommittedSpec(
   slug: string,
   opts?: { readonly overrides?: Partial<State> },
 ): void {
-  const slugDir = path.join(cwd, ".samospec", "spec", slug);
+  const slugDir = path.join(cwd, ".samo", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   writeFileSync(
     path.join(slugDir, "SPEC.md"),
@@ -227,7 +227,7 @@ function scriptShim(args: {
 }
 
 function seedConfig(cwd: string, value: unknown): void {
-  const cfgDir = path.join(cwd, ".samospec");
+  const cfgDir = path.join(cwd, ".samo");
   mkdirSync(cfgDir, { recursive: true });
   writeFileSync(
     path.join(cfgDir, "config.json"),
@@ -320,7 +320,7 @@ describe("samospec publish — copy + commit (SPEC §5 Phase 7 + §8 + §9)", ()
     // well — the safety invariant then guards the commit step.
     seedCommittedSpec(tmp, "refunds");
     spawnSync("git", ["checkout", "-q", "main"], { cwd: tmp });
-    spawnSync("git", ["checkout", "samospec/refunds", "--", ".samospec"], {
+    spawnSync("git", ["checkout", "samospec/refunds", "--", ".samo"], {
       cwd: tmp,
     });
     spawnSync("git", ["commit", "-q", "-m", "chore: seed state on main"], {
@@ -548,7 +548,7 @@ describe("samospec publish — state advance (SPEC §7)", () => {
     });
     expect(result.exitCode).toBe(0);
     const stateRaw = readFileSync(
-      path.join(tmp, ".samospec", "spec", "refunds", "state.json"),
+      path.join(tmp, ".samo", "spec", "refunds", "state.json"),
       "utf8",
     );
     const state = JSON.parse(stateRaw) as Record<string, unknown>;

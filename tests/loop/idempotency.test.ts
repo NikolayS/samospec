@@ -67,7 +67,7 @@ function initRepo(cwd: string): void {
 }
 
 function seedSpec(cwd: string, slug: string): State {
-  const slugDir = path.join(cwd, ".samospec", "spec", slug);
+  const slugDir = path.join(cwd, ".samo", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   writeFileSync(path.join(slugDir, "SPEC.md"), "# SPEC\n\nv0.1 body\n", "utf8");
   writeFileSync(path.join(slugDir, "TLDR.md"), "# TLDR\n", "utf8");
@@ -159,7 +159,7 @@ describe("loop/idempotency — kill at planned", () => {
   test("round.json written with planned but nothing else -> resume runs round 1 cleanly", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
     const dirs = roundDirsFor(slugDir, 1);
     mkdirSync(dirs.roundDir, { recursive: true });
     writeRoundJson(dirs.roundJson, {
@@ -193,7 +193,7 @@ describe("loop/idempotency — kill at running (orphan critique)", () => {
   test("orphan codex.md is ignored because round.json says seat still pending", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
     const dirs = roundDirsFor(slugDir, 1);
     mkdirSync(dirs.roundDir, { recursive: true });
     // Write an orphan critique file but leave round.json saying
@@ -244,7 +244,7 @@ describe("loop/idempotency — lead_terminal is absorbing", () => {
   test("state at lead_terminal -> iterate exits 4 without running a round", async () => {
     const slug = "refunds";
     const seeded = seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
     writeState(path.join(slugDir, "state.json"), {
       ...seeded,
       round_state: "lead_terminal",
@@ -282,7 +282,7 @@ describe("loop/idempotency — second iterate after committed round", () => {
   test("state.json round_state=committed + v0.2 -> next iterate runs round 2", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
 
     const firstLead = createFakeAdapter({
       revise: {

@@ -84,8 +84,8 @@ describe("context/ignore — applyIgnore (SPEC §7)", () => {
     expect(result).not.toContain("generated.generated.ts");
   });
 
-  test("honors .samospec-ignore patterns", () => {
-    repo.write(".samospec-ignore", "secret-dir/\n*.private\n");
+  test("honors .samo-ignore patterns", () => {
+    repo.write(".samo-ignore", "secret-dir/\n*.private\n");
     const files = [
       "src/a.ts",
       "secret-dir/nested/x.ts",
@@ -125,9 +125,9 @@ describe("context/ignore — applyIgnore (SPEC §7)", () => {
     expect(result).not.toContain("logo.png");
   });
 
-  test("hard-coded no-read list CANNOT be overridden by .samospec-ignore whitelist", () => {
+  test("hard-coded no-read list CANNOT be overridden by .samo-ignore whitelist", () => {
     // User tries to negate-whitelist .env.
-    repo.write(".samospec-ignore", "!.env\n");
+    repo.write(".samo-ignore", "!.env\n");
     repo.write(".env.staging", "SECRET=abc\n");
     const files = ["src/a.ts", ".env.staging"];
     const samoIgnore = loadSamospecIgnore(repo.dir);

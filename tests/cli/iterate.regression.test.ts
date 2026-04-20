@@ -66,7 +66,7 @@ function initRepo(cwd: string): void {
 }
 
 function seedSpec(cwd: string, slug: string): void {
-  const slugDir = path.join(cwd, ".samospec", "spec", slug);
+  const slugDir = path.join(cwd, ".samo", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   writeFileSync(
     path.join(slugDir, "SPEC.md"),

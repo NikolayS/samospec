@@ -43,7 +43,7 @@ function initRepo(cwd: string): void {
 }
 
 function seedSpec(cwd: string, slug: string): State {
-  const slugDir = path.join(cwd, ".samospec", "spec", slug);
+  const slugDir = path.join(cwd, ".samo", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   writeFileSync(
     path.join(slugDir, "SPEC.md"),
@@ -142,7 +142,7 @@ describe("loop/e2e — 3-round fake-adapter loop to ready=true", () => {
   test("produces v0.1 -> v0.2 -> v0.3 -> v0.4, ends with ready=true", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
 
     let roundCounter = 0;
     const lead: Adapter = {
@@ -253,7 +253,7 @@ describe("loop/e2e — manual-edit mid-session", () => {
   test("user edits SPEC.md between iterate invocations -> incorporate commits + directive flows", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
 
     // Round 1: ready=false so the loop doesn't stop.
     // Round 2 (second iterate call): ready=true after the edit lands.
@@ -346,7 +346,7 @@ describe("loop/e2e — round.json status trail", () => {
   test("records seat outcomes as the round progresses", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
-    const slugDir = path.join(tmp, ".samospec", "spec", slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
 
     const lead: Adapter = createFakeAdapter({
       revise: {

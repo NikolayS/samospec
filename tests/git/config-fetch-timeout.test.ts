@@ -2,7 +2,7 @@
 
 /**
  * SPEC §8 — `git.fetch_timeout_seconds` default (5s). Extends the Sprint 1
- * `.samospec/config.json` schema. `git.remote_probe` stays at its Sprint 1
+ * `.samo/config.json` schema. `git.remote_probe` stays at its Sprint 1
  * default of `false`.
  */
 
@@ -33,7 +33,7 @@ describe("init — git.fetch_timeout_seconds default (SPEC §8)", () => {
   test("writes git.fetch_timeout_seconds = 5 on a fresh init", () => {
     runInit({ cwd: tmp });
     const cfg = JSON.parse(
-      readFileSync(path.join(tmp, ".samospec", "config.json"), "utf8"),
+      readFileSync(path.join(tmp, ".samo", "config.json"), "utf8"),
     ) as { git: { fetch_timeout_seconds: number; remote_probe: boolean } };
     expect(cfg.git.fetch_timeout_seconds).toBe(5);
     // Sprint 1 remote_probe default is untouched.
@@ -42,7 +42,7 @@ describe("init — git.fetch_timeout_seconds default (SPEC §8)", () => {
 
   test("merging preserves a user-set value and does not clobber it", () => {
     // Simulate an existing config that overrides the fetch timeout.
-    const samoDir = path.join(tmp, ".samospec");
+    const samoDir = path.join(tmp, ".samo");
     const cfgPath = path.join(samoDir, "config.json");
     const preSeed = {
       schema_version: 1,

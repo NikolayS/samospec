@@ -4,7 +4,7 @@
 // samospec-new session-end hook (Issue #15).
 //
 // Contract:
-//   - reads `.samospec/config.json` from `cwd`
+//   - reads `.samo/config.json` from `cwd`
 //   - creates a fresh calibration object if none present
 //   - appends via `recordSession` (cap 20, drop oldest)
 //   - atomically writes the updated config (temp + fsync + rename)
@@ -47,7 +47,7 @@ describe("writeCalibrationSample", () => {
 
     // config.json on disk reflects the same shape.
     const raw = readFileSync(
-      path.join(tmp, ".samospec", "config.json"),
+      path.join(tmp, ".samo", "config.json"),
       "utf8",
     );
     const parsed = JSON.parse(raw) as Record<string, unknown>;
@@ -101,7 +101,7 @@ describe("writeCalibrationSample", () => {
   });
 
   test("malformed config.json throws (never silently overwrites)", () => {
-    const p = path.join(tmp, ".samospec", "config.json");
+    const p = path.join(tmp, ".samo", "config.json");
     writeFileSync(p, "not valid json", "utf8");
     expect(() =>
       writeCalibrationSample({

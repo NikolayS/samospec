@@ -3,7 +3,7 @@
 /**
  * SPEC §5 Phase 7 + §9 — blueprint promotion.
  *
- *   - Copies `.samospec/spec/<slug>/SPEC.md` → `blueprints/<slug>/SPEC.md`.
+ *   - Copies `.samo/spec/<slug>/SPEC.md` → `blueprints/<slug>/SPEC.md`.
  *   - Creates `blueprints/<slug>/` when missing.
  *   - Overwrites an existing promoted blueprint on republish (though
  *     runPublish itself blocks republish; the copy primitive remains
@@ -37,7 +37,7 @@ afterEach(() => {
 
 describe("promoteSpecToBlueprint", () => {
   test("copies SPEC.md, creating blueprints/<slug>/ when missing", () => {
-    const slugDir = path.join(tmp, ".samospec", "spec", "refunds");
+    const slugDir = path.join(tmp, ".samo", "spec", "refunds");
     mkdirSync(slugDir, { recursive: true });
     writeFileSync(
       path.join(slugDir, "SPEC.md"),
@@ -54,7 +54,7 @@ describe("promoteSpecToBlueprint", () => {
   });
 
   test("overwrites an existing blueprint file idempotently", () => {
-    const slugDir = path.join(tmp, ".samospec", "spec", "refunds");
+    const slugDir = path.join(tmp, ".samo", "spec", "refunds");
     mkdirSync(slugDir, { recursive: true });
     writeFileSync(path.join(slugDir, "SPEC.md"), "NEW\n", "utf8");
 
@@ -67,7 +67,7 @@ describe("promoteSpecToBlueprint", () => {
   });
 
   test("throws when the source SPEC.md is missing", () => {
-    mkdirSync(path.join(tmp, ".samospec", "spec", "refunds"), {
+    mkdirSync(path.join(tmp, ".samo", "spec", "refunds"), {
       recursive: true,
     });
     expect(() => promoteSpecToBlueprint({ cwd: tmp, slug: "refunds" })).toThrow(

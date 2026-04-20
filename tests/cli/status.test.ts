@@ -25,7 +25,7 @@ function seedMinimal(
   round = 1,
   override: Partial<State> = {},
 ): void {
-  const slugDir = path.join(tmp, ".samospec", "spec", slug);
+  const slugDir = path.join(tmp, ".samo", "spec", slug);
   mkdirSync(slugDir, { recursive: true });
   const state: State = {
     slug,

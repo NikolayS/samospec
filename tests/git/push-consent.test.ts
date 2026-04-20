@@ -6,7 +6,7 @@
  * Covers:
  *   - Prompt payload includes remote name, target branch, default branch,
  *     and PR-creation capability.
- *   - `accept` → persisted to `.samospec/config.json` under
+ *   - `accept` → persisted to `.samo/config.json` under
  *     `git.push_consent.<remote-url>: true`.
  *   - `refuse` → persisted as `false`.
  *   - Persisted choice is respected silently (no reprompt).
@@ -33,10 +33,10 @@ import {
 import { createTempRepo } from "./helpers/tempRepo.ts";
 
 describe("push-consent persistence (git.push_consent.<remote-url>)", () => {
-  test("persistConsent writes to .samospec/config.json keyed by remote URL", () => {
+  test("persistConsent writes to .samo/config.json keyed by remote URL", () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -67,7 +67,7 @@ describe("push-consent persistence (git.push_consent.<remote-url>)", () => {
   test("loadPersistedConsent returns saved choice", () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -105,7 +105,7 @@ describe("push-consent persistence (git.push_consent.<remote-url>)", () => {
   test("distinct remote URLs get distinct consent keys", () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -144,7 +144,7 @@ describe("push-consent persistence (git.push_consent.<remote-url>)", () => {
   test("clearPersistedConsent removes the key", () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -190,7 +190,7 @@ describe("requestPushConsent — prompt shape + decisions", () => {
   test("prompt shows remote, target branch, default branch, and PR capability", async () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -222,7 +222,7 @@ describe("requestPushConsent — prompt shape + decisions", () => {
   test("accept persists push_consent.<url>=true and returns granted", async () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -250,7 +250,7 @@ describe("requestPushConsent — prompt shape + decisions", () => {
   test("refuse persists push_consent.<url>=false", async () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -278,7 +278,7 @@ describe("requestPushConsent — prompt shape + decisions", () => {
   test("persisted choice short-circuits reprompt silently", async () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -316,7 +316,7 @@ describe("requestPushConsent — prompt shape + decisions", () => {
   test("persisted false is respected silently (no reprompt)", async () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -354,7 +354,7 @@ describe("requestPushConsent — prompt shape + decisions", () => {
   test("prompt returning 'interrupt' surfaces exit code 3", async () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(
         path.join(samoDir, "config.json"),
@@ -407,7 +407,7 @@ describe("config corruption surfaces on load, not silent passthrough", () => {
   test("loadPersistedConsent throws on malformed JSON", () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       mkdirSync(samoDir, { recursive: true });
       writeFileSync(path.join(samoDir, "config.json"), "not json", "utf8");
       expect(() =>
@@ -424,7 +424,7 @@ describe("config corruption surfaces on load, not silent passthrough", () => {
   test("loadPersistedConsent returns null when config.json is absent", () => {
     const repo = createTempRepo();
     try {
-      const samoDir = path.join(repo.dir, ".samospec");
+      const samoDir = path.join(repo.dir, ".samo");
       expect(existsSync(samoDir)).toBe(false);
       expect(
         loadPersistedConsent({

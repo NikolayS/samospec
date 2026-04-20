@@ -206,7 +206,7 @@ describe("formatLeadTerminalMessage — SPEC §7 copy", () => {
   test("refusal copy", () => {
     const msg = formatLeadTerminalMessage("refunds", "refusal", "demo");
     expect(msg.toLowerCase()).toContain("refused");
-    expect(msg).toContain(".samospec/spec/refunds/SPEC.md");
+    expect(msg).toContain(".samo/spec/refunds/SPEC.md");
   });
 
   test("schema_fail copy", () => {

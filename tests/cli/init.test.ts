@@ -29,12 +29,12 @@ afterEach(() => {
 });
 
 describe("samospec init — fresh directory", () => {
-  test("creates .samospec/ with config.json, .gitignore, cache dirs and exits 0", () => {
+  test("creates .samo/ with config.json, .gitignore, cache dirs and exits 0", () => {
     const result = runInit({ cwd: tmp });
 
     expect(result.exitCode).toBe(0);
 
-    const samo = path.join(tmp, ".samospec");
+    const samo = path.join(tmp, ".samo");
     expect(existsSync(samo)).toBe(true);
     expect(existsSync(path.join(samo, "config.json"))).toBe(true);
     expect(existsSync(path.join(samo, ".gitignore"))).toBe(true);
@@ -44,7 +44,7 @@ describe("samospec init — fresh directory", () => {
 
   test("config.json is parseable JSON and contains v1 pinned defaults", () => {
     runInit({ cwd: tmp });
-    const cfgPath = path.join(tmp, ".samospec", "config.json");
+    const cfgPath = path.join(tmp, ".samo", "config.json");
     const parsed = JSON.parse(readFileSync(cfgPath, "utf8")) as Record<
       string,
       unknown
@@ -85,7 +85,7 @@ describe("samospec init — fresh directory", () => {
   test(".gitignore ignores transcripts/, cache/, and .lock", () => {
     runInit({ cwd: tmp });
     const body = readFileSync(
-      path.join(tmp, ".samospec", ".gitignore"),
+      path.join(tmp, ".samo", ".gitignore"),
       "utf8",
     );
     expect(body).toContain("transcripts/");
@@ -93,10 +93,10 @@ describe("samospec init — fresh directory", () => {
     expect(body).toContain(".lock");
   });
 
-  test("stdout announces creation of .samospec/", () => {
+  test("stdout announces creation of .samo/", () => {
     const result = runInit({ cwd: tmp });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain(".samospec");
+    expect(result.stdout).toContain(".samo");
     expect(result.stdout.toLowerCase()).toMatch(/created|initialized/);
   });
 
@@ -109,7 +109,7 @@ describe("samospec init — fresh directory", () => {
 describe("samospec init — idempotent re-run", () => {
   test("re-running preserves user-set keys and fills missing defaults", () => {
     runInit({ cwd: tmp });
-    const cfgPath = path.join(tmp, ".samospec", "config.json");
+    const cfgPath = path.join(tmp, ".samo", "config.json");
 
     // User edits config.json.
     const initial = JSON.parse(readFileSync(cfgPath, "utf8")) as Record<
@@ -162,7 +162,7 @@ describe("samospec init — idempotent re-run", () => {
 
   test("re-running prints a diff of what changed", () => {
     runInit({ cwd: tmp });
-    const cfgPath = path.join(tmp, ".samospec", "config.json");
+    const cfgPath = path.join(tmp, ".samo", "config.json");
     const cfg = JSON.parse(readFileSync(cfgPath, "utf8")) as Record<
       string,
       unknown
@@ -192,8 +192,8 @@ describe("samospec init — idempotent re-run", () => {
 
 describe("samospec init — malformed existing config", () => {
   test("malformed config.json exits 1 with a clear message and does NOT overwrite", () => {
-    mkdirSync(path.join(tmp, ".samospec"), { recursive: true });
-    const cfgPath = path.join(tmp, ".samospec", "config.json");
+    mkdirSync(path.join(tmp, ".samo"), { recursive: true });
+    const cfgPath = path.join(tmp, ".samo", "config.json");
     const garbage = "{ this is not valid json,, ";
     writeFileSync(cfgPath, garbage, "utf8");
 
@@ -208,8 +208,8 @@ describe("samospec init — malformed existing config", () => {
   });
 
   test("malformed config.json error suggests a remediation path", () => {
-    mkdirSync(path.join(tmp, ".samospec"), { recursive: true });
-    const cfgPath = path.join(tmp, ".samospec", "config.json");
+    mkdirSync(path.join(tmp, ".samo"), { recursive: true });
+    const cfgPath = path.join(tmp, ".samo", "config.json");
     writeFileSync(cfgPath, "{ broken", "utf8");
 
     const result = runInit({ cwd: tmp });
@@ -218,9 +218,9 @@ describe("samospec init — malformed existing config", () => {
   });
 });
 
-describe("samospec init — pre-existing .samospec with no config.json", () => {
+describe("samospec init — pre-existing .samo with no config.json", () => {
   test("creates config.json without clobbering existing sibling files", () => {
-    const samo = path.join(tmp, ".samospec");
+    const samo = path.join(tmp, ".samo");
     mkdirSync(samo, { recursive: true });
     writeFileSync(path.join(samo, "NOTES.md"), "user notes\n", "utf8");
 
