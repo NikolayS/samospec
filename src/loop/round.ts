@@ -48,6 +48,7 @@ import path from "node:path";
 
 import type { Adapter, CritiqueOutput, Finding } from "../adapter/types.ts";
 import type { ReviewDecision } from "./decisions.ts";
+import { reviseDecisionsToReviewDecisions } from "./decisions.ts";
 import type { DegradedResult } from "./degradation.ts";
 
 // ---------- constants ----------
@@ -471,10 +472,13 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       opts: { effort: "max", timeout: reviseTimeout },
     });
 
-    // Extract decisions from the response. The lead may emit them either
-    // inside `rationale` text or as a structured field on `spec`. We
-    // tolerate both — see extractDecisions.
-    const decisions = extractDecisions(revised.rationale, revised.spec);
+    // Extract decisions from the response. Priority:
+    //   1. revised.decisions (v0.2.0+ structured array from ReviseOutput)
+    //   2. extractDecisions from rationale/spec body (legacy path)
+    const decisions =
+      revised.decisions !== undefined && revised.decisions.length > 0
+        ? reviseDecisionsToReviewDecisions(revised.decisions)
+        : extractDecisions(revised.rationale, revised.spec);
 
     return {
       roundNumber,

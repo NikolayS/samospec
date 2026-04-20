@@ -69,6 +69,13 @@ export interface DraftInput {
   readonly explain: boolean;
   readonly effort?: EffortLevel;
   readonly timeoutMs?: number;
+  /**
+   * Optional list of baseline section names to exclude from the
+   * mandatory section requirement (SPEC §7 v0.2.0 --skip opt-out).
+   * Forwarded into `adapter.revise()` as `ReviseInput.skipSections`.
+   * Names are validated at the CLI parser — adapter accepts them verbatim.
+   */
+  readonly skipSections?: readonly string[];
 }
 
 export interface DraftResult {
@@ -154,6 +161,9 @@ export async function authorDraft(
       reviews: [],
       decisions_history: [],
       opts: { effort, timeout },
+      ...(input.skipSections !== undefined
+        ? { skipSections: [...input.skipSections] }
+        : {}),
     });
   } catch (err) {
     throw classifyReviseError(err);

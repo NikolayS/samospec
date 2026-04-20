@@ -7,7 +7,7 @@ import { ClaudeAdapter } from "./adapter/claude.ts";
 import { ClaudeResolver } from "./adapter/claude-resolver.ts";
 import { ClaudeReviewerBAdapter } from "./adapter/claude-reviewer-b.ts";
 import { CodexAdapter } from "./adapter/codex.ts";
-import type { Adapter } from "./adapter/types.ts";
+import { BASELINE_SECTION_NAMES, type Adapter } from "./adapter/types.ts";
 import { runInit } from "./cli/init.ts";
 import { runDoctor, type DoctorAdapterBinding } from "./cli/doctor.ts";
 import {
@@ -46,7 +46,13 @@ const USAGE =
   "Commands:\n" +
   "  init                        Create or refresh .samo/ in the current repo.\n" +
   "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
-  "  new <slug> [--idea ...]     Start a new spec (persona + 5-question interview).\n" +
+  "  new <slug> [--idea ...] [--skip <sections>]\n" +
+  "                              Start a new spec (persona + 5-question interview).\n" +
+  "                              --skip omits named baseline sections from the\n" +
+  "                              mandatory template (comma-separated,\n" +
+  "                              case-insensitive). Valid sections: " +
+  BASELINE_SECTION_NAMES.join(", ") +
+  ".\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
   "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>]\n" +
   "                              Run review rounds until a stopping condition fires.\n" +
@@ -135,6 +141,7 @@ interface NewArgs {
   readonly slug: string;
   readonly idea: string;
   readonly explain: boolean;
+  readonly skipSections?: readonly string[];
 }
 
 interface ResumeArgs {
@@ -142,10 +149,53 @@ interface ResumeArgs {
   readonly explain: boolean;
 }
 
+/**
+ * Parse the `--skip` value (comma-separated) and validate each entry
+ * against BASELINE_SECTION_NAMES (case-insensitive). Returns the
+ * canonical list on success, or an error string on failure.
+ */
+function parseSkipList(raw: string): readonly string[] | string {
+  const entries = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  if (entries.length === 0) {
+    return (
+      "samospec new: --skip requires one or more section names " +
+      `(comma-separated). Valid: ${BASELINE_SECTION_NAMES.join(", ")}.`
+    );
+  }
+  const canonicalByLower = new Map<string, string>();
+  for (const name of BASELINE_SECTION_NAMES) {
+    canonicalByLower.set(name.toLowerCase(), name);
+    // Also accept hyphen-for-space variant (`user-stories` ↔ `user stories`).
+    canonicalByLower.set(name.toLowerCase().replace(/ /g, "-"), name);
+  }
+  const canonical: string[] = [];
+  const unknown: string[] = [];
+  for (const entry of entries) {
+    const match = canonicalByLower.get(entry.toLowerCase());
+    if (match === undefined) {
+      unknown.push(entry);
+    } else {
+      canonical.push(match);
+    }
+  }
+  if (unknown.length > 0) {
+    return (
+      `samospec new: unknown baseline section(s) in --skip: ` +
+      `${unknown.join(", ")}. Valid section names: ` +
+      `${BASELINE_SECTION_NAMES.join(", ")}.`
+    );
+  }
+  return canonical;
+}
+
 function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let slug: string | null = null;
   let idea: string | null = null;
   let explain = false;
+  let skipSections: readonly string[] | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === undefined) continue;
@@ -162,8 +212,23 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
       idea = token.slice("--idea=".length);
       continue;
     }
+    if (token === "--skip") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parseSkipList(raw);
+      if (typeof parsed === "string") return parsed;
+      skipSections = parsed;
+      continue;
+    }
+    if (token.startsWith("--skip=")) {
+      const raw = token.slice("--skip=".length);
+      const parsed = parseSkipList(raw);
+      if (typeof parsed === "string") return parsed;
+      skipSections = parsed;
+      continue;
+    }
     if (token.startsWith("--")) {
-      // Unknown flags ignored in this skeleton; #15 expands flag set.
+      // Unknown flags ignored (permissive for --force and future flags).
       continue;
     }
     if (slug === null) {
@@ -178,6 +243,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     slug,
     idea: idea ?? slug,
     explain,
+    ...(skipSections !== undefined ? { skipSections } : {}),
   };
 }
 
@@ -282,6 +348,9 @@ async function runNewCommand(rest: readonly string[]) {
       explain: parsed.explain,
       resolvers: interactiveResolvers(),
       now: new Date().toISOString(),
+      ...(parsed.skipSections !== undefined
+        ? { skipSections: [...parsed.skipSections] }
+        : {}),
     },
     adapter,
   );

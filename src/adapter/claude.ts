@@ -479,9 +479,99 @@ export class ClaudeAdapter implements Adapter {
   }
 }
 
-// ---------- prompt builders ----------
+// ---------- baseline section prompt helper ----------
 
-function buildAskPrompt(input: AskInput): string {
+/**
+ * Build the mandatory baseline sections instruction block.
+ * Sections in `skipList` (case-insensitive match against canonical names)
+ * are excluded from the mandatory list.
+ *
+ * Returns an empty string when all nine sections are skipped (edge case).
+ */
+export function buildBaselineSectionsBlock(
+  skipList: readonly string[] = [],
+): string {
+  const skipLower = skipList.map((s) => s.toLowerCase().trim());
+
+  const ALL_SECTIONS: readonly { name: string; instruction: string }[] = [
+    {
+      name: "version header",
+      instruction:
+        "(1) Version header at top — start at v0.1 and bump each round " +
+        "(e.g. `# <name> — SPEC v0.1`).",
+    },
+    {
+      name: "goal",
+      instruction:
+        "(2) Goal & why it's needed — explicit 'why this exists' framing, " +
+        "not just 'Purpose'.",
+    },
+    {
+      name: "user stories",
+      instruction:
+        "(3) User stories — at least 3, each with persona + action + outcome " +
+        "(≥3 minimum; used for manual testing).",
+    },
+    {
+      name: "architecture",
+      instruction:
+        "(4) Architecture — components, boundaries, key abstractions.",
+    },
+    {
+      name: "implementation details",
+      instruction:
+        "(5) Implementation details — data flow, state transitions, key " +
+        "algorithms.",
+    },
+    {
+      name: "tests",
+      instruction:
+        "(6) Tests plan — CI tests needed AND explicit red/green TDD call-out " +
+        "for which pieces are built test-first.",
+    },
+    {
+      name: "team",
+      instruction:
+        "(7) Team — list of veteran experts to hire (count + skill labels, " +
+        "e.g. 'Veteran CLI systems engineer (1)').",
+    },
+    {
+      name: "sprints",
+      instruction:
+        "(8) Implementation plan — organized in multiple sprints with " +
+        "parallelization and ordering between team members.",
+    },
+    {
+      name: "changelog",
+      instruction:
+        "(9) Embedded Changelog — version history mirroring changelog.md, " +
+        "one line per change.",
+    },
+  ];
+
+  const mandatory = ALL_SECTIONS.filter(
+    (s) => !skipLower.includes(s.name.toLowerCase()),
+  );
+
+  if (mandatory.length === 0) return "";
+
+  const sectionLines = mandatory.map((s) => s.instruction).join(" ");
+  const skippedNote =
+    skipList.length > 0
+      ? ` (sections excluded via --skip: ${skipList.join(", ")})`
+      : "";
+
+  return (
+    `\n\nMANDATORY BASELINE SECTIONS${skippedNote}: Your SPEC.md MUST ` +
+    `include all of the following sections unless the user opted out. ` +
+    sectionLines +
+    ` Additional topic-specific sections are always permitted.`
+  );
+}
+
+// ---------- prompt builders (exported for tests) ----------
+
+export function buildAskPrompt(input: AskInput): string {
   const ctx = input.context === "" ? "" : `\n\nContext:\n${input.context}\n`;
   return (
     "You are the samospec lead. Respond ONLY with a JSON object matching " +
@@ -492,7 +582,7 @@ function buildAskPrompt(input: AskInput): string {
   );
 }
 
-function buildCritiquePrompt(input: CritiqueInput): string {
+export function buildCritiquePrompt(input: CritiqueInput): string {
   return (
     "You are the samospec reviewer. Return ONLY a JSON object matching " +
     'the review-taxonomy schema: { "findings": Array<{ "category": ' +
@@ -503,13 +593,22 @@ function buildCritiquePrompt(input: CritiqueInput): string {
   );
 }
 
-function buildRevisePrompt(input: ReviseInput): string {
+export function buildRevisePrompt(input: ReviseInput): string {
+  const baselineSections = buildBaselineSectionsBlock(input.skipSections ?? []);
   return (
     "You are the samospec lead. Emit the FULL revised SPEC.md text — " +
     'not a patch. Return ONLY a JSON object: { "spec": <full text>, ' +
-    '"ready": boolean, "rationale": string, "usage": null, ' +
+    '"ready": boolean, "rationale": string, ' +
+    '"decisions": [{ "finding_id"?: string, "category": string, ' +
+    '"verdict": "accepted"|"rejected"|"deferred", "rationale": string }], ' +
+    '"usage": null, ' +
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code ` +
-    `fences.\n\nCurrent spec:\n${input.spec}\n\nReviews (JSON):\n` +
+    "fences. For each finding the reviewers raised, emit a decision " +
+    "object in the decisions array with a one-sentence rationale. " +
+    "Verdict options: accepted (applied to the spec), rejected " +
+    "(did not apply, with reason), deferred (punted to a later version)." +
+    baselineSections +
+    `\n\nCurrent spec:\n${input.spec}\n\nReviews (JSON):\n` +
     `${JSON.stringify(input.reviews)}\n\nDecisions so far (JSON):\n` +
     `${JSON.stringify(input.decisions_history)}\n`
   );

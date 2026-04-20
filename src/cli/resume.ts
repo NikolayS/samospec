@@ -18,10 +18,7 @@
 //                             samospec/<slug>.
 //   - phase === draft +
 //     round_state ===
-//     committed (v0.1)     -> print "ready for review loop (Sprint 3)"
-//                             and exit 0.
-//
-// Scope guard: no review loop, no publish, no push.
+//     committed (v0.1)     -> print iterate hint and exit 0.
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -133,7 +130,8 @@ export async function runResume(
     state.version === V01_VERSION
   ) {
     notice(
-      `samospec: spec '${input.slug}' at v0.1 committed — ready for review loop (Sprint 3).`,
+      `samospec: spec '${input.slug}' at v0.1 committed — ` +
+        `run \`samospec iterate ${input.slug}\` to start the review loop.`,
     );
     return {
       exitCode: 0,
@@ -339,7 +337,7 @@ export async function runResume(
       if (!existsSync(paths.decisionsPath)) {
         writeFileSync(
           paths.decisionsPath,
-          `# decisions\n\n- No review-loop decisions yet. Populated during Sprint 3.\n`,
+          `# decisions\n\n- No review-loop decisions yet.\n`,
           "utf8",
         );
       }
@@ -436,7 +434,8 @@ export async function runResume(
       }
 
       notice(
-        `spec '${input.slug}' at v0.1 committed — ready for review loop (Sprint 3).`,
+        `spec '${input.slug}' at v0.1 committed — ` +
+          `run \`samospec iterate ${input.slug}\` to start the review loop.`,
       );
       return {
         exitCode: 0,
@@ -460,7 +459,8 @@ export async function runResume(
     }
 
     notice(
-      `spec '${input.slug}' at v0.1 committed — ready for review loop (Sprint 3).`,
+      `spec '${input.slug}' at v0.1 committed — ` +
+        `run \`samospec iterate ${input.slug}\` to start the review loop.`,
     );
     return {
       exitCode: 0,
