@@ -42,7 +42,6 @@ import {
   readFileSync,
   renameSync,
   unlinkSync,
-  writeFileSync,
   writeSync,
 } from "node:fs";
 import path from "node:path";
@@ -338,13 +337,13 @@ export async function runRound(
   writeRoundJson(dirs.roundJson, { ...initial, status: "running" });
 
   // First attempt.
-  let attempt1 = await runReviewersParallel({
+  const attempt1 = await runReviewersParallel({
     specText: input.specText,
     adapters,
     critiqueTimeoutMs: critiqueTimeout,
     guidelinesA: input.guidelinesA ?? "",
     guidelinesB: input.guidelinesB ?? "",
-    signal: input.signal,
+    ...(input.signal !== undefined ? { signal: input.signal } : {}),
   });
 
   // Persist seats + critique files atomically.
@@ -362,7 +361,7 @@ export async function runRound(
       critiqueTimeoutMs: critiqueTimeout,
       guidelinesA: input.guidelinesA ?? "",
       guidelinesB: input.guidelinesB ?? "",
-      signal: input.signal,
+      ...(input.signal !== undefined ? { signal: input.signal } : {}),
     });
     // Overwrite disk with the retry results.
     await persistSeatResults(dirs, attempt2);
@@ -413,8 +412,12 @@ export async function runRound(
   const directive = buildLeadDirective({
     seatAOk: seatA.state === "ok",
     seatBOk: seatB.state === "ok",
-    manualEditDirective: input.manualEditDirective,
-    reviewerUnavailableNote: input.reviewerUnavailableNote,
+    ...(input.manualEditDirective !== undefined
+      ? { manualEditDirective: input.manualEditDirective }
+      : {}),
+    ...(input.reviewerUnavailableNote !== undefined
+      ? { reviewerUnavailableNote: input.reviewerUnavailableNote }
+      : {}),
   });
 
   // Call revise with the surviving critiques.
@@ -720,13 +723,19 @@ export function countDiffLines(a: string, b: string): number {
   return diff;
 }
 
-/** Count how many categories (excluding summary) received at least one finding. */
+/**
+ * Count how many categories received at least one finding. All taxonomy
+ * categories in FindingCategorySchema are treated as non-summary —
+ * "summary" is not part of the enum (the summary is a separate field on
+ * CritiqueOutput). This helper exists so the convergence detector can
+ * distinguish "new findings in real categories" from "only the summary
+ * changed".
+ */
 export function countNonSummaryCategoriesWithFindings(
   findings: readonly Finding[],
 ): number {
   const cats = new Set<string>();
   for (const f of findings) {
-    if (f.category === "summary") continue;
     cats.add(f.category);
   }
   return cats.size;
