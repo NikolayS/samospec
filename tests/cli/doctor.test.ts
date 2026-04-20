@@ -417,6 +417,7 @@ describe("runDoctor aggregator", () => {
         hasRemote: () => false,
         remoteUrl: () => null,
         isProtected: () => false,
+        ghRunner: () => ({ status: 0, stdout: "Logged in", stderr: "" }),
       });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("OK");

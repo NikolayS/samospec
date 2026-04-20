@@ -158,6 +158,9 @@ describe("doctor aggregator — entropy integration", () => {
       hasRemote: () => false,
       remoteUrl: () => null,
       isProtected: () => false,
+      // Inject a passing gh runner so pr-capability does not FAIL in
+      // CI environments without gh/glab installed.
+      ghRunner: () => ({ status: 0, stdout: "Logged in", stderr: "" }),
     });
 
     // Output should mention the hit count but never the raw secret.
