@@ -9,11 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
-import type {
-  Adapter,
-  AskInput,
-  AskOutput,
-} from "../../src/adapter/types.ts";
+import type { Adapter, AskInput, AskOutput } from "../../src/adapter/types.ts";
 import {
   INTERVIEW_MAX_QUESTIONS,
   INTERVIEW_ESCAPE_HATCHES,
@@ -210,7 +206,7 @@ describe("runInterview — escape hatches always present (SPEC §5 Phase 4)", ()
       adapter,
     );
     expect(out.answers.length).toBe(1);
-    const a = out.answers[0]!;
+    const a = out.answers[0];
     expect(a.choice).toBe("custom");
     expect(a.custom).toBe("Bun + TypeScript");
   });
@@ -229,7 +225,7 @@ describe("runInterview — escape hatches always present (SPEC §5 Phase 4)", ()
       adapter,
     );
     expect(out.answers.length).toBe(1);
-    expect(out.answers[0]!.choice).toBe("decide for me");
+    expect(out.answers[0].choice).toBe("decide for me");
   });
 
   test("choice = not sure — defer is persisted verbatim", async () => {
@@ -245,7 +241,7 @@ describe("runInterview — escape hatches always present (SPEC §5 Phase 4)", ()
       },
       adapter,
     );
-    expect(out.answers[0]!.choice).toBe("not sure — defer");
+    expect(out.answers[0].choice).toBe("not sure — defer");
   });
 });
 
@@ -265,7 +261,7 @@ describe("runInterview — persona + explain wiring (SPEC §7)", () => {
       },
       adapter,
     );
-    const first = adapter.asks[0]!;
+    const first = adapter.asks[0];
     expect(first.prompt).toContain('Veteran "CLI software engineer" expert');
   });
 
@@ -282,7 +278,7 @@ describe("runInterview — persona + explain wiring (SPEC §7)", () => {
       },
       adapter,
     );
-    const first = adapter.asks[0]!;
+    const first = adapter.asks[0];
     expect(first.prompt.toLowerCase()).toMatch(
       /plain english|plain-english|non-technical|everyday/,
     );
@@ -327,9 +323,9 @@ describe("interview.json schema (SPEC §5 Phase 4)", () => {
     expect(raw).toContain("Deno + TS");
     const reloaded = readInterview(file);
     expect(reloaded).not.toBeNull();
-    expect(reloaded!.answers[0]!.custom).toBe("Deno + TS");
+    expect(reloaded!.answers[0].custom).toBe("Deno + TS");
     expect(reloaded!.persona).toBe('Veteran "CLI engineer" expert');
-    expect(reloaded!.questions[0]!.options).toContain("decide for me");
+    expect(reloaded!.questions[0].options).toContain("decide for me");
   });
 
   test("invalid JSON structure is rejected", () => {
@@ -397,6 +393,6 @@ describe("runInterview — interview.json write", () => {
     expect(out.answers.length).toBe(2);
     const reloaded = readInterview(file);
     expect(reloaded).not.toBeNull();
-    expect(reloaded!.answers[0]!.custom).toBe("Bun");
+    expect(reloaded!.answers[0].custom).toBe("Bun");
   });
 });
