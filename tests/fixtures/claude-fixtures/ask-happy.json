@@ -1,0 +1,9 @@
+{
+  "script": [
+    {
+      "type": "stdout",
+      "text": "{\"answer\":\"hello from claude\",\"usage\":null,\"effort_used\":\"max\"}"
+    },
+    { "type": "exit", "code": 0 }
+  ]
+}
