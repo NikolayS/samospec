@@ -153,4 +153,98 @@ describe("decisions.md must not emit '#?' placeholder IDs (#95)", () => {
     // Missing-ID entry gets a category-scoped fallback number.
     expect(body).toContain("ambiguity#1");
   });
+
+  test("fallback ID must not collide with explicit same-category ID in the same round", () => {
+    // Reviewer-spotted collision bug: the lead mixes explicit and
+    // missing finding_id values in the same category within one
+    // revise call. The naive per-call counter starts at 1 and would
+    // re-emit `ambiguity#1` for the missing-ID entry, duplicating
+    // the explicit ID. Force the collision two ways:
+    //
+    //   1. Explicit IDs *precede* the missing one — counter starts at
+    //      1 and steps into `ambiguity#1` (already taken) and then
+    //      `ambiguity#3` (also already taken).
+    //   2. A missing-ID entry *precedes* an explicit one — counter
+    //      emits `ambiguity#2` for the missing entry, then the
+    //      explicit `ambiguity#2` later in the same category clashes.
+    //
+    // The renderer must advance past any number already claimed by an
+    // explicit ID in the same (category) scope for this call.
+    const leadDecisions: readonly ReviseDecision[] = [
+      // Case 1: explicit #1 and explicit #3 come first, then missing.
+      {
+        finding_id: "ambiguity#1",
+        category: "ambiguity",
+        verdict: "accepted",
+        rationale: "Explicit #1.",
+      },
+      {
+        finding_id: "ambiguity#3",
+        category: "ambiguity",
+        verdict: "accepted",
+        rationale: "Explicit #3.",
+      },
+      {
+        category: "ambiguity",
+        verdict: "deferred",
+        rationale: "Missing ID — must not collide.",
+      },
+      // Case 2: missing first, then explicit #2 — naive counter
+      // would emit weak-testing#2 for the missing entry.
+      {
+        category: "weak-testing",
+        verdict: "accepted",
+        rationale: "Missing ID first.",
+      },
+      {
+        finding_id: "weak-testing#2",
+        category: "weak-testing",
+        verdict: "rejected",
+        rationale: "Explicit #2 after.",
+      },
+      {
+        category: "weak-testing",
+        verdict: "deferred",
+        rationale: "Second missing — also must not collide.",
+      },
+    ];
+
+    const entries = reviseDecisionsToReviewDecisions(leadDecisions);
+
+    // Pull out every rendered finding_ref in order.
+    const refs = entries.map((e) => e.finding_ref);
+
+    // Core uniqueness invariant per category scope: no two decisions
+    // in the same (category) scope share a rendered ID.
+    const perCategory = new Map<string, Set<string>>();
+    for (const ref of refs) {
+      const [cat] = ref.split("#");
+      if (cat === undefined) continue;
+      const set = perCategory.get(cat) ?? new Set<string>();
+      expect(set.has(ref)).toBe(false);
+      set.add(ref);
+      perCategory.set(cat, set);
+    }
+
+    // Explicit IDs must still be present verbatim.
+    expect(refs).toContain("ambiguity#1");
+    expect(refs).toContain("ambiguity#3");
+    expect(refs).toContain("weak-testing#2");
+
+    // End-to-end: rendered file also contains no duplicates for any
+    // single category.
+    const file = path.join(tmp, "decisions.md");
+    appendRoundDecisions({
+      file,
+      roundNumber: 1,
+      now: "2026-04-21T21:00:00Z",
+      entries,
+    });
+    const body = readFileSync(file, "utf8");
+    expect(body).not.toContain("#?");
+    // ambiguity#1 appears exactly once (from the explicit decision).
+    expect(body.match(/ambiguity#1\b/g)?.length ?? 0).toBe(1);
+    // weak-testing#2 appears exactly once (from the explicit decision).
+    expect(body.match(/weak-testing#2\b/g)?.length ?? 0).toBe(1);
+  });
 });
