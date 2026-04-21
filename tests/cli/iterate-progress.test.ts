@@ -374,8 +374,18 @@ describe("cli/iterate — progress + heartbeat (#101)", () => {
     // The heartbeat must identify the active child.
     expect(err).toMatch(/— \d+s$/m);
 
-    // (d) Stdout still carries the existing final-summary lines.
+    // (d) Stdout still carries ALL three existing final-summary lines:
+    //     - `committed spec(...)` (refine commit notice)
+    //     - the stop-reason line (max-rounds here because
+    //       `maxRounds: 1` trips condition 1 before lead-ready)
+    //     - `next: ...` (next-action hint)
+    // Reviewer flagged that the middle line was previously unchecked so
+    // a regression emitting it to stderr would have slipped through
+    // the stdout-invariance guard.
     expect(res.stdout).toContain("committed spec(refunds)");
+    expect(res.stdout).toContain(
+      "samospec: max rounds reached. Review loop exited cleanly.",
+    );
     expect(res.stdout).toContain("next:");
 
     // (e) Stdout NOT polluted with progress or heartbeat.
