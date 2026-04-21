@@ -111,6 +111,14 @@ export interface RoundDirs {
 
 export interface RunRoundInput {
   readonly now: string;
+  /**
+   * Optional wall-clock source used for `started_at` / `completed_at`
+   * in `round.json` (#100). When provided, called at the start of the
+   * round (for `started_at`) and again at the terminal write — either
+   * the completion write OR the abandoned/abort write — so the two
+   * fields capture real wall-clock timestamps. Falls back to `now`.
+   */
+  readonly nowFn?: () => string;
   readonly roundNumber: number;
   readonly dirs: RoundDirs;
   /** Current SPEC.md contents fed into critique/revise. */
@@ -362,19 +370,28 @@ export function readRoundJson(file: string): RoundSidecar | null {
  *     status=complete before calling the lead.
  */
 export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
-  const { dirs, roundNumber, adapters, now } = input;
+  const { dirs, roundNumber, adapters } = input;
 
   mkdirSync(dirs.roundDir, { recursive: true });
 
   const critiqueTimeout = input.critiqueTimeoutMs ?? CRITIQUE_TIMEOUT_MS;
   const reviseTimeout = input.reviseTimeoutMs ?? REVISE_TIMEOUT_MS;
 
+  // #100: capture wall-clock timestamps for round.json. `startedAt` is
+  // taken once here (right before the adapter fan-out begins); each
+  // terminal write below calls `clock()` again to stamp a truthful
+  // `completed_at`. When no `nowFn` is supplied we degrade to the single
+  // `input.now` value (legacy behavior) — fine for tests that don't
+  // advance time, but the iterate CLI now threads a real clock through.
+  const clock: () => string = input.nowFn ?? ((): string => input.now);
+  const startedAt = clock();
+
   // Seed round.json at `planned`.
   const initial: RoundSidecar = {
     round: roundNumber,
     status: "planned",
     seats: { reviewer_a: "pending", reviewer_b: "pending" },
-    started_at: now,
+    started_at: startedAt,
   };
   writeRoundJson(dirs.roundJson, initial);
 
@@ -423,6 +440,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
     // Both seats failed and retry didn't recover. Mark abandoned; the
     // caller decides whether to prompt the user to continue with reduced
     // reviewers or exit per stopping condition #6.
+    // #100: completed_at captures real wall-clock abort time, distinct
+    // from started_at so post-hoc inspection reflects the true window.
     writeRoundJson(dirs.roundJson, {
       ...initial,
       status: "abandoned",
@@ -430,7 +449,7 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
         reviewer_a: seatToDiskStatus(seatA),
         reviewer_b: seatToDiskStatus(seatB),
       },
-      completed_at: now,
+      completed_at: clock(),
     });
     return {
       roundNumber,
@@ -445,6 +464,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
   }
 
   // Mark as complete before revise runs.
+  // #100: completed_at stamps real wall-clock at finalization, distinct
+  // from started_at so consumers can measure actual round duration.
   const roundComplete: RoundSidecar = {
     round: roundNumber,
     status:
@@ -453,8 +474,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       reviewer_a: seatToDiskStatus(seatA),
       reviewer_b: seatToDiskStatus(seatB),
     },
-    started_at: now,
-    completed_at: now,
+    started_at: startedAt,
+    completed_at: clock(),
   };
   writeRoundJson(dirs.roundJson, roundComplete);
 
