@@ -111,6 +111,14 @@ export interface RoundDirs {
 
 export interface RunRoundInput {
   readonly now: string;
+  /**
+   * Optional wall-clock source used for `started_at` / `completed_at`
+   * in `round.json` (#100). When provided, called at the start of the
+   * round (for `started_at`) and again at the terminal write — either
+   * the completion write OR the abandoned/abort write — so the two
+   * fields capture real wall-clock timestamps. Falls back to `now`.
+   */
+  readonly nowFn?: () => string;
   readonly roundNumber: number;
   readonly dirs: RoundDirs;
   /** Current SPEC.md contents fed into critique/revise. */

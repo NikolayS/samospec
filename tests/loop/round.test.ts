@@ -353,6 +353,95 @@ more body`;
   });
 });
 
+// ---------- tests: round.json started_at / completed_at timestamps (#100) ----------
+
+describe("loop/round — round.json records real started/completed timestamps (#100)", () => {
+  test("success path: started_at !== completed_at; completed_at >= started_at + duration", async () => {
+    // Controllable clock: each call returns an ISO string at a known offset
+    // from a fixed base. The first call is the round-start timestamp; a
+    // later call (after reviewers + lead finish) is the completion stamp.
+    const baseMs = Date.parse("2026-04-19T12:00:00Z");
+    let tick = 0;
+    const PHASE_MS = 120_000; // 2 minutes per phase
+    const nowFn = (): string => {
+      const t = new Date(baseMs + tick * PHASE_MS).toISOString();
+      tick += 1;
+      return t;
+    };
+
+    const lead = createFakeAdapter({ revise: READY_REVISE });
+    const revA = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+    const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+
+    const dirs = roundDirsFor(tmp, 1);
+    await runRound({
+      now: nowFn(),
+      nowFn,
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nv0.1 body",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+    });
+
+    const sidecar = readRoundJson(dirs.roundJson);
+    expect(sidecar).not.toBeNull();
+    expect(sidecar?.status).toBe("complete");
+    expect(sidecar?.started_at).toBeDefined();
+    expect(sidecar?.completed_at).toBeDefined();
+    // The bug: both equal to round-start. Regression-guard.
+    expect(sidecar?.started_at).not.toBe(sidecar?.completed_at);
+    const startedMs = Date.parse(sidecar?.started_at ?? "");
+    const completedMs = Date.parse(sidecar?.completed_at ?? "");
+    expect(completedMs).toBeGreaterThanOrEqual(startedMs + PHASE_MS);
+  });
+
+  test("both-seats-failed path: completed_at captured at abort time, not equal to started_at", async () => {
+    // Same controllable clock: the round-end (abandoned) write must reflect
+    // a real wall-clock timestamp at abort time, not the round-start stamp.
+    const baseMs = Date.parse("2026-04-19T12:00:00Z");
+    let tick = 0;
+    const PHASE_MS = 120_000;
+    const nowFn = (): string => {
+      const t = new Date(baseMs + tick * PHASE_MS).toISOString();
+      tick += 1;
+      return t;
+    };
+
+    const lead = createFakeAdapter({ revise: READY_REVISE });
+    const failing: Adapter = {
+      vendor: "fake",
+      detect: () =>
+        Promise.resolve({ installed: true, version: "x", path: "/x" }),
+      auth_status: () => Promise.resolve({ authenticated: true }),
+      supports_structured_output: () => true,
+      supports_effort: () => true,
+      models: () => Promise.resolve([{ id: "x", family: "fake" }]),
+      ask: () => Promise.reject(new Error("unused")),
+      critique: () => Promise.reject(new Error("persistent-fail")),
+      revise: () => Promise.reject(new Error("unused")),
+    };
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: nowFn(),
+      nowFn,
+      roundNumber: 1,
+      dirs,
+      specText: "body",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: failing, reviewerB: failing },
+    });
+    expect(outcome.roundStopReason).toBe("both_seats_failed_even_after_retry");
+    const sidecar = readRoundJson(dirs.roundJson);
+    expect(sidecar?.status).toBe("abandoned");
+    // Abort-time completed_at is truthful, not a placeholder equal to start.
+    expect(sidecar?.started_at).not.toBe(sidecar?.completed_at);
+    const startedMs = Date.parse(sidecar?.started_at ?? "");
+    const completedMs = Date.parse(sidecar?.completed_at ?? "");
+    expect(completedMs).toBeGreaterThanOrEqual(startedMs + PHASE_MS);
+  });
+});
+
 // ---------- tests: decisions_history is passed through to revise ----------
 
 describe("loop/round — decisions_history passthrough", () => {
