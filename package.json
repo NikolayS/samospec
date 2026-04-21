@@ -11,7 +11,8 @@
     "docs",
     "package.json",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "scripts": {
     "samospec": "bun run src/main.ts",
@@ -26,7 +27,7 @@
   "engines": {
     "bun": ">=1.2.0"
   },
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "author": "Nikolay Samokhvalov",
   "repository": {
     "type": "git",
