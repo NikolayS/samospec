@@ -1,67 +1,122 @@
 # Changelog
 
-## [0.4.1] - 2026-04-21
-
-### Added
-
-- (describe additions)
-
-### Fixed
-
-- (describe fixes)
-
-### Changed
-
-- (describe changes)
-
-## [0.4.0] - 2026-04-21
-
-### Added
-
-- (describe additions)
-
-### Fixed
-
-- (describe fixes)
-
-### Changed
-
-- (describe changes)
-
-## [0.3.1] - 2026-04-21
-
-### Added
-
-- (describe additions)
-
-### Fixed
-
-- (describe fixes)
-
-### Changed
-
-- (describe changes)
-
-## [0.3.0] - 2026-04-21
-
-### Added
-
-- (describe additions)
-
-### Fixed
-
-- (describe fixes)
-
-### Changed
-
-- (describe changes)
-
 All notable changes to SamoSpec are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
 ## [Unreleased]
+
+---
+
+## [0.4.1] - 2026-04-21
+
+### Fixed
+
+- **Codex pinned-model fallback under ChatGPT-auth (#88):** `gpt-5.1-codex-max`
+  returns `exit 1` with an `invalid_request_error` JSON on stdout when
+  rejected under ChatGPT-account auth. The adapter used to call
+  `classifyExit(exitCode, stderr)` first and the empty stderr yielded
+  "other", so the account-default fallback chain never fired. Fix scans
+  stdout AND stderr for the error signature before classifying exit —
+  stdout-carried error JSON wins regardless of exit code. Also adds
+  `"not supported"` to the unavailable-phrase list.
+- **Codex agentic-wrapper output parser (#88):** codex v0.120+ emits an
+  agentic banner followed by `codex\n<JSON>\ntokens used…`. The legacy
+  extractor matched the literal `codex\n` prefix anywhere and produced a
+  partial JSON fragment, failing with `schema_violation`. Now requires the
+  next non-blank line after `codex\n` to start with `{`, guarded against
+  stray `codex` tokens inside the wrapped content.
+
+---
+
+## [0.4.0] - 2026-04-21
+
+### Added
+
+- **Idea precedence over slug cues (#85):** lead and reviewer prompts now
+  include an AUTHORITATIVE idea framing block ahead of any slug-derived
+  hint. Fixes a failure mode where e.g. a slug `todo-stream` made Claude
+  draft a CRUD todo app despite an explicit "NOT a CRUD app" clarifier in
+  `--idea`.
+- **Reviewer B contradiction detection (#85):** when an idea is present,
+  Reviewer B's critique prompt receives a contradiction-detection directive
+  that flags any section of the revised spec that deviates from the
+  original idea.
+
+---
+
+## [0.3.1] - 2026-04-21
+
+### Fixed
+
+- **Bun spawn hang on SIGKILL (#81):** `new Response(stream).text()` blocks
+  waiting for EOF even after `SIGKILL`, so `spawnCli` never resolved on
+  timeout (observed live: a 22+ minute hang). Fix uses an `AbortController`
+  with a manual `ReadableStream` reader and `Promise.race` so the stream
+  read unblocks within `timeoutMs` of the kill signal.
+- **Per-call timeout + session wall-clock in `runNew` (#83):** the session
+  wall-clock budget is now honored on every `ask`/`revise` call — each is
+  wrapped in `withDeadline()` against the session deadline, so a hung
+  adapter can no longer pin the full session. On cap, `runNew` exits 4
+  with `session-wall-clock` in stderr.
+
+---
+
+## [0.3.0] - 2026-04-21
+
+### Added
+
+- **Auto-init git + empty commit (#72 / #65):** first `samospec init` in
+  a non-git or empty-HEAD directory either prompts or (`--yes`)
+  auto-creates `.git/` plus an initial empty commit.
+- **Next-step hints everywhere (#71):** `samospec resume <slug>` prints
+  `next: samospec iterate <slug>` or `next: samospec publish <slug>`
+  depending on phase. `samospec iterate` prints
+  `next: samospec publish <slug>` on success stops and recovery
+  guidance on failure stops.
+- **`--force` archive naming matches SPEC §10 (#69):**
+  `.samo/spec/<slug>.archived-YYYY-MM-DDThhmmssZ/` (ISO 8601 UTC, no
+  colons so it's Windows-portable, with `-1` / `-2` collision suffix on
+  same-second runs). Was `.bak.<ts>` in v0.2.0.
+- **`scripts/bump-version.ts` (#57):** release-prep script that bumps
+  `package.json` and scaffolds a CHANGELOG entry. Prevents the tag /
+  `package.json` drift that caused v0.1.0 / v0.1.1 mismatches.
+
+### Fixed
+
+- **Reviewer-failure convergence guard (#64):** when both reviewers fail
+  in a round, the lead's `ready=true` is no longer silently accepted.
+  `reviewers-exhausted` is now the dominant stopping reason over `ready`
+  / `semantic-convergence`. Prevents shipping an un-reviewed v0.N spec.
+- **Codex preflight label under OAuth (#70 / #80):** under ChatGPT OAuth
+  (no `OPENAI_API_KEY`), reviewer_a preflight cost now reads
+  `unknown — OAuth (no per-token cost visibility)` instead of a
+  misleading dollar figure. Wired end-to-end through `runPreflight`.
+- **`--force` on existing slug dir (#63 / #68):** `samospec new --force`
+  was silently ignored when the slug dir already existed. Now archives
+  the existing dir and proceeds.
+- **`samospec publish` base-branch push (#67):** `gh pr create` failed
+  when local `main` had not been pushed to the remote. Now pushes the
+  base branch first.
+- **`samospec init --yes` on non-git dirs (#79):** `runInitCommand` was
+  discarding `--yes`, so auto-git-init never fired from the CLI path.
+
+---
+
+## [0.1.1] - 2026-04-20
+
+### Fixed
+
+- **Codex under ChatGPT-account auth (#54 / #55):** the pinned models
+  `gpt-5.1-codex-max` / `gpt-5.1-codex` are not available on ChatGPT
+  subscription accounts, so v0.1.0 exhausted the fallback chain and left
+  Reviewer A failing every round. v0.1.1 adds an implicit account-default
+  tier after the explicit pins (one more call with `--model` omitted),
+  correctly classifies codex's exit-0 `invalid_request_error` stdout JSON
+  as `model_unavailable` instead of `schema_violation`, and lists every
+  attempted tier in the terminal error message. New opt-out:
+  `codex.accountDefaultFallback: false`.
 
 ---
 
