@@ -1195,7 +1195,7 @@ export function readDecisions(file: string): string {
  * adapter's `vendor` + the state's persisted `adapters.<role>.model_id`
  * when available, falling back to `vendor` alone.
  */
-function wrapAdaptersForProgress(
+export function wrapAdaptersForProgress(
   adapters: IterateInput["adapters"],
   state: State,
   progress: ProgressReporter,
