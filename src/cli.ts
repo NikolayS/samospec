@@ -47,6 +47,7 @@ const USAGE =
   "  init                        Create or refresh .samo/ in the current repo.\n" +
   "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
   "  new <slug> [--idea ...] [--force] [--skip <sections>]\n" +
+  "            [--max-session-wall-clock-ms <ms>]\n" +
   "                              Start a new spec (persona + 5-question interview).\n" +
   "                              --force archives any existing run before starting\n" +
   "                              fresh. --skip omits named baseline sections from\n" +
@@ -54,6 +55,11 @@ const USAGE =
   "                              case-insensitive). Valid sections: " +
   BASELINE_SECTION_NAMES.join(", ") +
   ".\n" +
+  "                              --max-session-wall-clock-ms caps the total session\n" +
+  "                              wall-clock time (positive integer ms); defaults to\n" +
+  "                              budget.max_session_wall_clock_minutes in config.json\n" +
+  "                              or 600000 (10 min). On cap, exits 4 with reason\n" +
+  "                              `session-wall-clock`.\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
   "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>]\n" +
   "                              Run review rounds until a stopping condition fires.\n" +
@@ -144,6 +150,7 @@ interface NewArgs {
   readonly explain: boolean;
   readonly skipSections?: readonly string[];
   readonly force: boolean;
+  readonly maxSessionWallClockMs?: number;
 }
 
 interface ResumeArgs {
@@ -199,6 +206,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let explain = false;
   let force = false;
   let skipSections: readonly string[] | undefined;
+  let maxSessionWallClockMs: number | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === undefined) continue;
@@ -234,6 +242,21 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
       skipSections = parsed;
       continue;
     }
+    if (token === "--max-session-wall-clock-ms") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parseMaxSessionWallClockMs(raw);
+      if (typeof parsed === "string") return parsed;
+      maxSessionWallClockMs = parsed;
+      continue;
+    }
+    if (token.startsWith("--max-session-wall-clock-ms=")) {
+      const raw = token.slice("--max-session-wall-clock-ms=".length);
+      const parsed = parseMaxSessionWallClockMs(raw);
+      if (typeof parsed === "string") return parsed;
+      maxSessionWallClockMs = parsed;
+      continue;
+    }
     if (token.startsWith("--")) {
       // Unknown flags ignored (permissive for future flags).
       continue;
@@ -252,7 +275,35 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     explain,
     force,
     ...(skipSections !== undefined ? { skipSections } : {}),
+    ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
   };
+}
+
+/**
+ * Parse and validate --max-session-wall-clock-ms. Accepts a positive
+ * integer string (digits only; no decimals, no scientific notation).
+ * Returns the integer ms on success, or an error string to be echoed
+ * above the USAGE line.
+ */
+function parseMaxSessionWallClockMs(raw: string): number | string {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) {
+    return "samospec new: --max-session-wall-clock-ms requires a value";
+  }
+  if (!/^\d+$/.test(trimmed)) {
+    return (
+      "samospec new: --max-session-wall-clock-ms must be a positive integer " +
+      `(got '${raw}')`
+    );
+  }
+  const n = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(n) || n <= 0) {
+    return (
+      "samospec new: --max-session-wall-clock-ms must be a positive integer " +
+      `(got '${raw}')`
+    );
+  }
+  return n;
 }
 
 function parseResumeArgs(argv: readonly string[]): ResumeArgs | string {
@@ -359,6 +410,9 @@ async function runNewCommand(rest: readonly string[]) {
       now: new Date().toISOString(),
       ...(parsed.skipSections !== undefined
         ? { skipSections: [...parsed.skipSections] }
+        : {}),
+      ...(parsed.maxSessionWallClockMs !== undefined
+        ? { maxSessionWallClockMs: parsed.maxSessionWallClockMs }
         : {}),
     },
     adapter,
