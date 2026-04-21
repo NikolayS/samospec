@@ -13,12 +13,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -61,11 +56,7 @@ function seedSpec(cwd: string, slug: string): State {
     "# SPEC\n\ncontent v0.1\n",
     "utf8",
   );
-  writeFileSync(
-    path.join(slugDir, "TLDR.md"),
-    "# TLDR\n\n- old\n",
-    "utf8",
-  );
+  writeFileSync(path.join(slugDir, "TLDR.md"), "# TLDR\n\n- old\n", "utf8");
   writeFileSync(
     path.join(slugDir, "decisions.md"),
     "# decisions\n\n- No review-loop decisions yet.\n",
@@ -115,11 +106,9 @@ function seedSpec(cwd: string, slug: string): State {
   };
   writeState(path.join(slugDir, "state.json"), state);
   spawnSync("git", ["add", "."], { cwd });
-  spawnSync(
-    "git",
-    ["commit", "-q", "-m", `spec(${slug}): draft v0.1`],
-    { cwd },
-  );
+  spawnSync("git", ["commit", "-q", "-m", `spec(${slug}): draft v0.1`], {
+    cwd,
+  });
   return state;
 }
 

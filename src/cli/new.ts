@@ -123,6 +123,12 @@ export interface RunNewInput {
    * --skip opt-out). Forwarded into `authorDraft` → `adapter.revise`.
    */
   readonly skipSections?: readonly string[];
+  /**
+   * When true, emit detailed progress lines. Default (false/omitted) keeps
+   * stdout concise: status line per phase + final summary only. Dense
+   * per-seat dumps and full prompt echoes are gated behind verbose=true.
+   */
+  readonly verbose?: boolean;
 }
 
 // ---------- CLI entry ----------

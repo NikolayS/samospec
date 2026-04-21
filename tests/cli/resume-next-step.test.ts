@@ -7,17 +7,12 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
-import type { Adapter, AskInput, AskOutput } from "../../src/adapter/types.ts";
+import type { Adapter } from "../../src/adapter/types.ts";
 import { runResume } from "../../src/cli/resume.ts";
 import { writeState } from "../../src/state/store.ts";
 import type { State } from "../../src/state/types.ts";
@@ -65,16 +60,8 @@ function seedDraftCommitted(cwd: string, slug: string): void {
   };
   writeState(path.join(slugDir, "state.json"), state);
 
-  writeFileSync(
-    path.join(slugDir, "SPEC.md"),
-    "# SPEC\n\ncontent\n",
-    "utf8",
-  );
-  writeFileSync(
-    path.join(slugDir, "TLDR.md"),
-    "# TLDR\n\n- item\n",
-    "utf8",
-  );
+  writeFileSync(path.join(slugDir, "SPEC.md"), "# SPEC\n\ncontent\n", "utf8");
+  writeFileSync(path.join(slugDir, "TLDR.md"), "# TLDR\n\n- item\n", "utf8");
   writeFileSync(
     path.join(slugDir, "interview.json"),
     JSON.stringify({
@@ -109,16 +96,8 @@ function seedReviewLoopCommitted(cwd: string, slug: string): void {
   };
   writeState(path.join(slugDir, "state.json"), state);
 
-  writeFileSync(
-    path.join(slugDir, "SPEC.md"),
-    "# SPEC\n\ncontent\n",
-    "utf8",
-  );
-  writeFileSync(
-    path.join(slugDir, "TLDR.md"),
-    "# TLDR\n\n- item\n",
-    "utf8",
-  );
+  writeFileSync(path.join(slugDir, "SPEC.md"), "# SPEC\n\ncontent\n", "utf8");
+  writeFileSync(path.join(slugDir, "TLDR.md"), "# TLDR\n\n- item\n", "utf8");
   writeFileSync(
     path.join(slugDir, "interview.json"),
     JSON.stringify({
@@ -141,7 +120,7 @@ const NOW = "2026-04-19T12:00:00Z";
 
 const resolvers = {
   persona: () => Promise.resolve({ kind: "accept" as const }),
-  question: () => Promise.resolve("answer"),
+  question: () => Promise.resolve({ choice: "answer" }),
 };
 
 describe("resume next-step hints (#71)", () => {

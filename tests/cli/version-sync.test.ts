@@ -22,10 +22,7 @@ import { spawnSync } from "node:child_process";
 import { runCli } from "../../src/cli.ts";
 
 // The package.json lives at the repo root — two levels up from tests/cli/.
-const PACKAGE_JSON_PATH = path.resolve(
-  import.meta.dir,
-  "../../package.json",
-);
+const PACKAGE_JSON_PATH = path.resolve(import.meta.dir, "../../package.json");
 
 const BUMP_SCRIPT_PATH = path.resolve(
   import.meta.dir,

@@ -14,11 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -39,7 +35,7 @@ const NOW = "2026-04-19T12:00:00Z";
 
 const RESOLVERS = {
   persona: () => Promise.resolve({ kind: "accept" as const }),
-  question: () => Promise.resolve("answer"),
+  question: () => Promise.resolve({ choice: "answer" }),
 };
 
 describe("verbose budget (#71)", () => {

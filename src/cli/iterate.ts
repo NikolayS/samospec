@@ -1064,6 +1064,29 @@ function finishIterate(args: FinishArgs): IterateResult {
   writeState(args.statePath, withExit);
   const stream = exitCode === 0 ? args.lines : args.errLines;
   stream.push(args.message);
+
+  // Next-step hints (#71).
+  const slug = args.state.slug;
+  const SUCCESS_REASONS: readonly StopReason[] = [
+    "max-rounds",
+    "ready",
+    "semantic-convergence",
+    "lead-ignoring-critiques",
+  ];
+  if (SUCCESS_REASONS.includes(args.reason)) {
+    args.lines.push(`next: samospec publish ${slug}`);
+  } else if (
+    args.reason === "reviewers-exhausted" ||
+    args.reason === "wall-clock" ||
+    args.reason === "budget" ||
+    args.reason === "sigint"
+  ) {
+    args.lines.push(
+      `next: samospec iterate ${slug}` +
+        ` (or edit .samo/spec/${slug}/SPEC.md and retry)`,
+    );
+  }
+
   return {
     exitCode,
     stdout: args.lines.length === 0 ? "" : `${args.lines.join("\n")}\n`,
