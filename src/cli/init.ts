@@ -258,11 +258,38 @@ function hasHead(cwd: string): boolean {
 }
 
 /**
+ * Ensure a minimal git identity is configured locally so that
+ * `git commit` won't fail on CI or bare environments.
+ * Falls back to samospec defaults only when the key is absent globally.
+ */
+function ensureGitIdentity(cwd: string): void {
+  // Check whether a name/email exist (global or local).
+  const nameOk =
+    runGitCmd(cwd, ["config", "user.name"]).status === 0;
+  const emailOk =
+    runGitCmd(cwd, ["config", "user.email"]).status === 0;
+  if (!nameOk) {
+    runGitCmd(cwd, ["config", "--local", "user.name", "samospec"]);
+  }
+  if (!emailOk) {
+    runGitCmd(cwd, [
+      "config",
+      "--local",
+      "user.email",
+      "samospec@localhost",
+    ]);
+  }
+  // Disable GPG signing locally to avoid passphrase prompts in CI.
+  runGitCmd(cwd, ["config", "--local", "commit.gpgsign", "false"]);
+}
+
+/**
  * Create an empty initial commit with message `chore: init`.
- * Uses the ambient git identity; no GPG signing bypassed.
+ * Ensures a local git identity is configured first (CI / bare env).
  * Returns the error string on failure, or null on success.
  */
 function createInitialCommit(cwd: string): string | null {
+  ensureGitIdentity(cwd);
   const commit = runGitCmd(cwd, [
     "commit",
     "--allow-empty",
@@ -284,10 +311,6 @@ function initGitRepo(cwd: string): string | null {
   if (init.status !== 0) {
     return init.stderr.trim() || "git init failed";
   }
-  // Configure local identity if none is set (CI / bare user env).
-  runGitCmd(cwd, ["config", "--local", "user.email", "samospec@localhost"]);
-  runGitCmd(cwd, ["config", "--local", "user.name", "samospec"]);
-  runGitCmd(cwd, ["config", "--local", "commit.gpgsign", "false"]);
   return createInitialCommit(cwd);
 }
 
