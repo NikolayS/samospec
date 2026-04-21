@@ -1,5 +1,10 @@
 # SamoSpec
 
+[![CI](https://github.com/NikolayS/samospec/actions/workflows/ci.yml/badge.svg)](https://github.com/NikolayS/samospec/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/samospec.svg)](https://www.npmjs.com/package/samospec)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Bun](https://img.shields.io/badge/Bun-%E2%89%A5_1.2-000?logo=bun)](https://bun.sh)
+
 > Turn a rough idea into a **reviewed, versioned spec** — with every round captured in git, not chat scrollback.
 
 `samospec` is a git-native CLI that runs a small panel of top AI models against your idea: a **lead** drafts, two **reviewers** critique with different personas, the lead revises, and the loop repeats until convergence. The result is `SPEC.md` with real commit history — `v0.1 → v0.2 → … → v1.0` — that you can diff, blame, and publish.
@@ -18,7 +23,7 @@ SamoSpec treats spec authoring like code review:
 
 - **Panel, not monologue.** One lead drafts; two reviewers with deliberately different personas critique in parallel. Disagreement is surfaced, not averaged away.
 - **Every round is a commit.** Each revision lives on a `samospec/<slug>` branch. `git log` tells the story. `decisions.md` records what was accepted, rejected, or deferred — and why.
-- **Convergence is defined, not vibes.** Eight explicit stopping conditions (semantic convergence, repeat-findings halt via trigram Jaccard, wall-clock cap, budget cap, max rounds, …) mean the loop _ends_ on its own.
+- **Convergence is defined, not vibes.** Eight explicit stopping conditions — lead-ready, semantic convergence, repeat-findings halt via trigram Jaccard, wall-clock cap, budget cap, max rounds, reviewers-exhausted, user SIGINT — mean the loop _ends_ on its own.
 - **Strongest model, max effort, by default.** No silent downshifting. The thesis is that great specs come from the top of each vendor's ladder running hard, not from the cheapest model running often.
 
 ---
@@ -59,7 +64,7 @@ At every step: `samospec status <slug>` prints phase, current version, next-step
 
 ## How it works
 
-```
+```text
                  ┌────────────────────┐
    idea  ──►     │  LEAD  (Claude)    │  ──►   SPEC.md v0.N
                  │  draft / revise    │
@@ -84,7 +89,7 @@ At every step: `samospec status <slug>` prints phase, current version, next-step
 
 - **Lead** = `claude` CLI, pinned `claude-opus-4-7`, effort `max`.
 - **Reviewer A** = `codex` CLI with a **security/ops** persona: missing risks, weak implementation, unnecessary scope.
-- **Reviewer B** = second `claude` session with a **QA/pedant** persona: ambiguity, contradiction, weak testing. Also verifies the spec stays faithful to your original idea.
+- **Reviewer B** = second `claude` session with a **QA / testability** persona: ambiguity, contradiction, weak-testing. Also checks the spec's mandatory baseline sections and verifies it stays faithful to your original idea.
 - Adapters share a coupled-fallback rule (lead and Reviewer B use the same vendor, so a Claude outage fails them together rather than running an uneven panel).
 
 Every generated `SPEC.md` gets nine mandatory sections by default (goal & why, user stories, architecture, implementation details, tests plan with red/green TDD, team of veteran experts, sprint plan, embedded changelog, version header). Pass `--skip` to opt out.
@@ -96,7 +101,7 @@ Every generated `SPEC.md` gets nine mandatory sections by default (goal & why, u
 The CLI shells out to the vendor CLIs you already use. OAuth-based sessions are the **primary** auth mode — API keys are an alternative:
 
 - **Claude Code** — `claude /login` once in a terminal; samospec inherits the session for `claude --print` calls. Or `export ANTHROPIC_API_KEY=sk-ant-...`.
-- **Codex** — `codex login` (ChatGPT subscription account works); samospec handles the pinned-model fallback when your account default differs. Or `export OPENAI_API_KEY=sk-...`.
+- **Codex** — `codex auth` (ChatGPT subscription account works); samospec handles the pinned-model fallback when your account default differs. Or `export OPENAI_API_KEY=sk-...`.
 
 ```bash
 samospec doctor   # verifies CLI availability, auth, git, lockfile, config, entropy, push consent
@@ -125,7 +130,6 @@ samospec doctor   # verifies CLI availability, auth, git, lockfile, config, entr
 | `samospec iterate <slug>`        | Runs review rounds (lead + two reviewers in parallel) until a stopping condition fires.                                                      |
 | `samospec resume <slug>`         | Idempotent resume from any crash/kill. Works at every round state boundary.                                                                  |
 | `samospec status <slug>`         | Phase, version, round index, last-round summary, next-step hint.                                                                             |
-| `samospec tldr <slug>`           | One-paragraph TL;DR for stakeholders.                                                                                                        |
 | `samospec publish <slug>`        | Promotes spec to `.samo/blueprints/`, commits, pushes, opens PR via `gh` / `glab`.                                                           |
 
 Useful flags:
