@@ -8,15 +8,17 @@
  *
  * Conditions (priority order in classifyAllStops):
  *   1. Max rounds reached (budget.max_iterations default 10).
- *   2. Lead ready=true (structured signal).
- *   3. Semantic convergence: two consecutive low-delta rounds with
+ *   2. Reviewer availability zero (both seats exhausted + user decline).
+ *      Checked BEFORE ready/convergence (#64): when no reviewer produced
+ *      output, the lead's ready signal must be suppressed.
+ *   3. Lead ready=true (structured signal).
+ *   4. Semantic convergence: two consecutive low-delta rounds with
  *      diff ≤ convergence.min_delta_lines (default 20) AND no new
  *      findings in non-summary categories for either round.
- *   4. Repeat-findings halt: ≥5 findings AND ≥80% of findings have a
+ *   5. Repeat-findings halt: ≥5 findings AND ≥80% of findings have a
  *      trigram-Jaccard (normalized, same-category) match against the
  *      prior round ≥ 0.8 — reason "lead-ignoring-critiques".
- *   5. User SIGINT.
- *   6. Reviewer availability zero (both seats exhausted + user decline).
+ *   6. User SIGINT.
  *   7. Budget hit (tokens / cost / wall-clock).
  *   8. lead_terminal state reachable from any round.
  *
@@ -271,7 +273,21 @@ export function classifyAllStops(
       convergence: conv,
     };
   }
-  // 2. Ready.
+  // 2. Reviewer availability zero — checked BEFORE ready / semantic-
+  //    convergence (#64). When all reviewers failed, a spec has received
+  //    zero review input; allowing ready=true or convergence to fire would
+  //    produce a silently un-reviewed output. Surface the availability
+  //    problem immediately so the caller can prompt the user.
+  if (input.reviewerAvailability <= 0) {
+    return {
+      stop: true,
+      reason: "reviewers-exhausted",
+      suggestDownshift: conv.suggestDownshift,
+      repeatFindings: repeat,
+      convergence: conv,
+    };
+  }
+  // 3. Ready.
   if (input.leadReady) {
     return {
       stop: true,
@@ -281,7 +297,7 @@ export function classifyAllStops(
       convergence: conv,
     };
   }
-  // 3. Semantic convergence.
+  // 4. Semantic convergence.
   if (conv.converged) {
     return {
       stop: true,
@@ -291,7 +307,7 @@ export function classifyAllStops(
       convergence: conv,
     };
   }
-  // 4. Repeat-findings halt.
+  // 5. Repeat-findings halt.
   if (repeat.halt) {
     return {
       stop: true,
@@ -301,21 +317,11 @@ export function classifyAllStops(
       convergence: conv,
     };
   }
-  // 5. SIGINT.
+  // 6. SIGINT.
   if (input.sigintReceived) {
     return {
       stop: true,
       reason: "sigint",
-      suggestDownshift: conv.suggestDownshift,
-      repeatFindings: repeat,
-      convergence: conv,
-    };
-  }
-  // 6. Reviewer availability zero.
-  if (input.reviewerAvailability <= 0) {
-    return {
-      stop: true,
-      reason: "reviewers-exhausted",
       suggestDownshift: conv.suggestDownshift,
       repeatFindings: repeat,
       convergence: conv,
