@@ -160,9 +160,26 @@ export class HeadShaMismatchError extends Error {
 }
 
 /**
- * Verify that `state.json.head_sha` still matches the local branch HEAD.
- * Throws {@link HeadShaMismatchError} (exit 2) on drift so the caller
- * can halt with an explanation per SPEC §8.
+ * Verify that `state.json.head_sha` still points at a commit the local
+ * branch has produced. Throws {@link HeadShaMismatchError} (exit 2) on
+ * drift so the caller can halt with an explanation per SPEC §8.
+ *
+ * Issue #102 — `state.head_sha` is written by iterate BEFORE the small
+ * `spec(<slug>): finalize round <n>` bookkeeping commit opens at the
+ * end of each session. That commit advances HEAD by one, so on disk
+ * `state.head_sha` can legitimately equal either:
+ *
+ *   - `HEAD`          — no finalize commit was opened (nothing was
+ *                       dirty; finalize skipped as a no-op), OR
+ *   - `HEAD~1`        — the branch tip is a finalize commit whose
+ *                       subject starts with `spec(<slug>): finalize`.
+ *
+ * A commit cannot name its own sha in its own tree, so chasing the
+ * tail with a second finalize-of-finalize commit would be recursive.
+ * This checker accepts BOTH `HEAD` and `HEAD~1` — but only when HEAD's
+ * subject actually looks like a finalize commit, so an attacker who
+ * rewrote the branch and happens to land on `HEAD~1 === expected`
+ * can't sneak past. Anything else trips the mismatch error.
  */
 export function verifyHeadSha(opts: VerifyHeadShaOpts): void {
   if (opts.expectedHeadSha === null) return;
@@ -173,9 +190,40 @@ export function verifyHeadSha(opts: VerifyHeadShaOpts): void {
       `verifyHeadSha: local branch '${opts.branch}' has no HEAD (repo unborn?)`,
     );
   }
-  if (actual !== opts.expectedHeadSha) {
-    throw new HeadShaMismatchError(opts.branch, opts.expectedHeadSha, actual);
+  if (actual === opts.expectedHeadSha) return;
+
+  // Accept HEAD~1 iff HEAD is a finalize bookkeeping commit. The
+  // subject grammar is authoritative: `src/git/commit.ts` is the
+  // only code path that can produce this message, and
+  // `tests/git/commit.test.ts` pins the format. We tolerate any slug
+  // after `spec(` because `verifyHeadSha` is called from contexts
+  // that don't always carry the slug, and the subject alone is a
+  // strong enough signal.
+  const headSubject = headCommitSubject(opts.repoPath);
+  if (headSubject !== null && FINALIZE_SUBJECT_RE.test(headSubject)) {
+    const parent = resolveRef(opts.repoPath, "HEAD~1");
+    if (parent === opts.expectedHeadSha) return;
   }
+
+  throw new HeadShaMismatchError(opts.branch, opts.expectedHeadSha, actual);
+}
+
+/**
+ * Matches the subject produced by `buildCommitMessage` for the
+ * `finalize` action: `spec(<slug>): finalize round <n>`. The slug
+ * grammar is constrained to lowercase letters/digits/`-` by
+ * `src/git/commit.ts`.
+ */
+const FINALIZE_SUBJECT_RE =
+  /^spec\([a-z0-9]+(?:-[a-z0-9]+)*\): finalize round \d+$/;
+
+function headCommitSubject(repoPath: string): string | null {
+  const res = runGit(["log", "-1", "--pretty=%s", "HEAD"], repoPath, {
+    allowFail: true,
+  });
+  if (res.status !== 0) return null;
+  const line = res.stdout.split("\n", 1)[0] ?? "";
+  return line.length > 0 ? line : null;
 }
 
 function assertNonEmpty(value: string, name: string): void {

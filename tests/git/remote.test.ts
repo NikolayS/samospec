@@ -243,4 +243,40 @@ describe("verifyHeadSha — state.json HEAD mismatch", () => {
       }),
     ).not.toThrow();
   });
+
+  // Issue #102 — `state.head_sha` is recorded BEFORE the round's
+  // finalize bookkeeping commit opens, so after one finalize commit
+  // `state.head_sha === HEAD~1`. The checker must accept that shape,
+  // but only when HEAD's subject actually looks like a finalize
+  // commit — so unrelated drift still throws.
+  test("accepts HEAD~1 when HEAD is a finalize bookkeeping commit", () => {
+    const refineSha = runGit(["rev-parse", "HEAD"], local.dir).trim();
+    // Open a follow-up commit with the exact `finalize` subject
+    // grammar produced by `buildCommitMessage` in src/git/commit.ts.
+    writeFileSync(join(local.dir, "bookkeeping.txt"), "state\n");
+    runGit(["add", "bookkeeping.txt"], local.dir);
+    runGit(["commit", "-m", "spec(refunds): finalize round 1"], local.dir);
+    expect(() =>
+      verifyHeadSha({
+        repoPath: local.dir,
+        branch,
+        expectedHeadSha: refineSha,
+      }),
+    ).not.toThrow();
+  });
+
+  test("rejects HEAD~1 match when HEAD subject is NOT a finalize commit", () => {
+    const refineSha = runGit(["rev-parse", "HEAD"], local.dir).trim();
+    // Add a non-finalize commit on top.
+    writeFileSync(join(local.dir, "bookkeeping.txt"), "state\n");
+    runGit(["add", "bookkeeping.txt"], local.dir);
+    runGit(["commit", "-m", "random unrelated commit"], local.dir);
+    expect(() =>
+      verifyHeadSha({
+        repoPath: local.dir,
+        branch,
+        expectedHeadSha: refineSha,
+      }),
+    ).toThrow(HeadShaMismatchError);
+  });
 });
