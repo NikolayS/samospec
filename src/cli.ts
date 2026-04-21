@@ -46,10 +46,11 @@ const USAGE =
   "Commands:\n" +
   "  init                        Create or refresh .samo/ in the current repo.\n" +
   "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
-  "  new <slug> [--idea ...] [--skip <sections>]\n" +
+  "  new <slug> [--idea ...] [--force] [--skip <sections>]\n" +
   "                              Start a new spec (persona + 5-question interview).\n" +
-  "                              --skip omits named baseline sections from the\n" +
-  "                              mandatory template (comma-separated,\n" +
+  "                              --force archives any existing run before starting\n" +
+  "                              fresh. --skip omits named baseline sections from\n" +
+  "                              the mandatory template (comma-separated,\n" +
   "                              case-insensitive). Valid sections: " +
   BASELINE_SECTION_NAMES.join(", ") +
   ".\n" +
@@ -142,6 +143,7 @@ interface NewArgs {
   readonly idea: string;
   readonly explain: boolean;
   readonly skipSections?: readonly string[];
+  readonly force: boolean;
 }
 
 interface ResumeArgs {
@@ -195,12 +197,17 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let slug: string | null = null;
   let idea: string | null = null;
   let explain = false;
+  let force = false;
   let skipSections: readonly string[] | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === undefined) continue;
     if (token === "--explain") {
       explain = true;
+      continue;
+    }
+    if (token === "--force") {
+      force = true;
       continue;
     }
     if (token === "--idea") {
@@ -228,7 +235,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
       continue;
     }
     if (token.startsWith("--")) {
-      // Unknown flags ignored (permissive for --force and future flags).
+      // Unknown flags ignored (permissive for future flags).
       continue;
     }
     if (slug === null) {
@@ -243,6 +250,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     slug,
     idea: idea ?? slug,
     explain,
+    force,
     ...(skipSections !== undefined ? { skipSections } : {}),
   };
 }
@@ -346,6 +354,7 @@ async function runNewCommand(rest: readonly string[]) {
       slug: parsed.slug,
       idea: parsed.idea,
       explain: parsed.explain,
+      force: parsed.force,
       resolvers: interactiveResolvers(),
       now: new Date().toISOString(),
       ...(parsed.skipSections !== undefined

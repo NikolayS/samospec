@@ -23,7 +23,13 @@
 //     protected branch (createSpecBranch throws with exit 2; specCommit
 //     additionally refuses).
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 import type { Adapter } from "../adapter/types.ts";
@@ -31,6 +37,7 @@ import { discoverContext } from "../context/discover.ts";
 import { contextJsonPath } from "../context/provenance.ts";
 import { createSpecBranch } from "../git/branch.ts";
 import { specCommit } from "../git/commit.ts";
+import { ensureHasCommit } from "../git/ensure-has-commit.ts";
 import { ProtectedBranchError, GitLayerUsageError } from "../git/errors.ts";
 import { writeCalibrationSample } from "../policy/calibration.ts";
 import {
@@ -123,6 +130,13 @@ export interface RunNewInput {
    * --skip opt-out). Forwarded into `authorDraft` → `adapter.revise`.
    */
   readonly skipSections?: readonly string[];
+  /**
+   * When true, archive any pre-existing slug directory to
+   * `.samo/spec/<slug>.bak.<timestamp>/` before starting a fresh run
+   * (issue #63). When false or omitted, a pre-existing slug directory
+   * returns exit 1.
+   */
+  readonly force?: boolean;
 }
 
 // ---------- CLI entry ----------
@@ -145,16 +159,24 @@ export async function runNew(
   // Slug collision guard (SPEC §10): refuse any pre-existing slug
   // directory and suggest resume / --force.
   if (existsSync(slugDir)) {
-    errors.push(
-      `samospec: .samo/spec/${input.slug}/ already exists. ` +
-        `Try \`samospec resume ${input.slug}\` or ` +
-        `\`samospec new ${input.slug} --force\` to archive the old run.`,
-    );
-    return {
-      exitCode: 1,
-      stdout: lines.join("\n"),
-      stderr: `${errors.join("\n")}\n`,
-    };
+    if (input.force) {
+      // Archive the old run by renaming to a timestamped backup dir.
+      const ts = input.now.replace(/[:.]/g, "-");
+      const bakDir = path.join(specsDir, `${input.slug}.bak.${ts}`);
+      renameSync(slugDir, bakDir);
+      notice(`archived existing run to .samo/spec/${input.slug}.bak.${ts}/`);
+    } else {
+      errors.push(
+        `samospec: .samo/spec/${input.slug}/ already exists. ` +
+          `Try \`samospec resume ${input.slug}\` or ` +
+          `\`samospec new ${input.slug} --force\` to archive the old run.`,
+      );
+      return {
+        exitCode: 1,
+        stdout: lines.join("\n"),
+        stderr: `${errors.join("\n")}\n`,
+      };
+    }
   }
 
   // Lockfile acquisition (SPEC §5 Phase 1).
@@ -232,6 +254,19 @@ export async function runNew(
           );
         }
       }
+    }
+
+    // Empty-repo guard (Issue #65): if the repo has no commits yet,
+    // create an empty initial commit so that HEAD is resolvable before
+    // branch operations that require it.
+    try {
+      const initResult = ensureHasCommit({ repoPath: input.cwd });
+      if (initResult.created) {
+        notice("No commits found — created initial commit.");
+      }
+    } catch {
+      // Outside a real git repo (skeleton / non-git tests) this may
+      // fail; ignore and let the branch-creation step report the error.
     }
 
     // Branch creation (SPEC §5 Phase 1 + §8).
