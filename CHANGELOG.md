@@ -13,6 +13,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **state.json bookkeeping (#102):** after each round iterate now opens
+  a small `spec(<slug>): finalize round N` follow-up commit so the
+  working tree is clean on exit (including `lead_terminal` exit-4 and
+  `push-consent-interrupted` exit-3 paths), `state.head_sha` is
+  populated with a reachable 40-char SHA instead of null, and
+  `state.updated_at` tracks wall-clock rather than the frozen
+  round-start timestamp.
 - **Codex pinned-model fallback under ChatGPT-auth (#88):** `gpt-5.1-codex-max`
   returns `exit 1` with an `invalid_request_error` JSON on stdout when
   rejected under ChatGPT-account auth. The adapter used to call
