@@ -28,6 +28,7 @@ import path from "node:path";
 
 import { archiveSlugDir } from "./archive.ts";
 
+import { CodexAdapter } from "../adapter/codex.ts";
 import type { Adapter } from "../adapter/types.ts";
 import { discoverContext } from "../context/discover.ts";
 import { contextJsonPath } from "../context/provenance.ts";
@@ -144,6 +145,13 @@ export interface RunNewInput {
    * per-seat dumps and full prompt echoes are gated behind verbose=true.
    */
   readonly verbose?: boolean;
+  /**
+   * Test seam: inject a pre-built reviewer_a adapter so that
+   * resolveSubscriptionAuth can be controlled in tests without spawning
+   * a real codex binary. Production code omits this and uses
+   * `new CodexAdapter()`.
+   */
+  readonly reviewerAAdapter?: Adapter;
   /**
    * Session wall-clock cap in milliseconds (#81). When the total elapsed
    * time since runNew() entry exceeds this value, the current phase is
@@ -316,10 +324,17 @@ export async function runNew(
 
   try {
     // Preflight cost estimate (SPEC §5 Phase 1 + §11).
+    const reviewerAAdapter: Adapter =
+      input.reviewerAAdapter ?? new CodexAdapter();
+    const [leadSubAuth, reviewerASubAuth] = await Promise.all([
+      resolveSubscriptionAuth(adapter),
+      resolveSubscriptionAuth(reviewerAAdapter),
+    ]);
     const preflightRes = runPreflight({
       cwd: input.cwd,
       adapter,
-      subscriptionAuth: await resolveSubscriptionAuth(adapter),
+      subscriptionAuth: leadSubAuth,
+      reviewerASubscriptionAuth: reviewerASubAuth,
     });
     if (preflightRes.ok) {
       notice(preflightRes.text);
@@ -812,6 +827,7 @@ function runPreflight(args: {
   cwd: string;
   adapter: Adapter;
   subscriptionAuth: boolean;
+  reviewerASubscriptionAuth?: boolean;
 }): PreflightRunOk | PreflightRunSkipped {
   const configPath = path.join(args.cwd, ".samo", "config.json");
   if (!existsSync(configPath)) {
@@ -851,7 +867,7 @@ function runPreflight(args: {
       id: "reviewer_a",
       vendor: config.adapters.reviewer_a.adapter,
       role: "reviewer_a",
-      subscription_auth: false,
+      subscription_auth: args.reviewerASubscriptionAuth ?? false,
     },
     {
       id: "reviewer_b",

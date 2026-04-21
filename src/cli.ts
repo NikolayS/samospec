@@ -101,9 +101,8 @@ export async function runCli(argv: readonly string[]): Promise<CliResult> {
   }
 
   if (command === "init") {
-    // Sprint 1 init takes no flags; ignore unused args.
-    void rest;
-    return runInit({ cwd: process.cwd() });
+    const yes = rest.includes("--yes") || rest.includes("--no-interactive");
+    return runInit({ cwd: process.cwd(), ...(yes ? { yes: true } : {}) });
   }
 
   if (command === "doctor") {
