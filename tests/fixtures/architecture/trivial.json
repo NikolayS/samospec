@@ -1,0 +1,8 @@
+{
+  "version": "1",
+  "nodes": [
+    { "id": "user", "label": "User", "kind": "external" },
+    { "id": "app", "label": "App", "kind": "component" }
+  ],
+  "edges": [{ "from": "user", "to": "app", "kind": "call" }]
+}

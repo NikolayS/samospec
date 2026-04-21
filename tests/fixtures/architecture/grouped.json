@@ -1,0 +1,23 @@
+{
+  "version": "1",
+  "nodes": [
+    { "id": "user", "label": "User", "kind": "external" },
+    { "id": "lead", "label": "Lead adapter", "kind": "component" },
+    { "id": "claude", "label": "Claude adapter", "kind": "component" },
+    { "id": "codex", "label": "Codex adapter", "kind": "component" },
+    { "id": "gemini", "label": "Gemini adapter", "kind": "component" },
+    { "id": "state", "label": "state.json", "kind": "datastore" }
+  ],
+  "edges": [
+    { "from": "user", "to": "lead", "kind": "call" },
+    { "from": "lead", "to": "adapters", "kind": "call" },
+    { "from": "lead", "to": "state", "kind": "data" }
+  ],
+  "groups": [
+    {
+      "id": "adapters",
+      "label": "adapters",
+      "members": ["claude", "codex", "gemini"]
+    }
+  ]
+}
