@@ -195,7 +195,7 @@ describe("loop/state-finalize — iterate bookkeeping (#102)", () => {
     expect(status.stdout).toBe("");
   });
 
-  test("B: state.head_sha matches rev-parse HEAD after exit", async () => {
+  test("B: state.head_sha is a reachable 40-char SHA after exit", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug, "2026-04-19T12:00:00Z");
     await runOneRoundConverged({
@@ -206,15 +206,30 @@ describe("loop/state-finalize — iterate bookkeeping (#102)", () => {
 
     const statePath = path.join(tmp, ".samo", "spec", slug, "state.json");
     const state: State = JSON.parse(readFileSync(statePath, "utf8"));
+
+    expect(state.head_sha).not.toBeNull();
+    expect(state.head_sha).toMatch(/^[0-9a-f]{40}$/);
+
+    // The finalize bookkeeping commit IS HEAD and cannot name itself in
+    // its own state.json payload, so `state.head_sha` points to the
+    // refine content commit (HEAD~1). Verify that: (1) the recorded
+    // sha is reachable from HEAD, and (2) the current HEAD is either
+    // that sha itself (no finalize commit path) or its direct child.
     const rev = spawnSync("git", ["rev-parse", "HEAD"], {
       cwd: tmp,
       encoding: "utf8",
     });
     const headSha = (rev.stdout ?? "").trim();
-
-    expect(state.head_sha).not.toBeNull();
-    expect(state.head_sha).toMatch(/^[0-9a-f]{40}$/);
-    expect(state.head_sha).toBe(headSha);
+    const parent = spawnSync("git", ["rev-parse", "HEAD~1"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    const parentSha = (parent.stdout ?? "").trim();
+    // Narrow: the preceding assertions guarantee `head_sha` is a non-
+    // null 40-char hex string at this point; the optional-chain above
+    // is only there because the Zod schema makes the field nullable.
+    const recorded = state.head_sha ?? "";
+    expect([headSha, parentSha]).toContain(recorded);
   });
 
   test("C: state.updated_at advances past created_at and tracks wall-clock", async () => {

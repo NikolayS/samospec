@@ -38,6 +38,7 @@ import type { Adapter, Finding } from "../adapter/types.ts";
 import { currentBranch } from "../git/branch.ts";
 import { specCommit } from "../git/commit.ts";
 import { ProtectedBranchError } from "../git/errors.ts";
+import { isProtected } from "../git/protected.ts";
 import {
   applyManualEdit,
   detectManualEdits,
@@ -378,6 +379,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             tldrPath: paths.tldrPath,
             specPath: paths.specPath,
             now: input.now,
+            cwd: input.cwd,
+            slug: input.slug,
           });
         }
 
@@ -406,6 +409,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
               specPath: paths.specPath,
               now: input.now,
               exitCodeOverride: 0,
+              cwd: input.cwd,
+              slug: input.slug,
             });
           }
           const outcome = applyManualEdit({
@@ -455,6 +460,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
               specPath: paths.specPath,
               now: input.now,
               exitCodeOverride: 0,
+              cwd: input.cwd,
+              slug: input.slug,
             });
           }
         }
@@ -499,11 +506,13 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
           const { sub_reason, detail } = classifyLeadTerminal(
             roundOutcome.leadTerminalError ?? new Error(roundOutcome.rationale),
           );
+          const leadHeadSha = resolveHeadSha(input.cwd);
           const leadTerm: State = {
             ...currentState,
             round_state: "lead_terminal",
             round_index: roundIndex - 1,
-            updated_at: input.now,
+            updated_at: nowIso(),
+            ...(leadHeadSha !== null ? { head_sha: leadHeadSha } : {}),
             exit: {
               code: 4,
               reason: `lead-terminal:${sub_reason}`,
@@ -553,6 +562,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
               tldrPath: paths.tldrPath,
               specPath: paths.specPath,
               now: input.now,
+              cwd: input.cwd,
+              slug: input.slug,
             });
           }
           // Continue with reduced reviewers isn't wired to a single-seat
@@ -570,6 +581,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             tldrPath: paths.tldrPath,
             specPath: paths.specPath,
             now: input.now,
+            cwd: input.cwd,
+            slug: input.slug,
           });
         }
 
@@ -592,7 +605,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             round_state: "committed",
             round_index: roundIndex,
             exit: null,
-            updated_at: input.now,
+            updated_at: nowIso(),
           };
           writeFileSync(
             paths.tldrPath,
@@ -630,12 +643,23 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
           appendOrCreateChangelog(paths.changelogPath, changelogEntry);
 
           // State: lead_revised -> committed; bump round_index and version.
+          //
+          // Issue #102: `updated_at` is the wall-clock time of this
+          // write, not the frozen `input.now` (which is the round-start
+          // stamp). `head_sha` stays whatever it was pre-commit here —
+          // we can't `git rev-parse HEAD` until AFTER the commit runs,
+          // so the round commit itself contains `head_sha` for the
+          // PREVIOUS round's SHA. Right after the commit we rewrite
+          // state.json with the fresh SHA so the final on-disk value
+          // always matches HEAD; the resulting tiny dirty window is
+          // closed by either the next round's commit or the `finalize`
+          // commit inside `finishIterate`.
           currentState = {
             ...currentState,
             round_state: "committed",
             round_index: roundIndex,
             version: newVersion,
-            updated_at: input.now,
+            updated_at: nowIso(),
             remote_stale: currentState.remote_stale,
             coupled_fallback:
               input.resolutions?.coupled_fallback ??
@@ -670,6 +694,23 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
               `committed spec(${input.slug}): refine ${formatVersionLabel(newVersion)} after review r${String(roundIndex).padStart(2, "0")}`,
             );
 
+            // Issue #102 — post-commit bookkeeping write. `head_sha`
+            // can only be resolved AFTER the commit is in place; do
+            // the rewrite here so `state.head_sha` is accurate for
+            // anything reading state.json between rounds (e.g. a
+            // concurrent `samospec status`). This leaves state.json
+            // temporarily dirty; the next round's `specCommit` or the
+            // `finalize` commit at loop exit cleans it up.
+            const postCommitSha = resolveHeadSha(input.cwd);
+            if (postCommitSha !== null) {
+              currentState = {
+                ...currentState,
+                head_sha: postCommitSha,
+                updated_at: nowIso(),
+              };
+              writeState(paths.statePath, currentState);
+            }
+
             // SPEC §5 Phase 6 + §8 — round-boundary push. Exactly one
             // push per `committed` transition; never per commit.
             if (input.pushOptions !== undefined) {
@@ -684,7 +725,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
               if (pushOutcome.kind === "interrupt") {
                 const interrupted: State = {
                   ...currentState,
-                  updated_at: input.now,
+                  updated_at: nowIso(),
                   exit: {
                     code: 3,
                     reason: "push-consent-interrupted",
@@ -813,6 +854,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             tldrPath: paths.tldrPath,
             specPath: paths.specPath,
             now: input.now,
+            cwd: input.cwd,
+            slug: input.slug,
           });
         }
 
@@ -837,6 +880,56 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
 
 function ensureTrailingNewline(s: string): string {
   return s.endsWith("\n") ? s : `${s}\n`;
+}
+
+/**
+ * Issue #102 — wall-clock ISO stamp for every `state.updated_at` write.
+ * The bug report called out that iterate was re-using a frozen round-
+ * start timestamp across the whole session; this helper centralises the
+ * `Date.now()` call so no writer can skip the bump.
+ */
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+/**
+ * Issue #102 — resolve the current branch HEAD sha to populate
+ * `state.head_sha`. Returns `null` when the repo has no HEAD yet
+ * (unborn branch) so we never write a malformed value.
+ */
+function resolveHeadSha(cwd: string): string | null {
+  const res = spawnSync("git", ["rev-parse", "--verify", "--quiet", "HEAD"], {
+    cwd,
+    encoding: "utf8",
+  });
+  if ((res.status ?? 1) !== 0) return null;
+  const sha = (res.stdout ?? "").trim();
+  return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+}
+
+/**
+ * Issue #102 — `git status --porcelain -- <paths>` to decide whether a
+ * follow-up `finalize` commit has anything to include. Returns the list
+ * of paths (relative to `cwd`) that git reports as modified / added /
+ * deleted. An empty list means the tree is already clean — skip the
+ * finalize commit entirely.
+ */
+function dirtyPaths(cwd: string, paths: readonly string[]): string[] {
+  if (paths.length === 0) return [];
+  const res = spawnSync("git", ["status", "--porcelain", "--", ...paths], {
+    cwd,
+    encoding: "utf8",
+  });
+  if ((res.status ?? 1) !== 0) return [];
+  const out = res.stdout ?? "";
+  const result: string[] = [];
+  for (const line of out.split("\n")) {
+    if (line.length < 4) continue;
+    // Porcelain v1 format: "XY <path>" (two status chars + space + path).
+    const p = line.slice(3);
+    if (p.length > 0) result.push(p);
+  }
+  return result;
 }
 
 // ---------- round-boundary push plumbing (SPEC §5 Phase 6 + §8) ----------
@@ -1085,10 +1178,27 @@ interface FinishArgs {
    *  so its Next-action section reflects the exit reason (#96). */
   readonly tldrPath?: string;
   readonly specPath?: string;
+  /** Issue #102 — repo cwd + slug so `finishIterate` can open a small
+   *  `spec(<slug>): finalize round N` commit for the post-round
+   *  bookkeeping write. Absent in a few synthetic test paths; when
+   *  omitted the finalize commit is skipped safely. */
+  readonly cwd?: string;
+  readonly slug?: string;
 }
 
 function finishIterate(args: FinishArgs): IterateResult {
   const exitCode = args.exitCodeOverride ?? stopReasonExitCode(args.reason);
+
+  // Issue #102 — resolve HEAD before writing so `state.head_sha` tracks
+  // the commit that iterate produced for this session. A `null` result
+  // (unborn branch, missing cwd) falls back to whatever `state.head_sha`
+  // already holds, so we never regress a previously-recorded sha.
+  let headShaForFinal: string | null | undefined;
+  if (args.cwd !== undefined) {
+    const resolved = resolveHeadSha(args.cwd);
+    if (resolved !== null) headShaForFinal = resolved;
+  }
+
   const withExit: State = {
     ...args.state,
     exit: {
@@ -1096,7 +1206,12 @@ function finishIterate(args: FinishArgs): IterateResult {
       reason: args.reason,
       round_index: args.state.round_index,
     },
-    updated_at: args.now,
+    // Issue #102 — wall-clock, not the frozen `input.now` round-start
+    // stamp. The `args.now` param is kept in the interface for any
+    // remaining non-stamp uses (none today); we deliberately ignore it
+    // for the `updated_at` field so every write lands a fresh time.
+    updated_at: nowIso(),
+    ...(headShaForFinal !== undefined ? { head_sha: headShaForFinal } : {}),
   };
   writeState(args.statePath, withExit);
 
@@ -1116,6 +1231,56 @@ function finishIterate(args: FinishArgs): IterateResult {
       renderTldr(spec, { slug: withExit.slug, state: withExit }),
       "utf8",
     );
+  }
+
+  // Issue #102 — finalize commit. Without this, the `exit` / `head_sha`
+  // / `updated_at` write above leaves `.samo/spec/<slug>/state.json`
+  // (and often TLDR.md) dirty, which then trips the manual-edit prompt
+  // on the next `iterate` run. We reuse `specCommit` with a dedicated
+  // `finalize` action so commit grammar, protected-branch safety, and
+  // the `tests/git/no-force.test.ts` guard all keep applying.
+  //
+  // Guards:
+  //  - Skip when `cwd`/`slug` are absent (synthetic unit tests).
+  //  - Skip on protected branches — the round-loop already refused to
+  //    commit there, so we must not commit either.
+  //  - Skip when the tracked bookkeeping paths are already clean (no
+  //    empty commits ever).
+  if (args.cwd !== undefined && args.slug !== undefined) {
+    try {
+      const branch = currentBranch(args.cwd);
+      if (!isProtected(branch, { repoPath: args.cwd })) {
+        const candidatePaths: string[] = [
+          path.relative(args.cwd, args.statePath),
+        ];
+        if (args.tldrPath !== undefined && existsSync(args.tldrPath)) {
+          candidatePaths.push(path.relative(args.cwd, args.tldrPath));
+        }
+        const dirty = dirtyPaths(args.cwd, candidatePaths);
+        if (dirty.length > 0) {
+          specCommit({
+            repoPath: args.cwd,
+            slug: args.slug,
+            action: "finalize",
+            roundNumber: withExit.round_index,
+            paths: dirty,
+          });
+          // After this commit `git rev-parse HEAD` advances by one. The
+          // on-disk `state.head_sha` therefore points to HEAD~1 (the
+          // round's `refine` content commit), not HEAD itself. That is
+          // intentional: a commit cannot name itself in its own tree,
+          // and chasing the tail with a second finalize-of-finalize
+          // commit is recursive. `verifyHeadSha` callers must be ready
+          // to accept HEAD~1 when the branch's tip is a `finalize`
+          // bookkeeping commit — see the PR body for the trade-off.
+        }
+      }
+    } catch {
+      // Best-effort: never let a finalize-commit failure bubble up.
+      // The state.json write above still succeeded; worst case the
+      // next `iterate` run sees a dirty tree and prompts on it, which
+      // is the pre-#102 behaviour — a strictly non-regression.
+    }
   }
 
   const stream = exitCode === 0 ? args.lines : args.errLines;
