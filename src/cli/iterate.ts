@@ -61,6 +61,7 @@ import {
   type LockHandle,
   LockContendedError,
 } from "../state/lock.ts";
+import { computeNextAction } from "../state/next-action.ts";
 import { writeState } from "../state/store.ts";
 import { stateSchema, type State } from "../state/types.ts";
 import { specPaths } from "./new.ts";
@@ -374,6 +375,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             state: currentState,
             roundsRun: Math.max(0, roundsRun - 1),
             statePath: paths.statePath,
+            tldrPath: paths.tldrPath,
+            specPath: paths.specPath,
             now: input.now,
           });
         }
@@ -399,6 +402,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
               state: currentState,
               roundsRun: Math.max(0, roundsRun - 1),
               statePath: paths.statePath,
+              tldrPath: paths.tldrPath,
+              specPath: paths.specPath,
               now: input.now,
               exitCodeOverride: 0,
             });
@@ -446,6 +451,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
               state: currentState,
               roundsRun: Math.max(0, roundsRun - 1),
               statePath: paths.statePath,
+              tldrPath: paths.tldrPath,
+              specPath: paths.specPath,
               now: input.now,
               exitCodeOverride: 0,
             });
@@ -543,6 +550,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
               state: currentState,
               roundsRun,
               statePath: paths.statePath,
+              tldrPath: paths.tldrPath,
+              specPath: paths.specPath,
               now: input.now,
             });
           }
@@ -558,6 +567,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             state: currentState,
             roundsRun,
             statePath: paths.statePath,
+            tldrPath: paths.tldrPath,
+            specPath: paths.specPath,
             now: input.now,
           });
         }
@@ -571,9 +582,21 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         if (roundOutcome.revisedSpec !== undefined) {
           const newSpec = ensureTrailingNewline(roundOutcome.revisedSpec);
           writeFileSync(paths.specPath, newSpec, "utf8");
+          // TLDR is re-rendered in finishIterate once `exit` is set so
+          // the Next-action section reflects convergence. Render here
+          // with a provisional committed-but-not-yet-exited state so a
+          // mid-loop `samospec status` sees a coherent file between
+          // rounds (#96).
+          const provisional: State = {
+            ...currentState,
+            round_state: "committed",
+            round_index: roundIndex,
+            exit: null,
+            updated_at: input.now,
+          };
           writeFileSync(
             paths.tldrPath,
-            renderTldr(newSpec, { slug: input.slug }),
+            renderTldr(newSpec, { slug: input.slug, state: provisional }),
             "utf8",
           );
 
@@ -787,6 +810,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             state: currentState,
             roundsRun,
             statePath: paths.statePath,
+            tldrPath: paths.tldrPath,
+            specPath: paths.specPath,
             now: input.now,
           });
         }
@@ -1056,6 +1081,10 @@ interface FinishArgs {
   readonly statePath: string;
   readonly now: string;
   readonly exitCodeOverride?: number;
+  /** Optional — when set, TLDR.md is re-rendered with the final state
+   *  so its Next-action section reflects the exit reason (#96). */
+  readonly tldrPath?: string;
+  readonly specPath?: string;
 }
 
 function finishIterate(args: FinishArgs): IterateResult {
@@ -1070,30 +1099,31 @@ function finishIterate(args: FinishArgs): IterateResult {
     updated_at: args.now,
   };
   writeState(args.statePath, withExit);
+
+  // Re-render TLDR.md so its Next-action section matches the exit
+  // reason (#96). Guarded by tldrPath/specPath presence and existence
+  // checks so the unit tests that feed a synthetic state without a
+  // tldr file on disk still work.
+  if (
+    args.tldrPath !== undefined &&
+    args.specPath !== undefined &&
+    existsSync(args.specPath) &&
+    existsSync(args.tldrPath)
+  ) {
+    const spec = readFileSync(args.specPath, "utf8");
+    writeFileSync(
+      args.tldrPath,
+      renderTldr(spec, { slug: withExit.slug, state: withExit }),
+      "utf8",
+    );
+  }
+
   const stream = exitCode === 0 ? args.lines : args.errLines;
   stream.push(args.message);
 
-  // Next-step hints (#71).
-  const slug = args.state.slug;
-  const SUCCESS_REASONS: readonly StopReason[] = [
-    "max-rounds",
-    "ready",
-    "semantic-convergence",
-    "lead-ignoring-critiques",
-  ];
-  if (SUCCESS_REASONS.includes(args.reason)) {
-    args.lines.push(`next: samospec publish ${slug}`);
-  } else if (
-    args.reason === "reviewers-exhausted" ||
-    args.reason === "wall-clock" ||
-    args.reason === "budget" ||
-    args.reason === "sigint"
-  ) {
-    args.lines.push(
-      `next: samospec iterate ${slug}` +
-        ` (or edit .samo/spec/${slug}/SPEC.md and retry)`,
-    );
-  }
+  // Next-step hint (#71 + #96). Single shared helper so iterate's
+  // stdout tail never disagrees with `samospec status` or TLDR.md.
+  args.lines.push(`next: ${computeNextAction(withExit, withExit.slug)}`);
 
   return {
     exitCode,

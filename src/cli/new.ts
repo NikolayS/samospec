@@ -681,8 +681,9 @@ export async function runNew(
     // SPEC.md: lead's draft verbatim.
     writeFileSync(specPath, ensureTrailingNewline(draft.spec), "utf8");
 
-    // TLDR.md: heuristic render.
-    const tldr = renderTldr(draft.spec, { slug: input.slug });
+    // TLDR.md: heuristic render. Pass state so the Next-action section
+    // is derived from state via computeNextAction (#96).
+    const tldr = renderTldr(draft.spec, { slug: input.slug, state });
     writeFileSync(tldrPath, tldr, "utf8");
 
     // decisions.md: empty seed; populated by the review loop.

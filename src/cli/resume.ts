@@ -343,7 +343,7 @@ export async function runResume(
       writeFileSync(paths.specPath, ensureTrailingNewline(draft.spec), "utf8");
       writeFileSync(
         paths.tldrPath,
-        renderTldr(draft.spec, { slug: input.slug }),
+        renderTldr(draft.spec, { slug: input.slug, state: nextState }),
         "utf8",
       );
       if (!existsSync(paths.decisionsPath)) {

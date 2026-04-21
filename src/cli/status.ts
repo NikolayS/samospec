@@ -24,6 +24,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 import type { Adapter, AuthStatus, Usage } from "../adapter/types.ts";
 import { loadPersistedConsent } from "../git/push-consent.ts";
+import { computeNextAction } from "../state/next-action.ts";
 import { stateSchema } from "../state/types.ts";
 import {
   detectDegradedResolution,
@@ -214,28 +215,6 @@ export async function runStatus(input: StatusInput): Promise<StatusResult> {
 }
 
 // ---------- helpers ----------
-
-function computeNextAction(state: State, slug: string): string {
-  if (state.round_state === "lead_terminal") {
-    return `edit .samo/spec/${slug}/SPEC.md manually to recover`;
-  }
-  if (state.phase === "draft" && state.round_state === "committed") {
-    return `run \`samospec iterate\` to start the review loop`;
-  }
-  if (state.phase === "review_loop" && state.round_state === "committed") {
-    return `run \`samospec iterate\` to continue reviewing`;
-  }
-  if (state.round_state === "running") {
-    return `run \`samospec resume ${slug}\` to recover from an in-flight round`;
-  }
-  if (state.round_state === "reviews_collected") {
-    return `run \`samospec resume ${slug}\` to finalize the lead revision`;
-  }
-  if (state.round_state === "lead_revised") {
-    return `run \`samospec resume ${slug}\` to commit the lead's revision`;
-  }
-  return "";
-}
 
 function fmtMinutes(ms: number): string {
   const mins = ms / 60000;
