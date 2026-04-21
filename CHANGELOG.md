@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0] - 2026-04-21
+
+### Added
+
+- (describe additions)
+
+### Fixed
+
+- (describe fixes)
+
+### Changed
+
+- (describe changes)
+
 ## [0.3.1] - 2026-04-21
 
 ### Added

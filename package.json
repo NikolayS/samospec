@@ -1,6 +1,6 @@
 {
   "name": "samospec",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Git-native CLI that turns a rough idea into a reviewed, versioned specification document.",
   "type": "module",
   "bin": {
