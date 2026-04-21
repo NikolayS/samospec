@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0] - 2026-04-21
+
+### Added
+
+- (describe additions)
+
+### Fixed
+
+- (describe fixes)
+
+### Changed
+
+- (describe changes)
+
 All notable changes to SamoSpec are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
