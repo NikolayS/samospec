@@ -124,6 +124,18 @@ export function appendRoundDecisions(input: AppendRoundDecisionsInput): string {
  * the N-th missing-ID decision in category C within a round is
  * stably labelled `C#N`. Entries that DO carry an explicit
  * `finding_id` are passed through verbatim.
+ *
+ * Collision avoidance: the fallback counter skips any numeric slot
+ * already claimed by an explicit `finding_id` in the same category
+ * within this call. We pre-scan explicit IDs of the form
+ * `<category>#<n>` into a per-category set, then advance the counter
+ * past occupied slots on each emit. This guarantees no two decisions
+ * in the same call render the same `<category>#<n>` pair.
+ *
+ * Order dependency (minor, documented): rendered output order in
+ * decisions.md follows the input array order. Callers that want the
+ * round's markdown cross-linkable back to the review must pass the
+ * decision array in the same order the reviewer emitted its findings.
  */
 export function reviseDecisionsToReviewDecisions(
   decisions: readonly ReviseDecision[] | undefined | null,
@@ -131,13 +143,35 @@ export function reviseDecisionsToReviewDecisions(
   if (decisions === undefined || decisions === null || decisions.length === 0) {
     return [];
   }
+  // Pre-scan: collect every numeric slot claimed by an explicit
+  // finding_id of the form `<category>#<n>`, keyed by category.
+  const claimed = new Map<string, Set<number>>();
+  for (const d of decisions) {
+    if (typeof d.finding_id !== "string" || d.finding_id.length === 0) continue;
+    const hashIdx = d.finding_id.lastIndexOf("#");
+    if (hashIdx < 0) continue;
+    const catPart = d.finding_id.slice(0, hashIdx);
+    const numPart = d.finding_id.slice(hashIdx + 1);
+    if (catPart !== d.category) continue;
+    // Strict integer parse: reject empty / non-digit / leading-space.
+    if (!/^[0-9]+$/.test(numPart)) continue;
+    const n = Number.parseInt(numPart, 10);
+    if (!Number.isFinite(n)) continue;
+    const set = claimed.get(d.category) ?? new Set<number>();
+    set.add(n);
+    claimed.set(d.category, set);
+  }
   const categoryCounters = new Map<string, number>();
   return decisions.map((d) => {
     let finding_ref: string;
     if (typeof d.finding_id === "string" && d.finding_id.length > 0) {
       finding_ref = d.finding_id;
     } else {
-      const next = (categoryCounters.get(d.category) ?? 0) + 1;
+      let next = (categoryCounters.get(d.category) ?? 0) + 1;
+      const taken = claimed.get(d.category);
+      if (taken !== undefined) {
+        while (taken.has(next)) next += 1;
+      }
       categoryCounters.set(d.category, next);
       finding_ref = `${d.category}#${String(next)}`;
     }
