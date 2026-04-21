@@ -25,8 +25,18 @@
 // instance (see `./claude-resolver.ts`). When the lead advances the
 // resolver on a model-unavailable failure, Reviewer B's very next
 // spawn picks up the new pin automatically.
+//
+// v0.4.0 (#85): when CritiqueInput carries an `idea` string, Reviewer B
+// receives an explicit contradiction-detection directive: flag any spec
+// section that reintroduces a class the idea disclaimed. The idea is
+// prepended to the guidelines via `buildCritiquePromptForReviewerB` so
+// the model sees it before the spec text.
 
-import { ClaudeAdapter, type ClaudeAdapterOpts } from "./claude.ts";
+import {
+  ClaudeAdapter,
+  buildCritiquePrompt,
+  type ClaudeAdapterOpts,
+} from "./claude.ts";
 import { type CritiqueInput, type CritiqueOutput } from "./types.ts";
 
 // SPEC §7: literal persona prefix applied to Reviewer B critique()
@@ -48,6 +58,49 @@ export const REVIEWER_B_PERSONA_PREFIX =
   "(9) embedded changelog. " +
   "Raise a missing-requirement finding for each absent mandatory section.";
 
+// v0.4.0 (#85): when an idea string is present, Reviewer B carries this
+// contradiction-detection directive verbatim before the guidelines.
+// Exported so tests can assert on the literal wording.
+export const REVIEWER_B_CONTRADICTION_DIRECTIVE =
+  "IDEA-CONTRADICTION CHECK: The user's original idea is provided below " +
+  "under '## Original idea'. If the idea contains explicit disclaimers " +
+  "(e.g. 'NOT X', 'not a Y', 'this is NOT a Z'), carefully read every " +
+  "section of the spec and flag any section that reintroduces the disclaimed " +
+  "class as a `contradiction` finding (severity: major). Quote the exact " +
+  "disclaimer from the idea and the offending spec section text in the " +
+  "finding's `text` field.";
+
+/**
+ * Build the full critique prompt for Reviewer B, incorporating:
+ * 1. The persona prefix (taxonomy weighting + baseline section check).
+ * 2. If `input.idea` is present: the contradiction-detection directive
+ *    + the idea string under a labelled header.
+ * 3. The caller's guidelines (if any).
+ * 4. The standard critique prompt structure (schema + spec text).
+ *
+ * Exported so tests can inspect the assembled prompt without spawning.
+ */
+export function buildCritiquePromptForReviewerB(input: CritiqueInput): string {
+  // Build the composed guidelines = persona + optional idea-contradiction
+  // directive + caller guidelines.
+  const ideaSection =
+    input.idea !== undefined && input.idea.trim().length > 0
+      ? `${REVIEWER_B_CONTRADICTION_DIRECTIVE}\n\n## Original idea\n${input.idea}\n`
+      : "";
+
+  const composedGuidelines = [
+    REVIEWER_B_PERSONA_PREFIX,
+    ideaSection,
+    input.guidelines,
+  ]
+    .filter((s) => s.trim().length > 0)
+    .join("\n\n");
+
+  // Build using the same base prompt builder so schema + spec text are
+  // identical to what the plain ClaudeAdapter would produce.
+  return buildCritiquePrompt({ ...input, guidelines: composedGuidelines });
+}
+
 // ---------- ClaudeReviewerBAdapter ----------
 
 export class ClaudeReviewerBAdapter extends ClaudeAdapter {
@@ -60,14 +113,23 @@ export class ClaudeReviewerBAdapter extends ClaudeAdapter {
   }
 
   override critique(input: CritiqueInput): Promise<CritiqueOutput> {
-    // Prepend the persona prefix to the caller's guidelines so the
-    // system-level taxonomy weighting is the first thing the model
-    // reads. The inner ClaudeAdapter.critique() then builds the usual
-    // critique prompt around this composed guideline string.
-    const composedGuidelines =
-      input.guidelines === ""
-        ? REVIEWER_B_PERSONA_PREFIX
-        : `${REVIEWER_B_PERSONA_PREFIX}\n\n${input.guidelines}`;
+    // v0.4.0 (#85): use buildCritiquePromptForReviewerB which injects
+    // the persona prefix + optional idea-contradiction directive. We
+    // override the inherited critique() by reconstructing the input with
+    // pre-composed guidelines so super.critique() sees the full prompt.
+    //
+    // We call super.critique() with the composed guidelines so the
+    // inherited spawn + JSON-parse + retry plumbing runs unchanged.
+    const composedGuidelines = [
+      REVIEWER_B_PERSONA_PREFIX,
+      input.idea !== undefined && input.idea.trim().length > 0
+        ? `${REVIEWER_B_CONTRADICTION_DIRECTIVE}\n\n## Original idea\n${input.idea}`
+        : "",
+      input.guidelines,
+    ]
+      .filter((s) => s.trim().length > 0)
+      .join("\n\n");
+
     const withPersona: CritiqueInput = {
       ...input,
       guidelines: composedGuidelines,

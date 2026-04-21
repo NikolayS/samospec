@@ -221,6 +221,22 @@ Return shape: `{ ..., usage?, effort_used }`. `usage: null` means the adapter ca
 
 Sections are named in the prompt literally. Unknown section names in `--skip` are an error (exit 1). Additional topic-specific sections beyond these nine are always permitted.
 
+**AUTHORITATIVE idea framing (v0.4.0 / #85).** When `--idea` is supplied, all prompt builders inject an idea-precedence block before the spec or question payload:
+
+```
+## Project idea (AUTHORITATIVE — this is what the tool does)
+{idea}
+
+## Project slug (filesystem-safe identifier only — DO NOT infer semantics from it)
+{slug}
+
+If the slug and the idea appear to conflict, the IDEA wins. If the idea contains
+"NOT X" / "this is NOT a Y" disclaimers, honor them strictly — do not silently
+re-introduce the rejected framing in any section.
+```
+
+The original idea is persisted in `state.json` under `input.idea` at first write (immediately after the initial state record) so `iterate` and `resume` can thread it into every subsequent prompt call without requiring the user to re-supply `--idea`. Reviewer B's critique prompt additionally carries an `IDEA-CONTRADICTION CHECK` directive: when the idea contains explicit disclaimers, Reviewer B flags any spec section that reintroduces the disclaimed class as a `contradiction` finding (severity: major), quoting both the disclaimer and the offending section text.
+
 **Optional `decisions` array on `revise()`.** The `revise()` response may include a structured `decisions` array so the loop can populate `decisions.md` with per-finding verdicts:
 
 ```json

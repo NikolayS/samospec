@@ -569,14 +569,55 @@ export function buildBaselineSectionsBlock(
   );
 }
 
+// ---------- idea-precedence framing (SPEC §7 v0.4.0 / Issue #85) ----------
+
+/**
+ * Build the idea-precedence block that tells the lead (and Reviewer B)
+ * that --idea is the AUTHORITATIVE source of semantics. The slug is a
+ * filesystem identifier only — the model must NOT infer project meaning
+ * from it.
+ *
+ * Returns an empty string when `idea` is absent (backward compatible).
+ *
+ * Exact wording is tested in tests/adapter/lead-prompt-idea-precedence.test.ts
+ * — change carefully.
+ */
+export function buildIdeaPrecedenceBlock(opts: {
+  idea?: string;
+  slug?: string;
+}): string {
+  if (opts.idea === undefined || opts.idea.trim().length === 0) {
+    return "";
+  }
+  const slugLine =
+    opts.slug !== undefined && opts.slug.trim().length > 0
+      ? `\n## Project slug (filesystem-safe identifier only — DO NOT infer semantics from it)\n${opts.slug}\n`
+      : "";
+  return (
+    `\n## Project idea (AUTHORITATIVE — this is what the tool does)\n${opts.idea}\n` +
+    slugLine +
+    "\nIf the slug and the idea appear to conflict, the IDEA wins. " +
+    'If the idea contains "NOT X" / "this is NOT a Y" disclaimers, ' +
+    "honor them strictly — do not silently re-introduce the rejected " +
+    "framing in any section.\n"
+  );
+}
+
 // ---------- prompt builders (exported for tests) ----------
 
 export function buildAskPrompt(input: AskInput): string {
   const ctx = input.context === "" ? "" : `\n\nContext:\n${input.context}\n`;
+  const ideaOpts: { idea?: string; slug?: string } = {};
+  if (typeof input.idea === "string" && input.idea.length > 0)
+    ideaOpts.idea = input.idea;
+  if (typeof input.slug === "string" && input.slug.length > 0)
+    ideaOpts.slug = input.slug;
+  const ideaBlock = buildIdeaPrecedenceBlock(ideaOpts);
   return (
     "You are the samospec lead. Respond ONLY with a JSON object matching " +
     'the schema { "answer": string, "usage": null, "effort_used": ' +
     `"${input.opts.effort}" }. Do not wrap in code fences.` +
+    ideaBlock +
     ctx +
     `\n\nQuestion:\n${input.prompt}\n`
   );
@@ -595,6 +636,12 @@ export function buildCritiquePrompt(input: CritiqueInput): string {
 
 export function buildRevisePrompt(input: ReviseInput): string {
   const baselineSections = buildBaselineSectionsBlock(input.skipSections ?? []);
+  const reviseIdeaOpts: { idea?: string; slug?: string } = {};
+  if (typeof input.idea === "string" && input.idea.length > 0)
+    reviseIdeaOpts.idea = input.idea;
+  if (typeof input.slug === "string" && input.slug.length > 0)
+    reviseIdeaOpts.slug = input.slug;
+  const ideaBlock = buildIdeaPrecedenceBlock(reviseIdeaOpts);
   return (
     "You are the samospec lead. Emit the FULL revised SPEC.md text — " +
     'not a patch. Return ONLY a JSON object: { "spec": <full text>, ' +
@@ -607,6 +654,7 @@ export function buildRevisePrompt(input: ReviseInput): string {
     "object in the decisions array with a one-sentence rationale. " +
     "Verdict options: accepted (applied to the spec), rejected " +
     "(did not apply, with reason), deferred (punted to a later version)." +
+    ideaBlock +
     baselineSections +
     `\n\nCurrent spec:\n${input.spec}\n\nReviews (JSON):\n` +
     `${JSON.stringify(input.reviews)}\n\nDecisions so far (JSON):\n` +

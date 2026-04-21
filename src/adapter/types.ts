@@ -78,6 +78,18 @@ export const AskInputSchema = z.object({
   prompt: z.string().min(1),
   context: z.string(),
   opts: WorkOptsSchema,
+  /**
+   * #85: original --idea string (AUTHORITATIVE). When present, prompt
+   * builders inject the idea-precedence framing block so the lead never
+   * infers semantics from the slug alone.
+   */
+  idea: z.string().optional(),
+  /**
+   * #85: filesystem-safe slug (non-authoritative identifier only).
+   * Included alongside `idea` so the prompt can clearly label it as
+   * a non-semantic identifier.
+   */
+  slug: z.string().optional(),
 });
 export type AskInput = z.infer<typeof AskInputSchema>;
 
@@ -117,6 +129,11 @@ export const CritiqueInputSchema = z.object({
   spec: z.string().min(1),
   guidelines: z.string(),
   opts: WorkOptsSchema,
+  /**
+   * #85: original --idea string passed to Reviewer B so it can flag
+   * contradiction findings when the spec reintroduces a disclaimed class.
+   */
+  idea: z.string().optional(),
 });
 export type CritiqueInput = z.infer<typeof CritiqueInputSchema>;
 
@@ -161,6 +178,15 @@ export const ReviseInputSchema = z.object({
    * Names are matched case-insensitively against BASELINE_SECTION_NAMES.
    */
   skipSections: z.array(z.string()).optional(),
+  /**
+   * #85: original --idea string (AUTHORITATIVE). When present, prompt
+   * builders inject the idea-precedence framing block.
+   */
+  idea: z.string().optional(),
+  /**
+   * #85: filesystem-safe slug (non-authoritative identifier only).
+   */
+  slug: z.string().optional(),
 });
 export type ReviseInput = z.infer<typeof ReviseInputSchema>;
 
