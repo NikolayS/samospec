@@ -23,6 +23,7 @@
 //     protected branch (createSpecBranch throws with exit 2; specCommit
 //     additionally refuses).
 
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
@@ -32,7 +33,11 @@ import { CodexAdapter } from "../adapter/codex.ts";
 import type { Adapter } from "../adapter/types.ts";
 import { discoverContext } from "../context/discover.ts";
 import { contextJsonPath } from "../context/provenance.ts";
-import { createSpecBranch } from "../git/branch.ts";
+import {
+  SPEC_BRANCH_PREFIX,
+  branchExists,
+  createSpecBranch,
+} from "../git/branch.ts";
 import { specCommit } from "../git/commit.ts";
 import { ensureHasCommit } from "../git/ensure-has-commit.ts";
 import { ProtectedBranchError, GitLayerUsageError } from "../git/errors.ts";
@@ -415,6 +420,22 @@ export async function runNew(
     }
     if (branchResult.kind === "created") {
       notice(`branch created: ${branchResult.branch}`);
+    } else if (branchResult.kind === "exists") {
+      // #94: a prior crashed run left this branch behind. Check it out
+      // so the v0.1 draft lands on the right ref and is not silently
+      // skipped.
+      try {
+        checkoutExistingBranch(branchResult.branch, input.cwd);
+        notice(
+          `branch ${branchResult.branch} already exists — checked out to resume on it.`,
+        );
+      } catch (err) {
+        notice(
+          `branch creation skipped (${branchResult.reason}); ` +
+            `could not check out existing ${branchResult.branch}: ` +
+            `${err instanceof Error ? err.message : String(err)}.`,
+        );
+      }
     } else if (branchResult.kind === "skipped") {
       notice(`branch creation skipped (${branchResult.reason}).`);
     } else if (branchResult.kind === "stub") {
@@ -733,8 +754,14 @@ export async function runNew(
     writeState(statePath, state);
 
     // ---------- first commit on samospec/<slug> ----------
+    //
+    // #94: commit whenever we're sitting on a real spec branch —
+    // either freshly created OR one that survived a prior crashed run
+    // and was just checked out. The previous gate skipped the commit
+    // on the `exists` path, leaving `state.json.round_state=committed`
+    // untrue against a dirty working tree.
 
-    if (branchResult.kind === "created") {
+    if (branchResult.kind === "created" || branchResult.kind === "exists") {
       try {
         specCommit({
           repoPath: input.cwd,
@@ -897,9 +924,31 @@ function runPreflight(args: {
 
 type BranchCreation =
   | { kind: "created"; branch: string }
+  | { kind: "exists"; branch: string; reason: string }
   | { kind: "skipped"; reason: string }
   | { kind: "stub"; branch: string }
   | { kind: "protected"; branch: string };
+
+/**
+ * #94: when `createSpecBranch` reports that `samospec/<slug>` already
+ * exists (a prior crashed run left it behind), we check it out so the
+ * v0.1 draft commit lands on the right ref. Kept local — the git layer
+ * only exposes create-new semantics, and this is a new.ts-only recovery
+ * path.
+ */
+function checkoutExistingBranch(branch: string, repoPath: string): void {
+  const result = spawnSync("git", ["checkout", branch], {
+    cwd: repoPath,
+    encoding: "utf8",
+  });
+  if ((result.status ?? 1) !== 0) {
+    throw new Error(
+      `git checkout ${branch} failed with status ${String(result.status)}: ${
+        result.stderr ?? ""
+      }`,
+    );
+  }
+}
 
 function createBranch(input: RunNewInput): BranchCreation {
   if (input.enableBranchCreation === true) {
@@ -915,6 +964,13 @@ function createBranch(input: RunNewInput): BranchCreation {
   } catch (err) {
     if (err instanceof ProtectedBranchError) {
       return { kind: "protected", branch: err.branchName };
+    }
+    // Issue #94: a `samospec/<slug>` branch surviving a prior crashed
+    // run is a recoverable condition — check it out and commit on it
+    // below rather than silently dropping the auto-commit.
+    const target = `${SPEC_BRANCH_PREFIX}${input.slug}`;
+    if (err instanceof GitLayerUsageError && branchExists(target, input.cwd)) {
+      return { kind: "exists", branch: target, reason: err.message };
     }
     if (err instanceof GitLayerUsageError) {
       return { kind: "skipped", reason: err.message };

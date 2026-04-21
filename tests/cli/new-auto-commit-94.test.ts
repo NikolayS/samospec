@@ -185,11 +185,10 @@ describe("samospec new — auto-commits initial draft (#94)", () => {
 
     // (a) A new HEAD commit exists whose subject follows Conventional
     // Commits + SPEC §8 grammar (`spec(<slug>): draft v0.1`).
-    const headSubject = spawnSync(
-      "git",
-      ["log", "-1", "--format=%s"],
-      { cwd: tmp, encoding: "utf8" },
-    );
+    const headSubject = spawnSync("git", ["log", "-1", "--format=%s"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
     expect(headSubject.status).toBe(0);
     expect((headSubject.stdout ?? "").trim()).toBe(
       "spec(spec-test): draft v0.1",
