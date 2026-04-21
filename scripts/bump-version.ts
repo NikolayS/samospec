@@ -1,4 +1,5 @@
 // Copyright 2026 Nikolay Samokhvalov.
+// Ref: #57 (auto-sync version from git tag)
 
 /**
  * scripts/bump-version.ts — update package.json version + CHANGELOG stub.
