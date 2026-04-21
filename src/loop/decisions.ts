@@ -114,6 +114,16 @@ export function appendRoundDecisions(input: AppendRoundDecisionsInput): string {
  * Convert a ReviseOutput.decisions array (v0.2.0+) to ReviewDecision[]
  * compatible with appendRoundDecisions. When decisions is absent or empty,
  * returns [] which triggers the "no decisions recorded" fallback.
+ *
+ * Finding-ID substitution (fix for #95): the lead frequently omits
+ * `finding_id` from its decision objects, which previously left a
+ * literal `#?` placeholder in decisions.md. We now assign a
+ * deterministic category-scoped counter (e.g. `ambiguity#1`,
+ * `ambiguity#2`) when `finding_id` is missing. Numbering resets per
+ * call (so per revise/round) and advances in decision-array order, so
+ * the N-th missing-ID decision in category C within a round is
+ * stably labelled `C#N`. Entries that DO carry an explicit
+ * `finding_id` are passed through verbatim.
  */
 export function reviseDecisionsToReviewDecisions(
   decisions: readonly ReviseDecision[] | undefined | null,
@@ -121,11 +131,22 @@ export function reviseDecisionsToReviewDecisions(
   if (decisions === undefined || decisions === null || decisions.length === 0) {
     return [];
   }
-  return decisions.map((d) => ({
-    finding_ref: d.finding_id ?? `${d.category}#?`,
-    decision: d.verdict,
-    rationale: d.rationale,
-  }));
+  const categoryCounters = new Map<string, number>();
+  return decisions.map((d) => {
+    let finding_ref: string;
+    if (typeof d.finding_id === "string" && d.finding_id.length > 0) {
+      finding_ref = d.finding_id;
+    } else {
+      const next = (categoryCounters.get(d.category) ?? 0) + 1;
+      categoryCounters.set(d.category, next);
+      finding_ref = `${d.category}#${String(next)}`;
+    }
+    return {
+      finding_ref,
+      decision: d.verdict,
+      rationale: d.rationale,
+    };
+  });
 }
 
 /** Seed a fresh decisions.md when the new flow didn't write one. */
