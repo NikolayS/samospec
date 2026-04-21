@@ -524,6 +524,27 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
           };
           writeState(paths.statePath, leadTerm);
           error(formatLeadTerminalMessage(input.slug, sub_reason, detail));
+          // Issue #102 — this exit path used to early-return here,
+          // leaving state.json (and the untracked round-N `reviews/`
+          // dir) dirty. Route it through the shared finalize-commit
+          // helper so the tree is clean on every exit, including the
+          // lead_terminal exit-4 path. The custom `exit.reason`
+          // preserved in `leadTerm` above survives because we do not
+          // go through `finishIterate` here — finishIterate would
+          // overwrite `exit.reason` with the plain `"lead-terminal"`
+          // enum value and drop the sub-reason detail.
+          finalizeBookkeeping({
+            cwd: input.cwd,
+            slug: input.slug,
+            statePath: paths.statePath,
+            tldrPath: paths.tldrPath,
+            roundIndex: leadTerm.round_index,
+            // The round's reviews/ artefacts exist (reviewers ran
+            // before lead.revise() threw) but no `refine` commit was
+            // opened, so they are orphan-untracked. Scoop them into
+            // the finalize commit so the tree is fully clean on exit.
+            extraPaths: [dirs.roundDir],
+          });
           return {
             exitCode: 4,
             stdout: lines.join("\n"),
@@ -737,6 +758,17 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
                 };
                 writeState(paths.statePath, interrupted);
                 error(`samospec: push-consent prompt interrupted (Ctrl-C).`);
+                // Issue #102 — same class of bug as the lead_terminal
+                // path: this early-return wrote state.json without
+                // opening a finalize commit, leaving the tree dirty.
+                // Route through the shared helper.
+                finalizeBookkeeping({
+                  cwd: input.cwd,
+                  slug: input.slug,
+                  statePath: paths.statePath,
+                  tldrPath: paths.tldrPath,
+                  roundIndex,
+                });
                 return {
                   exitCode: 3,
                   stdout: lines.join("\n"),
@@ -933,6 +965,77 @@ function dirtyPaths(cwd: string, paths: readonly string[]): string[] {
     if (p.length > 0) result.push(p);
   }
   return result;
+}
+
+/**
+ * Issue #102 — open a `spec(<slug>): finalize round N` commit for the
+ * post-round bookkeeping write so `state.json` (and often `TLDR.md`)
+ * don't linger in the working tree as dirty paths. Shared by the
+ * `finishIterate` tail AND the `lead_terminal` early-return path so
+ * exit-4 runs leave a clean tree too.
+ *
+ * Guards:
+ *  - Skip when `cwd`/`slug` are absent (synthetic unit tests).
+ *  - Skip on protected branches — the round-loop already refused to
+ *    commit there, so we must not commit either.
+ *  - Skip when the tracked bookkeeping paths are already clean (no
+ *    empty commits ever).
+ *
+ * Best-effort: any thrown error is swallowed. The state.json write that
+ * must precede this call has already succeeded; worst case the next
+ * `iterate` run sees a dirty tree and prompts on it — strictly a
+ * non-regression from pre-#102 behaviour.
+ *
+ * After this commit `git rev-parse HEAD` advances by one. The on-disk
+ * `state.head_sha` therefore points to HEAD~1 (the round's `refine`
+ * content commit), not HEAD itself. That is intentional: a commit
+ * cannot name itself in its own tree. `verifyHeadSha` callers must be
+ * ready to accept HEAD~1 when the branch's tip is a `finalize`
+ * bookkeeping commit — see the PR body for the trade-off.
+ */
+function finalizeBookkeeping(args: {
+  readonly cwd: string | undefined;
+  readonly slug: string | undefined;
+  readonly statePath: string;
+  readonly tldrPath: string | undefined;
+  readonly roundIndex: number;
+  /**
+   * Extra absolute paths to include when checking for dirty state.
+   * The `lead_terminal` exit passes the current round's `reviews/rNN/`
+   * artefacts so they are scooped into the finalize commit instead of
+   * being left as an untracked directory. Empty in the happy-path
+   * caller because `specCommit(..., "refine", ...)` already covered
+   * those files.
+   */
+  readonly extraPaths?: readonly string[];
+}): void {
+  if (args.cwd === undefined || args.slug === undefined) return;
+  try {
+    const branch = currentBranch(args.cwd);
+    if (isProtected(branch, { repoPath: args.cwd })) return;
+    const candidatePaths: string[] = [
+      path.relative(args.cwd, args.statePath),
+    ];
+    if (args.tldrPath !== undefined && existsSync(args.tldrPath)) {
+      candidatePaths.push(path.relative(args.cwd, args.tldrPath));
+    }
+    if (args.extraPaths !== undefined) {
+      for (const p of args.extraPaths) {
+        if (existsSync(p)) candidatePaths.push(path.relative(args.cwd, p));
+      }
+    }
+    const dirty = dirtyPaths(args.cwd, candidatePaths);
+    if (dirty.length === 0) return;
+    specCommit({
+      repoPath: args.cwd,
+      slug: args.slug,
+      action: "finalize",
+      roundNumber: args.roundIndex,
+      paths: dirty,
+    });
+  } catch {
+    // Best-effort — see docstring.
+  }
 }
 
 // ---------- round-boundary push plumbing (SPEC §5 Phase 6 + §8) ----------
@@ -1236,55 +1339,13 @@ function finishIterate(args: FinishArgs): IterateResult {
     );
   }
 
-  // Issue #102 — finalize commit. Without this, the `exit` / `head_sha`
-  // / `updated_at` write above leaves `.samo/spec/<slug>/state.json`
-  // (and often TLDR.md) dirty, which then trips the manual-edit prompt
-  // on the next `iterate` run. We reuse `specCommit` with a dedicated
-  // `finalize` action so commit grammar, protected-branch safety, and
-  // the `tests/git/no-force.test.ts` guard all keep applying.
-  //
-  // Guards:
-  //  - Skip when `cwd`/`slug` are absent (synthetic unit tests).
-  //  - Skip on protected branches — the round-loop already refused to
-  //    commit there, so we must not commit either.
-  //  - Skip when the tracked bookkeeping paths are already clean (no
-  //    empty commits ever).
-  if (args.cwd !== undefined && args.slug !== undefined) {
-    try {
-      const branch = currentBranch(args.cwd);
-      if (!isProtected(branch, { repoPath: args.cwd })) {
-        const candidatePaths: string[] = [
-          path.relative(args.cwd, args.statePath),
-        ];
-        if (args.tldrPath !== undefined && existsSync(args.tldrPath)) {
-          candidatePaths.push(path.relative(args.cwd, args.tldrPath));
-        }
-        const dirty = dirtyPaths(args.cwd, candidatePaths);
-        if (dirty.length > 0) {
-          specCommit({
-            repoPath: args.cwd,
-            slug: args.slug,
-            action: "finalize",
-            roundNumber: withExit.round_index,
-            paths: dirty,
-          });
-          // After this commit `git rev-parse HEAD` advances by one. The
-          // on-disk `state.head_sha` therefore points to HEAD~1 (the
-          // round's `refine` content commit), not HEAD itself. That is
-          // intentional: a commit cannot name itself in its own tree,
-          // and chasing the tail with a second finalize-of-finalize
-          // commit is recursive. `verifyHeadSha` callers must be ready
-          // to accept HEAD~1 when the branch's tip is a `finalize`
-          // bookkeeping commit — see the PR body for the trade-off.
-        }
-      }
-    } catch {
-      // Best-effort: never let a finalize-commit failure bubble up.
-      // The state.json write above still succeeded; worst case the
-      // next `iterate` run sees a dirty tree and prompts on it, which
-      // is the pre-#102 behaviour — a strictly non-regression.
-    }
-  }
+  finalizeBookkeeping({
+    cwd: args.cwd,
+    slug: args.slug,
+    statePath: args.statePath,
+    tldrPath: args.tldrPath,
+    roundIndex: withExit.round_index,
+  });
 
   const stream = exitCode === 0 ? args.lines : args.errLines;
   stream.push(args.message);

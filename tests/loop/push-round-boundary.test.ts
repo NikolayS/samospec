@@ -384,6 +384,18 @@ describe("iterate — round-boundary push integration", () => {
     });
 
     expect(res.exitCode).toBe(3);
+
+    // Issue #102 — the push-consent-interrupted early-return wrote
+    // state.json with `exit.code=3` + fresh `updated_at` and then
+    // bailed without opening a finalize commit. Now that it routes
+    // through the shared `finalizeBookkeeping` helper the tree must
+    // be clean on exit.
+    const status = spawnSync("git", ["status", "--porcelain"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    expect(status.status).toBe(0);
+    expect(status.stdout).toBe("");
   });
 
   test("no pushOptions provided → local-only (no push attempts, no prompt)", async () => {
