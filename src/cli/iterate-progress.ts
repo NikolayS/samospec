@@ -171,8 +171,18 @@ export function createProgressReporter(args: {
       // One heartbeat line per active child. Two children (reviewer A +
       // reviewer B in parallel) emit two lines per interval — readers
       // can tell at a glance which one is holding things up.
+      //
+      // Per-child gating (reviewer follow-up on #101): the timer is
+      // aligned to global `setInterval` boundaries, not to individual
+      // child start times. A child that starts 2s before the next tick
+      // would otherwise emit "child — 2s" on that tick, violating the
+      // SPEC §10 "every ~30s of silent work" contract. Suppress the
+      // line until the child has been running for at least one full
+      // interval; subsequent ticks still align with the global cadence.
       for (const child of active.values()) {
-        const elapsedSec = Math.floor((now - child.startedAtMs) / 1000);
+        const elapsedMs = now - child.startedAtMs;
+        if (elapsedMs < intervalMs) continue;
+        const elapsedSec = Math.floor(elapsedMs / 1000);
         args.emit(
           `${formatLabel(child.label)} (${child.identity}) — ${String(elapsedSec)}s`,
         );

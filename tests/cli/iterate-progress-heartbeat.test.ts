@@ -112,53 +112,31 @@ describe("createProgressReporter — per-child heartbeat gating (#101)", () => {
       },
     });
 
-    // Reviewer A runs the full 90s window — heartbeats at 30s and 60s.
+    // Reviewer A runs 88s — heartbeats fire at 30s and 60s (not at 90s
+    // because we stop 2s short of that tick). This establishes the
+    // global 30/60/90/... interval cadence for the next assertion.
     const a = reporter.beginReviewer("reviewer_a", "codex");
-    clock.advance(90_000);
-    a.complete({ findings: 0 });
-
-    // Snapshot the heartbeat lines emitted so far; there should be two
-    // reviewer-A heartbeats (30s, 60s). We will assert B does not
-    // contribute to later lines at 2s elapsed.
-    const heartbeatLines = lines.filter((l) => /— \d+s$/.test(l));
-    expect(heartbeatLines).toEqual([
+    clock.advance(88_000);
+    const heartbeatLinesAfterA = lines.filter((l) => /— \d+s$/.test(l));
+    expect(heartbeatLinesAfterA).toEqual([
       "reviewer A (codex) — 30s",
       "reviewer A (codex) — 60s",
     ]);
 
-    // Clock is now at 90s. The global interval's next tick would be
-    // 120s (60 + 30). Reviewer B starts at 88s — 2s BEFORE the next
-    // global tick. Under the buggy behaviour the 90s tick fires a
-    // heartbeat for B at "2s". SPEC says "every ~30s of silent work",
-    // so the first B heartbeat must not fire until elapsedForB >= 30s.
-    clock.advance(-2_000 + 90_000 - clock.now()); // position clock at 88s? actually 90s is current
-    // Easier: advance nothing; start B now at 90s, then step 2s — no
-    // heartbeat expected because B's elapsed would be 2s.
+    // Reviewer B starts at t=88s — 2s before the next global tick at
+    // 90s. Under the buggy behaviour the 90s tick fires a heartbeat
+    // for B at "2s". SPEC says "every ~30s of silent work", so the
+    // first B heartbeat must NOT fire at elapsedForB < 30s.
     const b = reporter.beginReviewer("reviewer_b", "claude");
-    // Step past the 120s global tick boundary; B has only been running
-    // 2s since start at 90s — well under 30s.
-    clock.advance(30_000); // now at 120s, exactly one interval since last tick at 90s
-    // Fire any due schedule events.
-    scheduler.fireAll();
+    clock.advance(2_000); // cross the 90s global tick boundary
 
     const afterBLines = lines
-      .filter((l) => /— \d+s$/.test(l))
-      .slice(heartbeatLines.length);
-    // No reviewer-B heartbeat should be present yet — only 30s elapsed
-    // for B since its start; the global tick at this boundary must be
-    // suppressed for B because per-child elapsed < intervalMs would
-    // have held the PREVIOUS tick at 2s (the buggy case). At exactly
-    // elapsed===intervalMs the line is allowed to emit; the test
-    // intentionally stops BEFORE that so the assertion is narrow.
-    // Accept either zero lines or a single B line at exactly 30s, but
-    // NEVER a line at < 30s.
-    for (const line of afterBLines) {
-      const match = /— (\d+)s$/.exec(line);
-      expect(match).not.toBeNull();
-      const secs = Number(match?.[1] ?? "0");
-      expect(secs).toBeGreaterThanOrEqual(30);
-    }
+      .filter((l) => /reviewer B \(claude\) — \d+s$/.test(l));
+    // B has been running 2s. Emitting "reviewer B (claude) — 2s" here
+    // is the bug. The gate must suppress it.
+    expect(afterBLines).toEqual([]);
 
+    a.complete({ findings: 0 });
     b.complete({ findings: 0 });
     reporter.shutdown();
   });
