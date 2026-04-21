@@ -55,85 +55,70 @@ function logMessages(dir: string): string[] {
 }
 
 describe("samospec init — auto-initialize git repo (#72)", () => {
-  test(
-    "no .git + --yes: creates .git, empty initial commit, and proceeds (exit 0)",
-    () => {
-      // tmp has no .git directory at all.
-      expect(hasGit(tmp)).toBe(false);
+  test("no .git + --yes: creates .git, empty initial commit, and proceeds (exit 0)", () => {
+    // tmp has no .git directory at all.
+    expect(hasGit(tmp)).toBe(false);
 
-      const result = runInit({ cwd: tmp, yes: true });
+    const result = runInit({ cwd: tmp, yes: true });
 
-      expect(result.exitCode).toBe(0);
-      // .git should now exist.
-      expect(hasGit(tmp)).toBe(true);
-      // HEAD should be resolvable (empty commit was created).
-      expect(headCommit(tmp)).not.toBeNull();
-      // Commit message should be "chore: init".
-      expect(logMessages(tmp)).toContain("chore: init");
-      // Should mention creating git repo.
-      expect(result.stdout.toLowerCase()).toMatch(
-        /created git repo|initialized git|git init/,
-      );
-      // .samo/ should still be created.
-      expect(existsSync(path.join(tmp, ".samo", "config.json"))).toBe(true);
-    },
-  );
+    expect(result.exitCode).toBe(0);
+    // .git should now exist.
+    expect(hasGit(tmp)).toBe(true);
+    // HEAD should be resolvable (empty commit was created).
+    expect(headCommit(tmp)).not.toBeNull();
+    // Commit message should be "chore: init".
+    expect(logMessages(tmp)).toContain("chore: init");
+    // Should mention creating git repo.
+    expect(result.stdout.toLowerCase()).toMatch(
+      /created git repo|initialized git|git init/,
+    );
+    // .samo/ should still be created.
+    expect(existsSync(path.join(tmp, ".samo", "config.json"))).toBe(true);
+  });
 
-  test(
-    "no .git + interactive prompt 'I': creates .git, empty commit, proceeds (exit 0)",
-    () => {
-      expect(hasGit(tmp)).toBe(false);
+  test("no .git + interactive prompt 'I': creates .git, empty commit, proceeds (exit 0)", () => {
+    expect(hasGit(tmp)).toBe(false);
 
-      // Simulate interactive: user presses Enter (which defaults to init).
-      const result = runInit({ cwd: tmp, gitInitAnswer: "I" });
+    // Simulate interactive: user presses Enter (which defaults to init).
+    const result = runInit({ cwd: tmp, gitInitAnswer: "I" });
 
-      expect(result.exitCode).toBe(0);
-      expect(hasGit(tmp)).toBe(true);
-      expect(headCommit(tmp)).not.toBeNull();
-      expect(logMessages(tmp)).toContain("chore: init");
-    },
-  );
+    expect(result.exitCode).toBe(0);
+    expect(hasGit(tmp)).toBe(true);
+    expect(headCommit(tmp)).not.toBeNull();
+    expect(logMessages(tmp)).toContain("chore: init");
+  });
 
-  test(
-    "no .git + interactive prompt Enter (default): creates .git and proceeds",
-    () => {
-      expect(hasGit(tmp)).toBe(false);
+  test("no .git + interactive prompt Enter (default): creates .git and proceeds", () => {
+    expect(hasGit(tmp)).toBe(false);
 
-      // Empty string simulates pressing Enter (default = init).
-      const result = runInit({ cwd: tmp, gitInitAnswer: "" });
+    // Empty string simulates pressing Enter (default = init).
+    const result = runInit({ cwd: tmp, gitInitAnswer: "" });
 
-      expect(result.exitCode).toBe(0);
-      expect(hasGit(tmp)).toBe(true);
-      expect(headCommit(tmp)).not.toBeNull();
-    },
-  );
+    expect(result.exitCode).toBe(0);
+    expect(hasGit(tmp)).toBe(true);
+    expect(headCommit(tmp)).not.toBeNull();
+  });
 
-  test(
-    "no .git + interactive prompt 'A': exits code 3 without touching disk",
-    () => {
-      expect(hasGit(tmp)).toBe(false);
+  test("no .git + interactive prompt 'A': exits code 3 without touching disk", () => {
+    expect(hasGit(tmp)).toBe(false);
 
-      const result = runInit({ cwd: tmp, gitInitAnswer: "A" });
+    const result = runInit({ cwd: tmp, gitInitAnswer: "A" });
 
-      // Must exit 3 (user abort).
-      expect(result.exitCode).toBe(3);
-      // .git must NOT have been created.
-      expect(hasGit(tmp)).toBe(false);
-      // .samo/ must NOT have been created.
-      expect(existsSync(path.join(tmp, ".samo"))).toBe(false);
-      // stderr should mention abort.
-      expect(result.stderr.toLowerCase()).toMatch(/abort|cancel/);
-    },
-  );
+    // Must exit 3 (user abort).
+    expect(result.exitCode).toBe(3);
+    // .git must NOT have been created.
+    expect(hasGit(tmp)).toBe(false);
+    // .samo/ must NOT have been created.
+    expect(existsSync(path.join(tmp, ".samo"))).toBe(false);
+    // stderr should mention abort.
+    expect(result.stderr.toLowerCase()).toMatch(/abort|cancel/);
+  });
 
-  test(
-    "no .git + --yes: stdout confirms git repo creation",
-    () => {
-      const result = runInit({ cwd: tmp, yes: true });
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout).toMatch(
-        /created git repo and initial commit|git init/i,
-      );
-    },
-  );
+  test("no .git + --yes: stdout confirms git repo creation", () => {
+    const result = runInit({ cwd: tmp, yes: true });
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toMatch(
+      /created git repo and initial commit|git init/i,
+    );
+  });
 });
