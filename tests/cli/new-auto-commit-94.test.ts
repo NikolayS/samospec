@@ -226,4 +226,90 @@ describe("samospec new — auto-commits initial draft (#94)", () => {
     const spec = readFileSync(path.join(slugDir, "SPEC.md"), "utf8");
     expect(spec).toContain("# break-reminder spec");
   });
+
+  // Regression for the must-fix flagged on PR #99 review: when the
+  // recovery path enters the `branchResult.kind === "exists"` branch but
+  // `checkoutExistingBranch` throws (e.g. a dirty working tree blocks the
+  // checkout), HEAD stays on the caller's feature branch. Previously the
+  // commit gate still fired `specCommit`, silently leaking the v0.1 spec
+  // commit onto `feat/...`. The fix must abort the commit in this case
+  // (no new commit on feat, no "committed" claim in state.json).
+  test("does not leak v0.1 commit to feat branch when checkoutExistingBranch fails", async () => {
+    // Seed `samospec/spec-test` with a committed file at a path that
+    // also exists, uncommitted, on `feat/spec-test`. `git checkout
+    // samospec/spec-test` will then refuse, simulating the checkout
+    // failure the reviewer flagged.
+    repo.run(["checkout", "-b", "samospec/spec-test"]);
+    writeFileSync(path.join(tmp, "conflict.txt"), "spec-branch content\n");
+    repo.run(["add", "conflict.txt"]);
+    repo.run(["commit", "-m", "chore: seed conflict.txt on spec branch"]);
+
+    repo.run(["checkout", "feat/spec-test"]);
+    // Dirty local change at the same path that would be overwritten by
+    // the checkout — vanilla git refuses this without --force.
+    writeFileSync(path.join(tmp, "conflict.txt"), "feat-local content\n");
+
+    // Sanity preconditions: we start on feat/spec-test, and the HEAD
+    // commit there is the `.samo` init commit from beforeEach.
+    expect(repo.currentBranch()).toBe("feat/spec-test");
+    const headBeforeRes = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    expect(headBeforeRes.status).toBe(0);
+    const featHeadBefore = (headBeforeRes.stdout ?? "").trim();
+    expect(featHeadBefore.length).toBeGreaterThan(0);
+
+    const { adapter } = makeAdapter({
+      answers: [
+        personaJson("test engineer"),
+        questionsJson([{ id: "q1", text: "framework?" }]),
+      ],
+    });
+
+    await runNew(
+      {
+        cwd: tmp,
+        slug: "spec-test",
+        idea: "break reminder",
+        explain: false,
+        resolvers: acceptResolver(),
+        now: "2026-04-21T20:00:00Z",
+      },
+      adapter,
+    );
+
+    // We are still on feat/spec-test — the checkout failure must have
+    // kept us here rather than silently advancing onto samospec/spec-test.
+    expect(repo.currentBranch()).toBe("feat/spec-test");
+
+    // (a) No new commit must have landed on feat/spec-test. HEAD must
+    // be unchanged from before `runNew`.
+    const headAfterRes = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    expect(headAfterRes.status).toBe(0);
+    expect((headAfterRes.stdout ?? "").trim()).toBe(featHeadBefore);
+
+    // Defensive: the HEAD commit subject on feat/spec-test must NOT be
+    // the samospec draft commit subject (no leakage).
+    const headSubjectRes = spawnSync("git", ["log", "-1", "--format=%s"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    expect(headSubjectRes.status).toBe(0);
+    expect((headSubjectRes.stdout ?? "").trim()).not.toBe(
+      "spec(spec-test): draft v0.1",
+    );
+
+    // (b) state.json.round_state must not lie about a clean "committed"
+    // outcome when no commit was made.
+    const st = readState(
+      path.join(tmp, ".samo", "spec", "spec-test", "state.json"),
+    );
+    if (st !== null) {
+      expect(st.round_state).not.toBe("committed");
+    }
+  });
 });
