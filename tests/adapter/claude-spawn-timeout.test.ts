@@ -82,8 +82,7 @@ describe("spawnCli timeout: child PID must be dead after timeout fires (#81)", (
           process.kill(pid, 0);
           processAlive = true;
         } catch {
-          // ESRCH = not found = dead. Expected.
-          processAlive = false;
+          // ESRCH = not found = dead. Expected; leaves processAlive=false.
         }
         expect(processAlive).toBe(false);
       }
