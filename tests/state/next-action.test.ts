@@ -278,7 +278,11 @@ describe("computeNextAction — post-convergence parity (#96 core)", () => {
         phase: "review_loop",
         round_state: "committed",
         round_index: 3,
-        exit: { code: reason === "lead-ignoring-critiques" ? 4 : 0, reason, round_index: 3 },
+        exit: {
+          code: reason === "lead-ignoring-critiques" ? 4 : 0,
+          reason,
+          round_index: 3,
+        },
       });
       expect(computeNextAction(s, SLUG)).toBe(`samospec publish ${SLUG}`);
     }

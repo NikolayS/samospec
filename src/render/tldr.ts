@@ -15,12 +15,24 @@
 //     Otherwise, a placeholder pointing the reader at SPEC.md.
 //   - scope: bullet list of every top-level `## ` heading in the spec,
 //     excluding `## Goal` (which is rendered above).
-//   - next-action: always "resume with `samospec resume <slug>`" so the
-//     committed TL;DR links the next step without depending on the
-//     author's prose.
+//   - next-action: derived from state via `computeNextAction` (Issue #96)
+//     so TLDR.md, `samospec status`, and the `iterate` stdout tail
+//     always agree on the recommendation. When `state` is omitted the
+//     renderer falls back to the old pre-state resume hint so pure-spec
+//     unit tests still work.
+
+import { computeNextAction } from "../state/next-action.ts";
+import type { State } from "../state/types.ts";
 
 export interface RenderTldrOpts {
   readonly slug: string;
+  /**
+   * When provided, the Next-action section is derived from state via
+   * `computeNextAction`. Callers (iterate / new / resume) that have a
+   * State in hand SHOULD pass it so TLDR.md stays consistent with
+   * status and iterate's stdout.
+   */
+  readonly state?: State;
 }
 
 /**
@@ -51,10 +63,23 @@ export function renderTldr(spec: string, opts: RenderTldrOpts): string {
 
   lines.push("## Next action");
   lines.push("");
-  lines.push(`resume with \`samospec resume ${opts.slug}\``);
+  lines.push(nextActionLine(opts));
   lines.push("");
 
   return lines.join("\n");
+}
+
+/**
+ * Render the Next-action section body. When `state` is provided, route
+ * through the shared `computeNextAction` helper so the TLDR.md file
+ * never disagrees with `samospec status` or `iterate` stdout (#96).
+ * Without state, fall back to the pre-#96 resume hint.
+ */
+function nextActionLine(opts: RenderTldrOpts): string {
+  if (opts.state !== undefined) {
+    return `\`${computeNextAction(opts.state, opts.slug)}\``;
+  }
+  return `resume with \`samospec resume ${opts.slug}\``;
 }
 
 /**
