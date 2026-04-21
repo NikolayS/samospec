@@ -46,119 +46,111 @@ function mkAdapter(
 // OAuth, reviewer_b uses Claude API key.
 const LEAD_OAUTH = mkAdapter("lead", "claude", true, "lead");
 const REVA_CODEX_OAUTH = mkAdapter("reviewer_a", "codex", true, "reviewer_a");
-const REVB_CLAUDE_APIKEY = mkAdapter("reviewer_b", "claude", false, "reviewer_b");
+const REVB_CLAUDE_APIKEY = mkAdapter(
+  "reviewer_b",
+  "claude",
+  false,
+  "reviewer_b",
+);
 
 // Baseline: all API-key adapters (no OAuth anywhere).
 const LEAD_APIKEY = mkAdapter("lead", "claude", false, "lead");
 const REVA_APIKEY = mkAdapter("reviewer_a", "codex", false, "reviewer_a");
 const REVB_APIKEY = mkAdapter("reviewer_b", "claude", false, "reviewer_b");
 
-describe(
-  "#70 — preflight: reviewer_a Codex under ChatGPT OAuth → OAuth label",
-  () => {
-    test(
-      "reviewer_a with subscription_auth: true shows " +
-        "'unknown — OAuth (no per-token cost visibility)'",
-      () => {
-        const cfg = mkConfig();
-        const r = computePreflight(cfg, [
-          LEAD_OAUTH,
-          REVA_CODEX_OAUTH,
-          REVB_CLAUDE_APIKEY,
-        ]);
-        const perA = r.perAdapter["reviewer_a"];
-        expect(perA).toBeDefined();
-        expect(perA?.usd).toBe(
-          "unknown — OAuth (no per-token cost visibility)",
-        );
-      },
-    );
-
-    test("reviewer_a OAuth: likelyUsd excludes reviewer_a cost", () => {
-      const cfgAll = mkConfig();
-      // Baseline: all API keys → likelyUsd includes reviewer_a.
-      const rAll = computePreflight(cfgAll, [
-        LEAD_APIKEY,
-        REVA_APIKEY,
-        REVB_APIKEY,
-      ]);
-      // OAuth scenario: reviewer_a excluded from likelyUsd.
-      const rOAuth = computePreflight(mkConfig(), [
-        LEAD_APIKEY,
-        REVA_CODEX_OAUTH,
-        REVB_APIKEY,
-      ]);
-      // With OAuth reviewer_a, the likelyUsd should be less than all-API-key.
-      expect(rOAuth.likelyUsd).toBeLessThan(rAll.likelyUsd);
-    });
-
-    test(
-      "pretty-printer for OAuth reviewer_a says 'OAuth' (not dollar amount)",
-      () => {
-        const cfg = mkConfig();
-        const r = computePreflight(cfg, [
-          LEAD_OAUTH,
-          REVA_CODEX_OAUTH,
-          REVB_CLAUDE_APIKEY,
-        ]);
-        const text = formatPreflight(r);
-
-        // Must contain OAuth label in per-adapter section.
-        expect(text).toContain("OAuth");
-        // Must NOT show a dollar amount for reviewer_a when OAuth.
-        // The dollar-sign should appear only in the summary line, not per-adapter.
-        const perAdapterSection = text
-          .split("per-adapter:")[1]
-          ?.split("warnings:")[0];
-        expect(perAdapterSection).toBeDefined();
-        // The per-adapter section for reviewer_a must say "OAuth", not "$N.NN".
-        const reviewerALine = perAdapterSection
-          ?.split("\n")
-          .find((l) => l.includes("reviewer_a"));
-        expect(reviewerALine).toBeDefined();
-        expect(reviewerALine).toContain("OAuth");
-        expect(reviewerALine).not.toMatch(/\$\d+\.\d+/);
-      },
-    );
-
-    test("warnings include mention of OAuth when reviewer_a is OAuth", () => {
-      const cfg = mkConfig();
-      const r = computePreflight(cfg, [
-        LEAD_APIKEY,
-        REVA_CODEX_OAUTH,
-        REVB_APIKEY,
-      ]);
-      const hasOAuthWarn = r.warnings.some((w) => /oauth/i.test(w));
-      expect(hasOAuthWarn).toBe(true);
-    });
-
-    test("full OAuth scenario (all three adapters): likelyUsd is 0", () => {
-      const cfg = mkConfig();
-      const allOAuth = [
-        mkAdapter("lead", "claude", true, "lead"),
-        mkAdapter("reviewer_a", "codex", true, "reviewer_a"),
-        mkAdapter("reviewer_b", "claude", true, "reviewer_b"),
-      ];
-      const r = computePreflight(cfg, allOAuth);
-      expect(r.likelyUsd).toBe(0);
-      for (const [, entry] of Object.entries(r.perAdapter)) {
-        expect(entry.usd).toBe(
-          "unknown — OAuth (no per-token cost visibility)",
-        );
-      }
-    });
-  },
-);
-
-describe("#70 — preflight: API-key reviewer_a unchanged", () => {
+describe("#70 — preflight: reviewer_a Codex under ChatGPT OAuth → OAuth label", () => {
   test(
-    "reviewer_a with subscription_auth: false shows dollar estimate",
+    "reviewer_a with subscription_auth: true shows " +
+      "'unknown — OAuth (no per-token cost visibility)'",
     () => {
       const cfg = mkConfig();
-      const r = computePreflight(cfg, [LEAD_APIKEY, REVA_APIKEY, REVB_APIKEY]);
+      const r = computePreflight(cfg, [
+        LEAD_OAUTH,
+        REVA_CODEX_OAUTH,
+        REVB_CLAUDE_APIKEY,
+      ]);
       const perA = r.perAdapter["reviewer_a"];
       expect(perA).toBeDefined();
-      expect(typeof perA?.usd).toBe("number");
+      expect(perA?.usd).toBe("unknown — OAuth (no per-token cost visibility)");
     },
   );
+
+  test("reviewer_a OAuth: likelyUsd excludes reviewer_a cost", () => {
+    const cfgAll = mkConfig();
+    // Baseline: all API keys → likelyUsd includes reviewer_a.
+    const rAll = computePreflight(cfgAll, [
+      LEAD_APIKEY,
+      REVA_APIKEY,
+      REVB_APIKEY,
+    ]);
+    // OAuth scenario: reviewer_a excluded from likelyUsd.
+    const rOAuth = computePreflight(mkConfig(), [
+      LEAD_APIKEY,
+      REVA_CODEX_OAUTH,
+      REVB_APIKEY,
+    ]);
+    // With OAuth reviewer_a, the likelyUsd should be less than all-API-key.
+    expect(rOAuth.likelyUsd).toBeLessThan(rAll.likelyUsd);
+  });
+
+  test("pretty-printer for OAuth reviewer_a says 'OAuth' (not dollar amount)", () => {
+    const cfg = mkConfig();
+    const r = computePreflight(cfg, [
+      LEAD_OAUTH,
+      REVA_CODEX_OAUTH,
+      REVB_CLAUDE_APIKEY,
+    ]);
+    const text = formatPreflight(r);
+
+    // Must contain OAuth label in per-adapter section.
+    expect(text).toContain("OAuth");
+    // Must NOT show a dollar amount for reviewer_a when OAuth.
+    // The dollar-sign should appear only in the summary line, not per-adapter.
+    const perAdapterSection = text
+      .split("per-adapter:")[1]
+      ?.split("warnings:")[0];
+    expect(perAdapterSection).toBeDefined();
+    // The per-adapter section for reviewer_a must say "OAuth", not "$N.NN".
+    const reviewerALine = perAdapterSection
+      ?.split("\n")
+      .find((l) => l.includes("reviewer_a"));
+    expect(reviewerALine).toBeDefined();
+    expect(reviewerALine).toContain("OAuth");
+    expect(reviewerALine).not.toMatch(/\$\d+\.\d+/);
+  });
+
+  test("warnings include mention of OAuth when reviewer_a is OAuth", () => {
+    const cfg = mkConfig();
+    const r = computePreflight(cfg, [
+      LEAD_APIKEY,
+      REVA_CODEX_OAUTH,
+      REVB_APIKEY,
+    ]);
+    const hasOAuthWarn = r.warnings.some((w) => /oauth/i.test(w));
+    expect(hasOAuthWarn).toBe(true);
+  });
+
+  test("full OAuth scenario (all three adapters): likelyUsd is 0", () => {
+    const cfg = mkConfig();
+    const allOAuth = [
+      mkAdapter("lead", "claude", true, "lead"),
+      mkAdapter("reviewer_a", "codex", true, "reviewer_a"),
+      mkAdapter("reviewer_b", "claude", true, "reviewer_b"),
+    ];
+    const r = computePreflight(cfg, allOAuth);
+    expect(r.likelyUsd).toBe(0);
+    for (const [, entry] of Object.entries(r.perAdapter)) {
+      expect(entry.usd).toBe("unknown — OAuth (no per-token cost visibility)");
+    }
+  });
+});
+
+describe("#70 — preflight: API-key reviewer_a unchanged", () => {
+  test("reviewer_a with subscription_auth: false shows dollar estimate", () => {
+    const cfg = mkConfig();
+    const r = computePreflight(cfg, [LEAD_APIKEY, REVA_APIKEY, REVB_APIKEY]);
+    const perA = r.perAdapter["reviewer_a"];
+    expect(perA).toBeDefined();
+    expect(typeof perA?.usd).toBe("number");
+  });
 });

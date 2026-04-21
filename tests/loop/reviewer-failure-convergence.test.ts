@@ -11,13 +11,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
-import type { CritiqueOutput } from "../../src/adapter/types.ts";
-import type { Adapter, ReviseInput, ReviseOutput } from "../../src/adapter/types.ts";
-import {
-  roundDirsFor,
-  runRound,
-} from "../../src/loop/round.ts";
-import type { StopReason } from "../../src/loop/stopping.ts";
+import type {
+  Adapter,
+  CritiqueOutput,
+  ReviseOutput,
+} from "../../src/adapter/types.ts";
+import { roundDirsFor, runRound } from "../../src/loop/round.ts";
 import { classifyAllStops } from "../../src/loop/stopping.ts";
 
 let tmp: string;
@@ -98,28 +97,25 @@ describe("#64 — both reviewers fail: ready=true MUST be ignored", () => {
     },
   );
 
-  test(
-    "when both reviewers fail, reviewersExhausted is true",
-    async () => {
-      const lead = createFakeAdapter({ revise: READY_TRUE_REVISE });
-      const revA = makeFailingReviewer("timeout: codex timed out");
-      const revB = makeFailingReviewer("auth failed");
+  test("when both reviewers fail, reviewersExhausted is true", async () => {
+    const lead = createFakeAdapter({ revise: READY_TRUE_REVISE });
+    const revA = makeFailingReviewer("timeout: codex timed out");
+    const revB = makeFailingReviewer("auth failed");
 
-      const dirs = roundDirsFor(tmp, 1);
-      const outcome = await runRound({
-        now: "2026-04-19T12:00:00Z",
-        roundNumber: 1,
-        dirs,
-        specText: "# SPEC\n\nv0.1",
-        decisionsHistory: [],
-        adapters: { lead, reviewerA: revA, reviewerB: revB },
-      });
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nv0.1",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+    });
 
-      expect(outcome.reviewersExhausted).toBe(true);
-      expect(outcome.seats.reviewer_a.state).not.toBe("ok");
-      expect(outcome.seats.reviewer_b.state).not.toBe("ok");
-    },
-  );
+    expect(outcome.reviewersExhausted).toBe(true);
+    expect(outcome.seats.reviewer_a.state).not.toBe("ok");
+    expect(outcome.seats.reviewer_b.state).not.toBe("ok");
+  });
 });
 
 // ---------- tests: partial failure (one reviewer ok) ----------
