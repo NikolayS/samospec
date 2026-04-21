@@ -390,12 +390,46 @@ describe("iterate — round-boundary push integration", () => {
     // bailed without opening a finalize commit. Now that it routes
     // through the shared `finalizeBookkeeping` helper the tree must
     // be clean on exit.
+    //
+    // Observation A: tree-clean.
     const status = spawnSync("git", ["status", "--porcelain"], {
       cwd: tmp,
       encoding: "utf8",
     });
     expect(status.status).toBe(0);
     expect(status.stdout).toBe("");
+
+    // Observation B: state.head_sha is a reachable 40-char SHA (not
+    // null). Same as the lead_terminal block, the recorded sha is
+    // either HEAD (no finalize bookkeeping commit opened) or HEAD~1
+    // (finalize commit is the tip, cannot name itself).
+    const statePath = path.join(tmp, ".samo", "spec", "refunds", "state.json");
+    const state: State = JSON.parse(readFileSync(statePath, "utf8")) as State;
+    expect(state.head_sha).not.toBeNull();
+    expect(state.head_sha).toMatch(/^[0-9a-f]{40}$/);
+    const rev = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    const headSha = (rev.stdout ?? "").trim();
+    const parent = spawnSync("git", ["rev-parse", "HEAD~1"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    const parentSha = (parent.stdout ?? "").trim();
+    const recorded = state.head_sha ?? "";
+    expect([headSha, parentSha]).toContain(recorded);
+
+    // Observation C: state.updated_at > state.created_at. Pre-fix the
+    // early-return wrote updated_at = now at the start of the exit
+    // path, but the seed state.json was already written with the same
+    // round-start timestamp, so any regression that re-routes through
+    // the pre-fix early-return would leave these equal. Assert a
+    // strict inequality (at least a few ms of wall-clock progress
+    // between seedSpec and exit).
+    const createdMs = Date.parse(state.created_at);
+    const updatedMs = Date.parse(state.updated_at);
+    expect(updatedMs).toBeGreaterThan(createdMs);
   });
 
   test("no pushOptions provided → local-only (no push attempts, no prompt)", async () => {
