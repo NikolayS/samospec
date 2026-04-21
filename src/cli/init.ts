@@ -9,10 +9,18 @@
  *   - fresh dir    -> write default config + .gitignore + cache skeleton; exit 0
  *   - existing dir -> merge user keys with defaults; print diff; exit 0
  *   - malformed    -> exit 1 with a clear error; do NOT silently overwrite
+ *
+ * Git preflight (#72 / #65):
+ *   - No .git dir + --yes/non-interactive: auto git-init + empty commit.
+ *   - No .git dir + interactive: prompt [I]nit/[A]bort [Enter=init].
+ *     'A' -> exit 3, nothing written.
+ *   - .git present but no HEAD: auto-create initial empty commit (always
+ *     safe, no prompt needed).
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 export const CONFIG_SCHEMA_VERSION = 1 as const;
 
@@ -153,6 +161,16 @@ const GITIGNORE_BODY = [
 
 export interface RunInitArgs {
   readonly cwd: string;
+  /**
+   * Skip the interactive git-init prompt and auto-init (#72).
+   * Set `true` when the caller passes `--yes` or `--no-interactive`.
+   */
+  readonly yes?: boolean;
+  /**
+   * Test seam: inject the answer for the interactive git-init prompt
+   * instead of reading from stdin. "I" or "" = init; "A" = abort.
+   */
+  readonly gitInitAnswer?: string;
 }
 
 export interface RunInitResult {
@@ -207,6 +225,98 @@ function formatValue(v: unknown): string {
   return JSON.stringify(v);
 }
 
+// ---------- git preflight helpers (#72 / #65) ----------
+
+/**
+ * Run a git command in `cwd`. Returns status + stdout + stderr.
+ * Never throws — callers inspect `.status`.
+ */
+function runGitCmd(
+  cwd: string,
+  args: readonly string[],
+): { status: number; stdout: string; stderr: string } {
+  const res = spawnSync("git", args as string[], {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env },
+  });
+  return {
+    status: res.status ?? 1,
+    stdout: (res.stdout as string | null) ?? "",
+    stderr: (res.stderr as string | null) ?? "",
+  };
+}
+
+/** Returns true when `cwd/.git` exists (not necessarily with any commits). */
+function hasGitDir(cwd: string): boolean {
+  return existsSync(path.join(cwd, ".git"));
+}
+
+/** Returns true when HEAD resolves (i.e. at least one commit exists). */
+function hasHead(cwd: string): boolean {
+  return runGitCmd(cwd, ["rev-parse", "HEAD"]).status === 0;
+}
+
+/**
+ * Create an empty initial commit with message `chore: init`.
+ * Uses the ambient git identity; no GPG signing bypassed.
+ * Returns the error string on failure, or null on success.
+ */
+function createInitialCommit(cwd: string): string | null {
+  const commit = runGitCmd(cwd, [
+    "commit",
+    "--allow-empty",
+    "-m",
+    "chore: init",
+  ]);
+  if (commit.status !== 0) {
+    return commit.stderr.trim() || "git commit failed";
+  }
+  return null;
+}
+
+/**
+ * Run `git init` and create an empty initial commit.
+ * Returns an error string on failure, or null on success.
+ */
+function initGitRepo(cwd: string): string | null {
+  const init = runGitCmd(cwd, ["init", cwd]);
+  if (init.status !== 0) {
+    return init.stderr.trim() || "git init failed";
+  }
+  // Configure local identity if none is set (CI / bare user env).
+  runGitCmd(cwd, ["config", "--local", "user.email", "samospec@localhost"]);
+  runGitCmd(cwd, ["config", "--local", "user.name", "samospec"]);
+  runGitCmd(cwd, ["config", "--local", "commit.gpgsign", "false"]);
+  return createInitialCommit(cwd);
+}
+
+/**
+ * Determine whether to proceed with git init.
+ * Returns `true` to init, `false` to abort, or `null` when the caller
+ * has not opted in to the git preflight (no --yes and no injected answer).
+ *
+ * - `args.yes === true`: non-interactive auto-init.
+ * - `args.gitInitAnswer` set: test-seam answer ("I"/"" → init, "A" → abort).
+ * - Neither set: git preflight is skipped entirely (legacy / library call).
+ */
+function resolveGitInitDecision(args: RunInitArgs): boolean | null {
+  // Non-interactive: --yes flag.
+  if (args.yes === true) return true;
+
+  // Test seam: caller injected an answer.
+  if (args.gitInitAnswer !== undefined) {
+    const answer = args.gitInitAnswer.trim().toUpperCase();
+    // Empty string or "I" → init (default). Anything else → abort.
+    return answer !== "A";
+  }
+
+  // Neither flag set — skip the git preflight (backward-compatible).
+  return null;
+}
+
+// ---------- main entry point ----------
+
 export function runInit(args: RunInitArgs): RunInitResult {
   const samoDir = path.join(args.cwd, ".samo");
   const configPath = path.join(samoDir, "config.json");
@@ -215,6 +325,50 @@ export function runInit(args: RunInitArgs): RunInitResult {
   const gistsDir = path.join(cacheDir, "gists");
 
   const messages: string[] = [];
+
+  // ---- git preflight (#72 / #65) ----
+  //
+  // Only active when the caller opts in via `yes: true` or `gitInitAnswer`.
+  // This keeps the function backward-compatible for callers that don't need
+  // the git-init dance (e.g. existing tests that set up `.samo/` directly).
+
+  if (!hasGitDir(args.cwd)) {
+    // No .git at all — maybe offer to initialize (#72).
+    const decision = resolveGitInitDecision(args);
+    if (decision === null) {
+      // Caller did not opt in to the git preflight — skip silently.
+    } else if (!decision) {
+      // User chose to abort (interactive "A").
+      return {
+        exitCode: 3,
+        stdout: "",
+        stderr: "samospec: aborted — no git repo initialized.\n",
+      };
+    } else {
+      // decision === true: proceed with git init.
+      const err = initGitRepo(args.cwd);
+      if (err !== null) {
+        return {
+          exitCode: 1,
+          stdout: "",
+          stderr: `samospec: git init failed: ${err}\n`,
+        };
+      }
+      messages.push("created git repo and initial commit (chore: init)");
+    }
+  } else if (hasGitDir(args.cwd) && !hasHead(args.cwd)) {
+    // .git exists but no commits yet (#65 — empty repo).
+    // Auto-create initial commit; no prompt needed (always safe).
+    const err = createInitialCommit(args.cwd);
+    if (err !== null) {
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: `samospec: failed to create initial commit: ${err}\n`,
+      };
+    }
+    messages.push("no commits found — created initial commit (chore: init)");
+  }
 
   // Is there already a config.json to merge against?
   const existedBefore = existsSync(configPath);

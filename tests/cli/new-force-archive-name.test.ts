@@ -64,135 +64,121 @@ describe("makeArchiveTimestamp — format", () => {
 });
 
 describe("archiveSlugDir — naming", () => {
-  test(
-    "renames slug dir to <slug>.archived-<ts>/ (NOT .bak.<ts>)",
-    () => {
-      const slug = "myslug";
-      const slugDir = path.join(specsDir, slug);
-      mkdirSync(slugDir);
-      writeFileSync(path.join(slugDir, "state.json"), '{"slug":"myslug"}');
+  test("renames slug dir to <slug>.archived-<ts>/ (NOT .bak.<ts>)", () => {
+    const slug = "myslug";
+    const slugDir = path.join(specsDir, slug);
+    mkdirSync(slugDir);
+    writeFileSync(path.join(slugDir, "state.json"), '{"slug":"myslug"}');
 
-      const result = archiveSlugDir({ specsDir, slug, now: new Date("2026-04-20T21:44:33Z") });
+    const result = archiveSlugDir({
+      specsDir,
+      slug,
+      now: new Date("2026-04-20T21:44:33Z"),
+    });
 
-      expect(result.kind).toBe("archived");
-      const r = result as Extract<ArchiveResult, { kind: "archived" }>;
+    expect(result.kind).toBe("archived");
+    const r = result as Extract<ArchiveResult, { kind: "archived" }>;
 
-      // Must not contain ".bak."
-      expect(r.archivedPath).not.toContain(".bak.");
-      // Must match the .archived-<ts> pattern.
-      const basename = path.basename(r.archivedPath);
-      expect(ARCHIVE_DIR_RE.test(basename)).toBe(true);
-      expect(basename).toContain(".archived-2026-04-20T214433Z");
+    // Must not contain ".bak."
+    expect(r.archivedPath).not.toContain(".bak.");
+    // Must match the .archived-<ts> pattern.
+    const basename = path.basename(r.archivedPath);
+    expect(ARCHIVE_DIR_RE.test(basename)).toBe(true);
+    expect(basename).toContain(".archived-2026-04-20T214433Z");
 
-      // Slug dir must no longer exist at its original path.
-      expect(existsSync(slugDir)).toBe(false);
-      // Archived dir must exist.
-      expect(existsSync(r.archivedPath)).toBe(true);
-    },
-  );
+    // Slug dir must no longer exist at its original path.
+    expect(existsSync(slugDir)).toBe(false);
+    // Archived dir must exist.
+    expect(existsSync(r.archivedPath)).toBe(true);
+  });
 
-  test(
-    "archived dir lives inside .samo/spec/ (same parent as slug dir)",
-    () => {
-      const slug = "proj";
-      const slugDir = path.join(specsDir, slug);
-      mkdirSync(slugDir);
+  test("archived dir lives inside .samo/spec/ (same parent as slug dir)", () => {
+    const slug = "proj";
+    const slugDir = path.join(specsDir, slug);
+    mkdirSync(slugDir);
 
-      const result = archiveSlugDir({
-        specsDir,
-        slug,
-        now: new Date("2026-04-20T10:00:00Z"),
-      });
+    const result = archiveSlugDir({
+      specsDir,
+      slug,
+      now: new Date("2026-04-20T10:00:00Z"),
+    });
 
-      expect(result.kind).toBe("archived");
-      const r = result as Extract<ArchiveResult, { kind: "archived" }>;
-      // Parent dir of the archive must be specsDir.
-      expect(path.dirname(r.archivedPath)).toBe(specsDir);
-    },
-  );
+    expect(result.kind).toBe("archived");
+    const r = result as Extract<ArchiveResult, { kind: "archived" }>;
+    // Parent dir of the archive must be specsDir.
+    expect(path.dirname(r.archivedPath)).toBe(specsDir);
+  });
 });
 
 describe("archiveSlugDir — collision handling", () => {
-  test(
-    "two calls with the same timestamp produce distinct archive dirs",
-    () => {
-      const slug = "demo";
-      const now = new Date("2026-04-20T12:00:00Z");
+  test("two calls with the same timestamp produce distinct archive dirs", () => {
+    const slug = "demo";
+    const now = new Date("2026-04-20T12:00:00Z");
 
-      // First run.
-      mkdirSync(path.join(specsDir, slug));
-      const r1 = archiveSlugDir({ specsDir, slug, now });
-      expect(r1.kind).toBe("archived");
+    // First run.
+    mkdirSync(path.join(specsDir, slug));
+    const r1 = archiveSlugDir({ specsDir, slug, now });
+    expect(r1.kind).toBe("archived");
 
-      // Second run (same timestamp, recreate slug dir).
-      mkdirSync(path.join(specsDir, slug));
-      const r2 = archiveSlugDir({ specsDir, slug, now });
-      expect(r2.kind).toBe("archived");
+    // Second run (same timestamp, recreate slug dir).
+    mkdirSync(path.join(specsDir, slug));
+    const r2 = archiveSlugDir({ specsDir, slug, now });
+    expect(r2.kind).toBe("archived");
 
-      const p1 = (r1 as Extract<ArchiveResult, { kind: "archived" }>)
-        .archivedPath;
-      const p2 = (r2 as Extract<ArchiveResult, { kind: "archived" }>)
-        .archivedPath;
+    const p1 = (r1 as Extract<ArchiveResult, { kind: "archived" }>)
+      .archivedPath;
+    const p2 = (r2 as Extract<ArchiveResult, { kind: "archived" }>)
+      .archivedPath;
 
-      // Must be distinct paths.
-      expect(p1).not.toBe(p2);
-      // Both must exist.
-      expect(existsSync(p1)).toBe(true);
-      expect(existsSync(p2)).toBe(true);
+    // Must be distinct paths.
+    expect(p1).not.toBe(p2);
+    // Both must exist.
+    expect(existsSync(p1)).toBe(true);
+    expect(existsSync(p2)).toBe(true);
 
-      // Second dir should have a collision suffix like -1.
-      const b2 = path.basename(p2);
-      expect(b2).toMatch(/-\d+$/);
-    },
-  );
+    // Second dir should have a collision suffix like -1.
+    const b2 = path.basename(p2);
+    expect(b2).toMatch(/-\d+$/);
+  });
 
-  test(
-    "third collision produces -2 suffix",
-    () => {
-      const slug = "demo";
-      const now = new Date("2026-04-20T12:00:00Z");
+  test("third collision produces -2 suffix", () => {
+    const slug = "demo";
+    const now = new Date("2026-04-20T12:00:00Z");
 
-      mkdirSync(path.join(specsDir, slug));
-      const r1 = archiveSlugDir({ specsDir, slug, now });
-      mkdirSync(path.join(specsDir, slug));
-      const r2 = archiveSlugDir({ specsDir, slug, now });
-      mkdirSync(path.join(specsDir, slug));
-      const r3 = archiveSlugDir({ specsDir, slug, now });
+    mkdirSync(path.join(specsDir, slug));
+    const r1 = archiveSlugDir({ specsDir, slug, now });
+    mkdirSync(path.join(specsDir, slug));
+    const r2 = archiveSlugDir({ specsDir, slug, now });
+    mkdirSync(path.join(specsDir, slug));
+    const r3 = archiveSlugDir({ specsDir, slug, now });
 
-      expect(r1.kind).toBe("archived");
-      expect(r2.kind).toBe("archived");
-      expect(r3.kind).toBe("archived");
+    expect(r1.kind).toBe("archived");
+    expect(r2.kind).toBe("archived");
+    expect(r3.kind).toBe("archived");
 
-      const paths = [r1, r2, r3].map(
-        (r) =>
-          (r as Extract<ArchiveResult, { kind: "archived" }>).archivedPath,
-      );
-      // All distinct.
-      expect(new Set(paths).size).toBe(3);
-      // All exist.
-      for (const p of paths) expect(existsSync(p)).toBe(true);
-    },
-  );
+    const paths = [r1, r2, r3].map(
+      (r) => (r as Extract<ArchiveResult, { kind: "archived" }>).archivedPath,
+    );
+    // All distinct.
+    expect(new Set(paths).size).toBe(3);
+    // All exist.
+    for (const p of paths) expect(existsSync(p)).toBe(true);
+  });
 });
 
 describe("archiveSlugDir — listing existing archives", () => {
-  test(
-    "archived dirs appear in readdirSync of specsDir",
-    () => {
-      const slug = "report";
-      mkdirSync(path.join(specsDir, slug));
-      archiveSlugDir({
-        specsDir,
-        slug,
-        now: new Date("2026-04-20T09:30:00Z"),
-      });
+  test("archived dirs appear in readdirSync of specsDir", () => {
+    const slug = "report";
+    mkdirSync(path.join(specsDir, slug));
+    archiveSlugDir({
+      specsDir,
+      slug,
+      now: new Date("2026-04-20T09:30:00Z"),
+    });
 
-      const entries = readdirSync(specsDir);
-      // At least one entry matching the archive pattern.
-      const archiveEntries = entries.filter((e) =>
-        e.includes(".archived-"),
-      );
-      expect(archiveEntries.length).toBeGreaterThan(0);
-    },
-  );
+    const entries = readdirSync(specsDir);
+    // At least one entry matching the archive pattern.
+    const archiveEntries = entries.filter((e) => e.includes(".archived-"));
+    expect(archiveEntries.length).toBeGreaterThan(0);
+  });
 });

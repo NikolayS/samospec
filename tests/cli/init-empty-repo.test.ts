@@ -74,61 +74,49 @@ afterEach(() => {
 });
 
 describe("samospec init — empty repo (no commits) (#65)", () => {
-  test(
-    "git init repo with no commits: auto-creates initial commit and exits 0",
-    () => {
-      initEmptyRepo(tmp);
-      // Confirm empty repo: HEAD is not resolvable yet.
-      expect(headCommit(tmp)).toBeNull();
+  test("git init repo with no commits: auto-creates initial commit and exits 0", () => {
+    initEmptyRepo(tmp);
+    // Confirm empty repo: HEAD is not resolvable yet.
+    expect(headCommit(tmp)).toBeNull();
 
-      const result = runInit({ cwd: tmp });
+    const result = runInit({ cwd: tmp });
 
-      expect(result.exitCode).toBe(0);
-      // An initial commit should now exist.
-      expect(headCommit(tmp)).not.toBeNull();
-      // .samo/ created.
-      expect(existsSync(path.join(tmp, ".samo", "config.json"))).toBe(true);
-    },
-  );
+    expect(result.exitCode).toBe(0);
+    // An initial commit should now exist.
+    expect(headCommit(tmp)).not.toBeNull();
+    // .samo/ created.
+    expect(existsSync(path.join(tmp, ".samo", "config.json"))).toBe(true);
+  });
 
-  test(
-    "empty repo: auto-commit message logged to stdout",
-    () => {
-      initEmptyRepo(tmp);
+  test("empty repo: auto-commit message logged to stdout", () => {
+    initEmptyRepo(tmp);
 
-      const result = runInit({ cwd: tmp });
+    const result = runInit({ cwd: tmp });
 
-      expect(result.exitCode).toBe(0);
-      // Must log that it created an initial commit.
-      expect(result.stdout.toLowerCase()).toMatch(
-        /initial commit|no commits|created initial commit/,
-      );
-    },
-  );
+    expect(result.exitCode).toBe(0);
+    // Must log that it created an initial commit.
+    expect(result.stdout.toLowerCase()).toMatch(
+      /initial commit|no commits|created initial commit/,
+    );
+  });
 
-  test(
-    "empty repo: initial commit subject is 'chore: init'",
-    () => {
-      initEmptyRepo(tmp);
+  test("empty repo: initial commit subject is 'chore: init'", () => {
+    initEmptyRepo(tmp);
 
-      runInit({ cwd: tmp });
+    runInit({ cwd: tmp });
 
-      expect(logMessages(tmp)).toContain("chore: init");
-    },
-  );
+    expect(logMessages(tmp)).toContain("chore: init");
+  });
 
-  test(
-    "empty repo: proceeds without crashing (no git rev-parse error surfaced)",
-    () => {
-      initEmptyRepo(tmp);
+  test("empty repo: proceeds without crashing (no git rev-parse error surfaced)", () => {
+    initEmptyRepo(tmp);
 
-      const result = runInit({ cwd: tmp });
+    const result = runInit({ cwd: tmp });
 
-      // Must not error out with git-layer confusion.
-      expect(result.exitCode).toBe(0);
-      expect(result.stderr).not.toMatch(
-        /fatal:|branch creation skipped.*HEAD|status 128/i,
-      );
-    },
-  );
+    // Must not error out with git-layer confusion.
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).not.toMatch(
+      /fatal:|branch creation skipped.*HEAD|status 128/i,
+    );
+  });
 });
