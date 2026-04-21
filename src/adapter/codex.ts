@@ -523,26 +523,34 @@ export class CodexAdapter implements Adapter {
         detail: `spawn_error: ${first.detail ?? ""}`,
       };
     }
-    if (first.exitCode !== 0) {
-      return classifyExit(first.exitCode, first.stderr);
-    }
-
-    // Bug #54: Codex exits 0 and writes the error JSON to stdout when
-    // the model is not supported under ChatGPT-account auth. Detect
-    // this before the schema-parse / repair path so it is correctly
-    // classified as model_unavailable rather than schema_violation.
+    // Bug #54 + #88-1: Codex may write an API-level error JSON to stdout
+    // with either exit 0 (original #54 case) or exit 1 (ChatGPT-auth
+    // pinned-model rejection seen in #88). Check stdout for the error
+    // signature BEFORE classifyExit so the correct model_unavailable
+    // classification is returned regardless of exit code, allowing the
+    // fallback chain to trigger.
     const stdoutApiError = classifyStdoutApiError(first.stdout);
     if (stdoutApiError !== null) {
       return stdoutApiError;
+    }
+
+    if (first.exitCode !== 0) {
+      return classifyExit(first.exitCode, first.stderr);
     }
 
     if (!args.structured) {
       return { ok: true, value: first.stdout };
     }
 
-    const parsed = preParseJson(first.stdout);
+    // Bug #88-2: codex exec wraps the JSON response in an agentic
+    // header/footer. Extract the JSON block from between the "codex\n"
+    // marker and the "tokens used" footer (Option A from the spec).
+    const agenticExtracted = extractCodexAgenticJson(first.stdout);
+    const rawToparse = agenticExtracted ?? first.stdout;
+
+    const parsed = preParseJson(rawToparse);
     if (parsed.ok) {
-      return { ok: true, value: first.stdout };
+      return { ok: true, value: rawToparse };
     }
 
     // Structured violation -> ONE repair retry on this model.
@@ -565,17 +573,21 @@ export class CodexAdapter implements Adapter {
         detail: `spawn_error: ${repair.detail ?? ""}`,
       };
     }
-    if (repair.exitCode !== 0) {
-      return classifyExit(repair.exitCode, repair.stderr);
-    }
-
-    // Also check the repair response for API-level errors (#54).
+    // Also check the repair response for API-level errors (#54 / #88-1).
     const repairApiError = classifyStdoutApiError(repair.stdout);
     if (repairApiError !== null) {
       return repairApiError;
     }
 
-    const parsedRepair = preParseJson(repair.stdout);
+    if (repair.exitCode !== 0) {
+      return classifyExit(repair.exitCode, repair.stderr);
+    }
+
+    // Apply agentic-wrapper extraction to repair response too (#88-2).
+    const repairExtracted = extractCodexAgenticJson(repair.stdout);
+    const repairRaw = repairExtracted ?? repair.stdout;
+
+    const parsedRepair = preParseJson(repairRaw);
     if (!parsedRepair.ok) {
       return {
         ok: false,
@@ -583,7 +595,7 @@ export class CodexAdapter implements Adapter {
         detail: parsedRepair.error.message,
       };
     }
-    return { ok: true, value: repair.stdout };
+    return { ok: true, value: repairRaw };
   }
 
   private async spawnOnce(args: {
@@ -701,6 +713,65 @@ function buildFallbackChain(
 }
 
 // ---------- response parsing ----------
+
+// Bug #88-2 (Option A): Extract the JSON block from agentic-wrapper
+// stdout emitted by `codex exec`.
+//
+// `codex exec` emits a multi-section banner:
+//   Reading prompt from stdin...
+//   OpenAI Codex v0.120.0 (research preview)
+//   --------
+//   workdir: ...  model: ...  [other metadata]
+//   --------
+//   user
+//   <prompt echo>
+//
+//   codex       ← locate this marker (exact line, no leading spaces)
+//   <JSON>      ← starts here
+//
+//   tokens used ← ends before this line (if present)
+//   2561
+//
+//   <JSON repeated>
+//
+// Returns the extracted JSON text, or null when the marker is absent
+// (plain output — callers fall back to the raw string).
+function extractCodexAgenticJson(raw: string): string | null {
+  // Find "codex\n" on its own line (case-sensitive, no leading whitespace).
+  // We use a line-by-line scan so we don't split on mid-JSON content.
+  const lines = raw.split("\n");
+  let codexLineIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i] === "codex") {
+      codexLineIdx = i;
+      break;
+    }
+  }
+  if (codexLineIdx === -1) {
+    return null;
+  }
+
+  // Collect lines from codexLineIdx+1 until "tokens used" or EOF.
+  const jsonLines: string[] = [];
+  for (let i = codexLineIdx + 1; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (line === "tokens used") {
+      break;
+    }
+    jsonLines.push(line);
+  }
+
+  // Trim trailing blank lines so JSON.parse sees a clean object.
+  while (
+    jsonLines.length > 0 &&
+    (jsonLines[jsonLines.length - 1] ?? "").trim() === ""
+  ) {
+    jsonLines.pop();
+  }
+
+  const extracted = jsonLines.join("\n");
+  return extracted.length > 0 ? extracted : null;
+}
 
 function parseStructuredJson(
   raw: string,

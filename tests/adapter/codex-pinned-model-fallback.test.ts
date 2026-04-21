@@ -34,10 +34,11 @@ function makeSpy(responses: readonly SpawnCliResult[]): SpawnSpy {
   const spawn = (input: SpawnCliInput): Promise<SpawnCliResult> => {
     calls.push({ cmd: [...input.cmd] });
     const idx = calls.length - 1;
-    const result =
-      responses[idx] ?? responses[responses.length - 1];
+    const result = responses[idx] ?? responses[responses.length - 1];
     if (result === undefined) {
-      throw new Error("makeSpy: no response configured for call " + String(idx));
+      throw new Error(
+        "makeSpy: no response configured for call " + String(idx),
+      );
     }
     return Promise.resolve(result);
   };
@@ -66,14 +67,15 @@ function makePinnedModelExit1Response(model: string): SpawnCliResult {
   return {
     ok: true,
     exitCode: 1,
-    stdout: JSON.stringify({
-      type: "error",
-      status: 400,
-      error: {
-        type: "invalid_request_error",
-        message: `The '${model}' model is not supported when using Codex with a ChatGPT account.`,
-      },
-    }) + "\n",
+    stdout:
+      JSON.stringify({
+        type: "error",
+        status: 400,
+        error: {
+          type: "invalid_request_error",
+          message: `The '${model}' model is not supported when using Codex with a ChatGPT account.`,
+        },
+      }) + "\n",
     stderr: "",
   };
 }
@@ -88,133 +90,121 @@ const ACCOUNT_DEFAULT_OK: SpawnCliResult = {
 // ---------- Bug #88-1a: classifier must return model_unavailable ----------
 
 describe("Bug #88-1: exit-1 + invalid_request_error stdout → model_unavailable", () => {
-  test(
-    "classifies exit-1 invalid_request_error stdout as model_unavailable, not other/schema_violation",
-    async () => {
-      // Single-model, no account-default: isolates the classification.
-      const spy = makeSpy([makePinnedModelExit1Response("gpt-5.1-codex-max")]);
-      const adapter = new CodexAdapter({
-        host: FAKE_HOST,
-        spawn: spy.spawn,
-        binary: "/usr/bin/codex",
-        models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
-        accountDefaultFallback: false,
-      });
+  test("classifies exit-1 invalid_request_error stdout as model_unavailable, not other/schema_violation", async () => {
+    // Single-model, no account-default: isolates the classification.
+    const spy = makeSpy([makePinnedModelExit1Response("gpt-5.1-codex-max")]);
+    const adapter = new CodexAdapter({
+      host: FAKE_HOST,
+      spawn: spy.spawn,
+      binary: "/usr/bin/codex",
+      models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+      accountDefaultFallback: false,
+    });
 
-      let err: unknown;
-      try {
-        await adapter.ask(sampleAsk());
-      } catch (e) {
-        err = e;
-      }
+    let err: unknown;
+    try {
+      await adapter.ask(sampleAsk());
+    } catch (e) {
+      err = e;
+    }
 
-      expect(err).toBeInstanceOf(CodexAdapterError);
-      if (err instanceof CodexAdapterError) {
-        // Must be model_unavailable so the fallback chain can trigger.
-        expect(err.payload.reason).toBe("model_unavailable");
-        // Must NOT be misclassified as schema_violation or other.
-        expect(err.payload.reason).not.toBe("schema_violation");
-        expect(err.payload.reason).not.toBe("other");
-      }
+    expect(err).toBeInstanceOf(CodexAdapterError);
+    if (err instanceof CodexAdapterError) {
+      // Must be model_unavailable so the fallback chain can trigger.
+      expect(err.payload.reason).toBe("model_unavailable");
+      // Must NOT be misclassified as schema_violation or other.
+      expect(err.payload.reason).not.toBe("schema_violation");
+      expect(err.payload.reason).not.toBe("other");
+    }
 
-      // Only one spawn — no spurious repair retry on model_unavailable.
-      expect(spy.calls.length).toBe(1);
-    },
-  );
+    // Only one spawn — no spurious repair retry on model_unavailable.
+    expect(spy.calls.length).toBe(1);
+  });
 
-  test(
-    "exit-1 invalid_request_error with 'not supported' substring → model_unavailable",
-    async () => {
-      const payload: SpawnCliResult = {
-        ok: true,
-        exitCode: 1,
-        stdout:
-          "Reading prompt from stdin...\nOpenAI Codex v0.120.0 (research preview)\n" +
-          "--------\nworkdir: /private/tmp/x\nmodel: gpt-5.1-codex-max\n--------\n" +
-          JSON.stringify({
-            type: "error",
-            status: 400,
-            error: {
-              type: "invalid_request_error",
-              message:
-                "The 'gpt-5.1-codex-max' model is not supported when using Codex with a ChatGPT account.",
-            },
-          }) +
-          "\n",
-        stderr: "",
-      };
-      const spy = makeSpy([payload]);
-      const adapter = new CodexAdapter({
-        host: FAKE_HOST,
-        spawn: spy.spawn,
-        binary: "/usr/bin/codex",
-        models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
-        accountDefaultFallback: false,
-      });
+  test("exit-1 invalid_request_error with 'not supported' substring → model_unavailable", async () => {
+    const payload: SpawnCliResult = {
+      ok: true,
+      exitCode: 1,
+      stdout:
+        "Reading prompt from stdin...\nOpenAI Codex v0.120.0 (research preview)\n" +
+        "--------\nworkdir: /private/tmp/x\nmodel: gpt-5.1-codex-max\n--------\n" +
+        JSON.stringify({
+          type: "error",
+          status: 400,
+          error: {
+            type: "invalid_request_error",
+            message:
+              "The 'gpt-5.1-codex-max' model is not supported when using Codex with a ChatGPT account.",
+          },
+        }) +
+        "\n",
+      stderr: "",
+    };
+    const spy = makeSpy([payload]);
+    const adapter = new CodexAdapter({
+      host: FAKE_HOST,
+      spawn: spy.spawn,
+      binary: "/usr/bin/codex",
+      models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+      accountDefaultFallback: false,
+    });
 
-      let err: unknown;
-      try {
-        await adapter.ask(sampleAsk());
-      } catch (e) {
-        err = e;
-      }
-      expect(err).toBeInstanceOf(CodexAdapterError);
-      if (err instanceof CodexAdapterError) {
-        expect(err.payload.reason).toBe("model_unavailable");
-      }
-    },
-  );
+    let err: unknown;
+    try {
+      await adapter.ask(sampleAsk());
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CodexAdapterError);
+    if (err instanceof CodexAdapterError) {
+      expect(err.payload.reason).toBe("model_unavailable");
+    }
+  });
 });
 
 // ---------- Bug #88-1b: fallback chain must trigger ----------
 
 describe("Bug #88-1 fallback: exit-1 invalid_request_error fires account-default fallback", () => {
-  test(
-    "gpt-5.1-codex-max exit-1 → gpt-5.1-codex exit-1 → account-default (no --model) succeeds",
-    async () => {
-      const spy = makeSpy([
-        makePinnedModelExit1Response("gpt-5.1-codex-max"),
-        makePinnedModelExit1Response("gpt-5.1-codex"),
-        ACCOUNT_DEFAULT_OK,
-      ]);
-      const adapter = new CodexAdapter({
-        host: FAKE_HOST,
-        spawn: spy.spawn,
-        binary: "/usr/bin/codex",
-      });
+  test("gpt-5.1-codex-max exit-1 → gpt-5.1-codex exit-1 → account-default (no --model) succeeds", async () => {
+    const spy = makeSpy([
+      makePinnedModelExit1Response("gpt-5.1-codex-max"),
+      makePinnedModelExit1Response("gpt-5.1-codex"),
+      ACCOUNT_DEFAULT_OK,
+    ]);
+    const adapter = new CodexAdapter({
+      host: FAKE_HOST,
+      spawn: spy.spawn,
+      binary: "/usr/bin/codex",
+    });
 
-      const out = await adapter.ask(sampleAsk());
-      expect(out.answer).toBe("account-default-ok");
+    const out = await adapter.ask(sampleAsk());
+    expect(out.answer).toBe("account-default-ok");
 
-      // Three spawns: pinned-max (fail), pinned (fail), account-default (ok).
-      expect(spy.calls.length).toBe(3);
+    // Three spawns: pinned-max (fail), pinned (fail), account-default (ok).
+    expect(spy.calls.length).toBe(3);
 
-      // Third call must NOT contain --model.
-      const thirdCmd = spy.calls[2]?.cmd ?? [];
-      expect(thirdCmd).not.toContain("--model");
+    // Third call must NOT contain --model.
+    const thirdCmd = spy.calls[2]?.cmd ?? [];
+    expect(thirdCmd).not.toContain("--model");
 
-      // First two calls DID contain --model.
-      expect(spy.calls[0]?.cmd).toContain("--model");
-      expect(spy.calls[1]?.cmd).toContain("--model");
-    },
-  );
+    // First two calls DID contain --model.
+    expect(spy.calls[0]?.cmd).toContain("--model");
+    expect(spy.calls[1]?.cmd).toContain("--model");
+  });
 
-  test(
-    "exit-1 invalid_request_error with account-default succeeds → account_default: true in output",
-    async () => {
-      const spy = makeSpy([
-        makePinnedModelExit1Response("gpt-5.1-codex-max"),
-        makePinnedModelExit1Response("gpt-5.1-codex"),
-        ACCOUNT_DEFAULT_OK,
-      ]);
-      const adapter = new CodexAdapter({
-        host: FAKE_HOST,
-        spawn: spy.spawn,
-        binary: "/usr/bin/codex",
-      });
+  test("exit-1 invalid_request_error with account-default succeeds → account_default: true in output", async () => {
+    const spy = makeSpy([
+      makePinnedModelExit1Response("gpt-5.1-codex-max"),
+      makePinnedModelExit1Response("gpt-5.1-codex"),
+      ACCOUNT_DEFAULT_OK,
+    ]);
+    const adapter = new CodexAdapter({
+      host: FAKE_HOST,
+      spawn: spy.spawn,
+      binary: "/usr/bin/codex",
+    });
 
-      const out = await adapter.ask(sampleAsk());
-      expect((out as Record<string, unknown>)["account_default"]).toBe(true);
-    },
-  );
+    const out = await adapter.ask(sampleAsk());
+    expect((out as Record<string, unknown>)["account_default"]).toBe(true);
+  });
 });
