@@ -11,27 +11,18 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   appendRoundDecisions,
+  reviseDecisionsToReviewDecisions,
   type AppendRoundDecisionsInput,
 } from "../../src/loop/decisions.ts";
 import type { ReviseOutput } from "../../src/adapter/types.ts";
 
-// Helper to build decisions from ReviseOutput.decisions array
+// Build decisions from ReviseOutput.decisions via the real exported
+// helper so this file stays aligned with production behavior — notably
+// the `#?`-placeholder-free substitution landed in #95.
 function decisionsFromReviseOutput(
   reviseOutput: ReviseOutput,
 ): AppendRoundDecisionsInput["entries"] {
-  if (
-    reviseOutput.decisions === undefined ||
-    reviseOutput.decisions === null ||
-    reviseOutput.decisions.length === 0
-  ) {
-    return [];
-  }
-  // Map from ReviseOutput decision format to ReviewDecision format
-  return reviseOutput.decisions.map((d) => ({
-    finding_ref: d.finding_id ?? `${d.category}#?`,
-    decision: d.verdict,
-    rationale: d.rationale,
-  }));
+  return reviseDecisionsToReviewDecisions(reviseOutput.decisions);
 }
 
 let tmpDir: string;
