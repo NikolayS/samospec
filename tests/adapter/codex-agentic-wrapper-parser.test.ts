@@ -92,11 +92,11 @@ function makeAgenticWrapperStdout(prompt: string, jsonPayload: string): string {
 
 interface SpawnSpy {
   readonly spawn: (input: SpawnCliInput) => Promise<SpawnCliResult>;
-  readonly calls: Array<{ cmd: readonly string[] }>;
+  readonly calls: { cmd: readonly string[] }[];
 }
 
 function makeSpy(response: SpawnCliResult): SpawnSpy {
-  const calls: Array<{ cmd: readonly string[] }> = [];
+  const calls: { cmd: readonly string[] }[] = [];
   const spawn = (input: SpawnCliInput): Promise<SpawnCliResult> => {
     calls.push({ cmd: [...input.cmd] });
     return Promise.resolve(response);
@@ -307,7 +307,7 @@ describe("Bug #88-2: full agentic wrapper via fake-CLI fixture (contract path)",
     const spy: SpawnSpy = {
       calls: [],
       spawn: (input: SpawnCliInput): Promise<SpawnCliResult> => {
-        (spy.calls as Array<{ cmd: readonly string[] }>).push({
+        (spy.calls as { cmd: readonly string[] }[]).push({
           cmd: [...input.cmd],
         });
         capturedStdin = input.stdin;
