@@ -100,6 +100,11 @@ import {
   classifyLeadTerminal,
   formatLeadTerminalMessage,
 } from "./terminal-messages.ts";
+import {
+  createProgressReporter,
+  type ProgressOptions,
+  type ProgressReporter,
+} from "./iterate-progress.ts";
 
 // ---------- constants ----------
 
@@ -194,6 +199,16 @@ export interface IterateInput {
    * Absent = local-only, no consent prompt, no push attempts.
    */
   readonly pushOptions?: PushOptions;
+  /**
+   * Issue #101: when true, suppress per-phase progress + heartbeat.
+   * Final summary lines still go to stdout. Default: false (verbose).
+   */
+  readonly quiet?: boolean;
+  /**
+   * Issue #101: test-injection surface for clock + scheduler so the
+   * heartbeat can be exercised without real wall-clock sleeps.
+   */
+  readonly progress?: ProgressOptions;
 }
 
 export interface IterateResult {
@@ -216,6 +231,17 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
   const error = (line: string): void => {
     errLines.push(line);
   };
+  // Issue #101: progress + heartbeat stream. Everything the reporter
+  // emits lands on stderr alongside actual errors — never on stdout,
+  // so stdout-parsing scripts don't break. When `quiet: true`, the
+  // reporter returned here is a no-op shim.
+  const progress: ProgressReporter = createProgressReporter({
+    emit: (line: string): void => {
+      errLines.push(line);
+    },
+    quiet: input.quiet ?? false,
+    ...(input.progress !== undefined ? { options: input.progress } : {}),
+  });
 
   const paths = specPaths(input.cwd, input.slug);
 
@@ -471,6 +497,17 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         // lead's revise() prompt carries the AUTHORITATIVE framing.
         const ideaForRound = state.input?.idea;
 
+        // Issue #101: announce the round and wrap each adapter so its
+        // critique/revise call emits start/complete progress lines +
+        // joins the heartbeat tracker. The wrapper is per-round so
+        // identities (adapter vendor + state model_id) stay fresh.
+        progress.roundStart(roundIndex);
+        const wrappedAdapters = wrapAdaptersForProgress(
+          input.adapters,
+          currentState,
+          progress,
+        );
+
         // Run the round.
         const roundOutcome = await runRound({
           now: input.now,
@@ -478,7 +515,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
           dirs,
           specText: currentSpec,
           decisionsHistory,
-          adapters: input.adapters,
+          adapters: wrappedAdapters,
           critiqueTimeoutMs: callTimeouts.criticA_ms,
           reviseTimeoutMs: callTimeouts.revise_ms,
           ...(manualEditDirective !== undefined ? { manualEditDirective } : {}),
@@ -830,6 +867,9 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
     }
   } finally {
     releaseLock(handle);
+    // Issue #101: always tear down the heartbeat timer so a stray
+    // setInterval doesn't keep the process alive past `iterate`.
+    progress.shutdown();
   }
 }
 
@@ -1138,4 +1178,77 @@ function finishIterate(args: FinishArgs): IterateResult {
 // Used by tests: re-read decisions.md into something structured.
 export function readDecisions(file: string): string {
   return readDecisionsFile(file);
+}
+
+// ---------- progress wrapping (#101) ----------
+
+/**
+ * Build progress-aware proxies around the real adapters. Each proxy
+ * forwards the call to its underlying adapter but also:
+ *   - emits a "<role> starting" line before the call
+ *   - joins the heartbeat tracker for the duration of the call
+ *   - emits a "<role> complete (Xs, ...)" line after the call resolves
+ *
+ * The proxy is fully transparent in behaviour — same return values,
+ * same error propagation — so `runRound`'s retry / partial-failure
+ * paths stay untouched. Identity strings are derived from the
+ * adapter's `vendor` + the state's persisted `adapters.<role>.model_id`
+ * when available, falling back to `vendor` alone.
+ */
+function wrapAdaptersForProgress(
+  adapters: IterateInput["adapters"],
+  state: State,
+  progress: ProgressReporter,
+): IterateInput["adapters"] {
+  const stateAdapters = state.adapters ?? {};
+  const leadIdentity = stateAdapters.lead?.model_id ?? adapters.lead.vendor;
+  const reviewerAIdentity =
+    stateAdapters.reviewer_a?.model_id ?? adapters.reviewerA.vendor;
+  const reviewerBIdentity =
+    stateAdapters.reviewer_b?.model_id ?? adapters.reviewerB.vendor;
+
+  return {
+    lead: {
+      ...adapters.lead,
+      revise: async (input) => {
+        const handle = progress.beginLead(leadIdentity);
+        try {
+          const out = await adapters.lead.revise(input);
+          handle.complete(undefined);
+          return out;
+        } catch (err) {
+          handle.abort();
+          throw err;
+        }
+      },
+    },
+    reviewerA: {
+      ...adapters.reviewerA,
+      critique: async (input) => {
+        const handle = progress.beginReviewer("reviewer_a", reviewerAIdentity);
+        try {
+          const out = await adapters.reviewerA.critique(input);
+          handle.complete({ findings: out.findings.length });
+          return out;
+        } catch (err) {
+          handle.abort();
+          throw err;
+        }
+      },
+    },
+    reviewerB: {
+      ...adapters.reviewerB,
+      critique: async (input) => {
+        const handle = progress.beginReviewer("reviewer_b", reviewerBIdentity);
+        try {
+          const out = await adapters.reviewerB.critique(input);
+          handle.complete({ findings: out.findings.length });
+          return out;
+        } catch (err) {
+          handle.abort();
+          throw err;
+        }
+      },
+    },
+  };
 }

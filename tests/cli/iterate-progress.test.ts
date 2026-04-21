@@ -241,9 +241,7 @@ function slowAdapter(
   reviseOut: ReviseOutput,
   steps: StubScheduler,
 ): Adapter {
-  const waitUntil = (
-    startMs: number,
-  ): Promise<void> =>
+  const waitUntil = (startMs: number): Promise<void> =>
     new Promise((resolve) => {
       const poll = (): void => {
         if (clock.now() - startMs >= delayMs) {
