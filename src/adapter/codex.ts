@@ -523,26 +523,36 @@ export class CodexAdapter implements Adapter {
         detail: `spawn_error: ${first.detail ?? ""}`,
       };
     }
-    if (first.exitCode !== 0) {
-      return classifyExit(first.exitCode, first.stderr);
+    // Bug #54 + #88-1 + #88-followup: Codex may write an API-level error
+    // JSON to EITHER stdout (exit 0 path) or stderr (exit 1 path — real
+    // codex CLI v0.120.0 shape under ChatGPT-auth rejection). Check both
+    // streams BEFORE classifyExit so the correct model_unavailable
+    // classification is returned regardless of exit code, allowing the
+    // fallback chain to trigger.
+    const apiError =
+      classifyApiErrorInText(first.stdout) ??
+      classifyApiErrorInText(first.stderr);
+    if (apiError !== null) {
+      return apiError;
     }
 
-    // Bug #54: Codex exits 0 and writes the error JSON to stdout when
-    // the model is not supported under ChatGPT-account auth. Detect
-    // this before the schema-parse / repair path so it is correctly
-    // classified as model_unavailable rather than schema_violation.
-    const stdoutApiError = classifyStdoutApiError(first.stdout);
-    if (stdoutApiError !== null) {
-      return stdoutApiError;
+    if (first.exitCode !== 0) {
+      return classifyExit(first.exitCode, first.stderr);
     }
 
     if (!args.structured) {
       return { ok: true, value: first.stdout };
     }
 
-    const parsed = preParseJson(first.stdout);
+    // Bug #88-2: codex exec wraps the JSON response in an agentic
+    // header/footer. Extract the JSON block from between the "codex\n"
+    // marker and the "tokens used" footer (Option A from the spec).
+    const agenticExtracted = extractCodexAgenticJson(first.stdout);
+    const rawToparse = agenticExtracted ?? first.stdout;
+
+    const parsed = preParseJson(rawToparse);
     if (parsed.ok) {
-      return { ok: true, value: first.stdout };
+      return { ok: true, value: rawToparse };
     }
 
     // Structured violation -> ONE repair retry on this model.
@@ -565,17 +575,24 @@ export class CodexAdapter implements Adapter {
         detail: `spawn_error: ${repair.detail ?? ""}`,
       };
     }
-    if (repair.exitCode !== 0) {
-      return classifyExit(repair.exitCode, repair.stderr);
-    }
-
-    // Also check the repair response for API-level errors (#54).
-    const repairApiError = classifyStdoutApiError(repair.stdout);
+    // Also check the repair response for API-level errors on either
+    // stream (#54 / #88-1 / #88-followup).
+    const repairApiError =
+      classifyApiErrorInText(repair.stdout) ??
+      classifyApiErrorInText(repair.stderr);
     if (repairApiError !== null) {
       return repairApiError;
     }
 
-    const parsedRepair = preParseJson(repair.stdout);
+    if (repair.exitCode !== 0) {
+      return classifyExit(repair.exitCode, repair.stderr);
+    }
+
+    // Apply agentic-wrapper extraction to repair response too (#88-2).
+    const repairExtracted = extractCodexAgenticJson(repair.stdout);
+    const repairRaw = repairExtracted ?? repair.stdout;
+
+    const parsedRepair = preParseJson(repairRaw);
     if (!parsedRepair.ok) {
       return {
         ok: false,
@@ -583,7 +600,7 @@ export class CodexAdapter implements Adapter {
         detail: parsedRepair.error.message,
       };
     }
-    return { ok: true, value: repair.stdout };
+    return { ok: true, value: repairRaw };
   }
 
   private async spawnOnce(args: {
@@ -702,6 +719,82 @@ function buildFallbackChain(
 
 // ---------- response parsing ----------
 
+// Bug #88-2 (Option A) + #88-followup: Extract the JSON block from
+// agentic-wrapper stdout emitted by `codex exec`.
+//
+// `codex exec` emits a multi-section banner:
+//   Reading prompt from stdin...
+//   OpenAI Codex v0.120.0 (research preview)
+//   --------
+//   workdir: ...  model: ...  [other metadata]
+//   --------
+//   user
+//   <prompt echo>          ← may itself contain a standalone `codex` line!
+//
+//   codex                  ← REAL response marker (after user-echo block)
+//   <JSON>                 ← starts here
+//
+//   tokens used            ← ends before this line (if present)
+//   2561
+//
+//   <JSON repeated>
+//
+// The response marker is a `codex` line followed by text starting with
+// `{` (the JSON object). A rogue `codex` mid-prompt-echo does NOT satisfy
+// this — it's followed by further prose. So we scan for the `codex`
+// line whose next non-blank line begins with `{`, which is the
+// structural signature of the real response.
+//
+// Returns the extracted JSON text, or null when the marker is absent
+// (plain output — callers fall back to the raw string).
+function extractCodexAgenticJson(raw: string): string | null {
+  const lines = raw.split("\n");
+
+  // Locate the response marker: a `codex` line where the next
+  // non-blank line begins with `{`. This correctly disambiguates a
+  // rogue `codex` token inside the user prompt (which is followed by
+  // narrative prose, not a JSON object).
+  let codexLineIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i] !== "codex") continue;
+    // Peek ahead for the next non-blank line.
+    let nextIdx = i + 1;
+    while (nextIdx < lines.length && (lines[nextIdx] ?? "").trim() === "") {
+      nextIdx++;
+    }
+    if (nextIdx >= lines.length) continue;
+    const firstNonBlank = (lines[nextIdx] ?? "").trimStart();
+    if (firstNonBlank.startsWith("{")) {
+      codexLineIdx = i;
+      break;
+    }
+  }
+  if (codexLineIdx === -1) {
+    return null;
+  }
+
+  // Collect lines from codexLineIdx+1 until "tokens used" or EOF.
+  const jsonLines: string[] = [];
+  for (let i = codexLineIdx + 1; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (line === "tokens used") {
+      break;
+    }
+    jsonLines.push(line);
+  }
+
+  // Trim trailing blank lines so JSON.parse sees a clean object.
+  while (
+    jsonLines.length > 0 &&
+    (jsonLines[jsonLines.length - 1] ?? "").trim() === ""
+  ) {
+    jsonLines.pop();
+  }
+
+  const extracted = jsonLines.join("\n");
+  return extracted.length > 0 ? extracted : null;
+}
+
 function parseStructuredJson(
   raw: string,
   requestedEffort: EffortLevel,
@@ -733,28 +826,40 @@ function normalizeUsageAndEffort(
 
 // ---------- error classification ----------
 
-// Bug #54: Codex exits 0 and emits an API-level error JSON on stdout
-// when the requested model is not supported under ChatGPT-account auth.
-// The real error shape is:
+// Bug #54 + #88-followup: Codex emits an API-level error JSON under
+// ChatGPT-account auth. The stream carrying the payload depends on the
+// exit path:
+//   - exit 0 + stdout (original #54 shape: "ERROR: {...}")
+//   - exit 1 + stderr (real CLI v0.120.0 shape: banner + "ERROR: {...}")
+// The error shape is:
 //   ERROR: {"type":"error","status":400,"error":{"type":
 //     "invalid_request_error","message":"The 'X' model is not
 //     supported when using Codex with a ChatGPT account."}}
 //
-// Returns a CodexAttemptFail classified as model_unavailable when the
-// stdout matches this pattern, or null when it does not apply.
-function classifyStdoutApiError(stdout: string): CodexAttemptFail | null {
+// Accepts ANY captured text stream and scans for the error signature.
+// Extracts the first balanced JSON object starting at the first `{` and
+// classifies as model_unavailable when the error type matches. Returns
+// null when the text does not carry an API error JSON.
+function classifyApiErrorInText(text: string): CodexAttemptFail | null {
   // Fast path: must contain "invalid_request_error" to be an API error.
-  if (!stdout.includes("invalid_request_error")) {
+  if (!text.includes("invalid_request_error")) {
     return null;
   }
-  // Extract the JSON payload — may be prefixed by "ERROR: " or similar.
-  const jsonStart = stdout.indexOf("{");
+  // Extract the first balanced JSON object starting from the first `{`.
+  // Stderr may have banner lines + trailing blank lines that confuse a
+  // naive `JSON.parse(text.slice(jsonStart))` call, so we walk the
+  // string counting braces with string-literal awareness.
+  const jsonStart = text.indexOf("{");
   if (jsonStart === -1) {
+    return null;
+  }
+  const jsonBlob = extractFirstBalancedJson(text, jsonStart);
+  if (jsonBlob === null) {
     return null;
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(stdout.slice(jsonStart));
+    parsed = JSON.parse(jsonBlob);
   } catch {
     return null;
   }
@@ -786,12 +891,50 @@ function classifyStdoutApiError(stdout: string): CodexAttemptFail | null {
   return { ok: false, reason, detail: msg };
 }
 
+// Walk `text` starting at `start` (must point at `{`) and return the
+// substring that spans the first balanced JSON object (counting `{` and
+// `}` with string-literal + escape awareness). Returns null if no
+// balanced close is found.
+function extractFirstBalancedJson(text: string, start: number): string | null {
+  if (text[start] !== "{") {
+    return null;
+  }
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === "{") {
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        return text.slice(start, i + 1);
+      }
+    }
+  }
+  return null;
+}
+
 function classifyExit(
   exitCode: number,
   stderr: string,
 ): CodexAttemptResult<string> {
   // Stderr heuristic classification per SPEC §7 failure classes.
-  // "model not available" / "model unavailable" / "model not found" →
+  // "model not available" / "model unavailable" / "model not found" /
+  // "model not supported" (ChatGPT-auth rejection, #88-followup) →
   //   model_unavailable (triggers fallback chain in runSingleAttempt).
   // Rate-limit / 5xx / network / timeout → retryable (maps to timeout).
   // Anything else → terminal (auth, quota, refusal).
@@ -799,12 +942,14 @@ function classifyExit(
   // Model-unavailable heuristic: stderr mentions "model" AND one of
   // the unavailable phrases. A vendor-name/quote/etc. may appear
   // between the two tokens, so we test them independently on the
-  // same line rather than as a fixed substring.
+  // same line rather than as a fixed substring. Matching is
+  // case-insensitive via the lowercased stderr.
   const mentionsModel = lower.includes("model");
   const unavailablePhrase =
     lower.includes("not available") ||
     lower.includes("unavailable") ||
     lower.includes("not found") ||
+    lower.includes("not supported") ||
     lower.includes("does not exist") ||
     lower.includes("no such model");
   if (mentionsModel && unavailablePhrase) {
