@@ -30,12 +30,7 @@ export function ensureHasCommit(
   }
 
   runGitOrThrow(
-    [
-      "commit",
-      "--allow-empty",
-      "-m",
-      INITIAL_COMMIT_MESSAGE,
-    ],
+    ["commit", "--allow-empty", "-m", INITIAL_COMMIT_MESSAGE],
     opts.repoPath,
   );
 
@@ -50,21 +45,15 @@ function hasHead(repoPath: string): boolean {
   return result.status === 0;
 }
 
-function runGitOrThrow(
-  args: readonly string[],
-  repoPath: string,
-): void {
+function runGitOrThrow(args: readonly string[], repoPath: string): void {
   const result = spawnSync("git", args as string[], {
     cwd: repoPath,
     encoding: "utf8",
     env: {
       ...process.env,
-      GIT_AUTHOR_NAME:
-        process.env["GIT_AUTHOR_NAME"] ?? "samospec",
-      GIT_AUTHOR_EMAIL:
-        process.env["GIT_AUTHOR_EMAIL"] ?? "samospec@localhost",
-      GIT_COMMITTER_NAME:
-        process.env["GIT_COMMITTER_NAME"] ?? "samospec",
+      GIT_AUTHOR_NAME: process.env["GIT_AUTHOR_NAME"] ?? "samospec",
+      GIT_AUTHOR_EMAIL: process.env["GIT_AUTHOR_EMAIL"] ?? "samospec@localhost",
+      GIT_COMMITTER_NAME: process.env["GIT_COMMITTER_NAME"] ?? "samospec",
       GIT_COMMITTER_EMAIL:
         process.env["GIT_COMMITTER_EMAIL"] ?? "samospec@localhost",
     },

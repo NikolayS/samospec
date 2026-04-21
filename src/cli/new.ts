@@ -23,7 +23,13 @@
 //     protected branch (createSpecBranch throws with exit 2; specCommit
 //     additionally refuses).
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 import type { Adapter } from "../adapter/types.ts";
@@ -158,9 +164,7 @@ export async function runNew(
       const ts = input.now.replace(/[:.]/g, "-");
       const bakDir = path.join(specsDir, `${input.slug}.bak.${ts}`);
       renameSync(slugDir, bakDir);
-      notice(
-        `archived existing run to .samo/spec/${input.slug}.bak.${ts}/`,
-      );
+      notice(`archived existing run to .samo/spec/${input.slug}.bak.${ts}/`);
     } else {
       errors.push(
         `samospec: .samo/spec/${input.slug}/ already exists. ` +
