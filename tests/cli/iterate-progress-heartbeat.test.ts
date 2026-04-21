@@ -130,8 +130,9 @@ describe("createProgressReporter — per-child heartbeat gating (#101)", () => {
     const b = reporter.beginReviewer("reviewer_b", "claude");
     clock.advance(2_000); // cross the 90s global tick boundary
 
-    const afterBLines = lines
-      .filter((l) => /reviewer B \(claude\) — \d+s$/.test(l));
+    const afterBLines = lines.filter((l) =>
+      /reviewer B \(claude\) — \d+s$/.test(l),
+    );
     // B has been running 2s. Emitting "reviewer B (claude) — 2s" here
     // is the bug. The gate must suppress it.
     expect(afterBLines).toEqual([]);
@@ -188,8 +189,8 @@ describe("createProgressReporter — per-child heartbeat gating (#101)", () => {
     clock2.advance(10_000); // advance to t=98s, CROSSING the 90s tick
     b.complete({ findings: 0 });
 
-    const bHeartbeats = lines2.filter(
-      (l) => /reviewer B \(claude\) — \d+s$/.test(l),
+    const bHeartbeats = lines2.filter((l) =>
+      /reviewer B \(claude\) — \d+s$/.test(l),
     );
     // B ran for 10s total, < 30s intervalMs. No heartbeat must have
     // fired for B. Under the old behaviour the 90s global tick would
