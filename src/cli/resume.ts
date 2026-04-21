@@ -129,10 +129,22 @@ export async function runResume(
     state.round_state === "committed" &&
     state.version === V01_VERSION
   ) {
+    notice(`samospec: spec '${input.slug}' at v0.1 — ready for review loop.`);
+    notice(`next: samospec iterate ${input.slug}`);
+    return {
+      exitCode: 0,
+      stdout: `${lines.join("\n")}\n`,
+      stderr: "",
+    };
+  }
+
+  // review_loop phase: spec is in active review or already converged.
+  if (state.phase === "review_loop" && state.round_state === "committed") {
     notice(
-      `samospec: spec '${input.slug}' at v0.1 committed — ` +
-        `run \`samospec iterate ${input.slug}\` to start the review loop.`,
+      `samospec: spec '${input.slug}' at v${state.version} — ` +
+        `review loop committed.`,
     );
+    notice(`next: samospec publish ${input.slug}`);
     return {
       exitCode: 0,
       stdout: `${lines.join("\n")}\n`,
@@ -433,10 +445,8 @@ export async function runResume(
         );
       }
 
-      notice(
-        `spec '${input.slug}' at v0.1 committed — ` +
-          `run \`samospec iterate ${input.slug}\` to start the review loop.`,
-      );
+      notice(`spec '${input.slug}' at v0.1 committed.`);
+      notice(`next: samospec iterate ${input.slug}`);
       return {
         exitCode: 0,
         stdout: `${lines.join("\n")}\n`,
@@ -458,10 +468,8 @@ export async function runResume(
       writeState(paths.statePath, committed);
     }
 
-    notice(
-      `spec '${input.slug}' at v0.1 committed — ` +
-        `run \`samospec iterate ${input.slug}\` to start the review loop.`,
-    );
+    notice(`spec '${input.slug}' at v0.1 committed.`);
+    notice(`next: samospec iterate ${input.slug}`);
     return {
       exitCode: 0,
       stdout: `${lines.join("\n")}\n`,

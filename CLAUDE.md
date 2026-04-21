@@ -90,13 +90,19 @@ Never merge without explicit approval from the project owner.
 
 ## Release checklist
 
-On every tagged release, update in a single commit:
+On every tagged release, run the bump script first to keep package.json and
+the git tag in sync:
 
-1. `package.json` — bump `"version"`.
-2. `CHANGELOG.md` — add `## [X.Y.Z] - yyyy-mm-dd` section with Added / Fixed / Changed.
-3. `README.md` — update any `vX.Y.Z` references (install instructions, release notes link).
+```bash
+bun run scripts/bump-version.ts <version>
+# e.g. bun run scripts/bump-version.ts 0.3.0
+```
 
-Commit: `chore: bump version to X.Y.Z`. Tag on `main` after the PR merges.
+This updates `package.json` and scaffolds a CHANGELOG entry. Then:
+
+1. Fill in the CHANGELOG entry (Added / Fixed / Changed).
+2. Update any `vX.Y.Z` references in `README.md`.
+3. Commit: `chore: bump version to X.Y.Z`. Tag on `main` after the PR merges.
 
 ## Copyright
 

@@ -133,6 +133,12 @@ export interface RunNewInput {
    * pre-existing slug directory returns exit 1.
    */
   readonly force?: boolean;
+  /**
+   * When true, emit detailed progress lines. Default (false/omitted) keeps
+   * stdout concise: status line per phase + final summary only. Dense
+   * per-seat dumps and full prompt echoes are gated behind verbose=true.
+   */
+  readonly verbose?: boolean;
 }
 
 // ---------- CLI entry ----------
