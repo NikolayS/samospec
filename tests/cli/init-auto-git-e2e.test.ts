@@ -18,13 +18,7 @@ import { spawnSync } from "node:child_process";
 // Run the CLI entry directly (not via subprocess) so we can change cwd.
 // We drive it via the real src/main.ts as a subprocess so the working
 // directory is respected, matching how a real user invokes the tool.
-const CLI_PATH = path.resolve(
-  import.meta.dir,
-  "..",
-  "..",
-  "src",
-  "main.ts",
-);
+const CLI_PATH = path.resolve(import.meta.dir, "..", "..", "src", "main.ts");
 
 let tmp: string;
 

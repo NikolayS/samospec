@@ -26,29 +26,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-const CLI_PATH = path.resolve(
-  import.meta.dir,
-  "..",
-  "..",
-  "src",
-  "main.ts",
-);
-
-const FAKE_CLI_TS = path.resolve(
-  import.meta.dir,
-  "..",
-  "fixtures",
-  "fake-cli.ts",
-);
+const CLI_PATH = path.resolve(import.meta.dir, "..", "..", "src", "main.ts");
 
 let tmp: string;
 let fakeBinDir: string;
-let samoDir: string;
 
 beforeEach(() => {
   tmp = mkdtempSync(path.join(tmpdir(), "samospec-preflight-e2e-"));
   fakeBinDir = mkdtempSync(path.join(tmpdir(), "samospec-fakebin-e2e-"));
-  samoDir = path.join(tmp, ".samo");
 
   // Create a real git repo on a non-protected branch so new can proceed.
   spawnSync("git", ["init", "--initial-branch", "work", tmp], {
