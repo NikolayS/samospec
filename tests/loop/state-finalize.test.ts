@@ -176,6 +176,43 @@ async function runOneRoundConverged(args: {
   expect(res.stopReason).toBe("ready");
 }
 
+/**
+ * Drives iterate to a `lead_terminal` exit (exit 4) by replacing the lead
+ * adapter's `revise()` with a reject. The rest of the round is otherwise
+ * a normal one-round loop; both reviewers succeed.
+ */
+async function runOneRoundLeadTerminal(args: {
+  readonly cwd: string;
+  readonly slug: string;
+  readonly now: string;
+}): Promise<void> {
+  const base = createFakeAdapter({});
+  const lead: Adapter = {
+    ...base,
+    // Throw a plain Error so the SPEC §7 sub-reason classifier falls
+    // back to `adapter_error` — the exact bucket is not load-bearing
+    // for this test, only that the lead_terminal path is taken.
+    revise: () =>
+      Promise.reject(new Error("synthetic lead failure for test")),
+  };
+  const critiqueAdapter = createFakeAdapter({ critique: buildCritique(1) });
+
+  const res = await runIterate({
+    cwd: args.cwd,
+    slug: args.slug,
+    now: args.now,
+    resolvers: ACCEPT_RESOLVERS,
+    adapters: {
+      lead,
+      reviewerA: critiqueAdapter,
+      reviewerB: critiqueAdapter,
+    },
+    maxRounds: 3,
+    ...DEFAULT_TIME_INPUTS,
+  });
+  expect(res.exitCode).toBe(4);
+}
+
 describe("loop/state-finalize — iterate bookkeeping (#102)", () => {
   test("A: working tree is clean after a converged run", async () => {
     const slug = "refunds";
@@ -255,6 +292,76 @@ describe("loop/state-finalize — iterate bookkeeping (#102)", () => {
     expect(updatedMs).toBeGreaterThan(createdMs);
 
     // Within 10s of wall-clock now — tolerates slow CI.
+    const nowMs = Date.now();
+    expect(Math.abs(nowMs - updatedMs)).toBeLessThan(10_000);
+  });
+
+  // Issue #102 — the `ready=true` happy-path test above covered the main
+  // finalize seam. This block re-asserts the same three invariants for
+  // the `lead_terminal` exit (exit code 4), which pre-fix bypassed
+  // `finishIterate` via an early return and left state.json dirty.
+  test("A (lead_terminal): working tree is clean after exit 4", async () => {
+    const slug = "refunds";
+    seedSpec(tmp, slug, "2026-04-19T12:00:00Z");
+    await runOneRoundLeadTerminal({
+      cwd: tmp,
+      slug,
+      now: "2026-04-19T12:00:00Z",
+    });
+
+    const status = spawnSync("git", ["status", "--porcelain"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    expect(status.status).toBe(0);
+    expect(status.stdout).toBe("");
+  });
+
+  test("B (lead_terminal): state.head_sha is a 40-char SHA after exit 4", async () => {
+    const slug = "refunds";
+    seedSpec(tmp, slug, "2026-04-19T12:00:00Z");
+    await runOneRoundLeadTerminal({
+      cwd: tmp,
+      slug,
+      now: "2026-04-19T12:00:00Z",
+    });
+
+    const statePath = path.join(tmp, ".samo", "spec", slug, "state.json");
+    const state: State = JSON.parse(readFileSync(statePath, "utf8"));
+
+    expect(state.head_sha).not.toBeNull();
+    expect(state.head_sha).toMatch(/^[0-9a-f]{40}$/);
+
+    // The finalize bookkeeping commit is HEAD and cannot name itself in
+    // its own payload, so the recorded sha is either HEAD (no finalize
+    // commit — nothing to finalize) or HEAD~1 (finalize commit present).
+    const rev = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    const headSha = (rev.stdout ?? "").trim();
+    const parent = spawnSync("git", ["rev-parse", "HEAD~1"], {
+      cwd: tmp,
+      encoding: "utf8",
+    });
+    const parentSha = (parent.stdout ?? "").trim();
+    const recorded = state.head_sha ?? "";
+    expect([headSha, parentSha]).toContain(recorded);
+  });
+
+  test("C (lead_terminal): state.updated_at advances past created_at", async () => {
+    const slug = "refunds";
+    const createdAt = "2026-04-19T12:00:00Z";
+    seedSpec(tmp, slug, createdAt);
+    await runOneRoundLeadTerminal({ cwd: tmp, slug, now: createdAt });
+
+    const statePath = path.join(tmp, ".samo", "spec", slug, "state.json");
+    const state: State = JSON.parse(readFileSync(statePath, "utf8"));
+
+    const createdMs = Date.parse(state.created_at);
+    const updatedMs = Date.parse(state.updated_at);
+    expect(updatedMs).toBeGreaterThan(createdMs);
+
     const nowMs = Date.now();
     expect(Math.abs(nowMs - updatedMs)).toBeLessThan(10_000);
   });
