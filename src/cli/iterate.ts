@@ -1194,6 +1194,16 @@ export function readDecisions(file: string): string {
  * paths stay untouched. Identity strings are derived from the
  * adapter's `vendor` + the state's persisted `adapters.<role>.model_id`
  * when available, falling back to `vendor` alone.
+ *
+ * Prototype preservation: real adapters (ClaudeAdapter, CodexAdapter)
+ * are class instances whose methods live on the prototype, not the
+ * instance. `{...adapter}` spread only copies own enumerable
+ * properties, so `detect()`, `models()`, `ask()`, `supports_*` etc.
+ * would silently disappear. We use `Object.create(proto)` to preserve
+ * the original class's prototype chain — `instanceof OriginalClass`
+ * continues to hold, every inherited method remains callable, and
+ * only `critique`/`revise` are overridden as own properties on the
+ * wrapper.
  */
 export function wrapAdaptersForProgress(
   adapters: IterateInput["adapters"],
@@ -1207,48 +1217,64 @@ export function wrapAdaptersForProgress(
   const reviewerBIdentity =
     stateAdapters.reviewer_b?.model_id ?? adapters.reviewerB.vendor;
 
-  return {
-    lead: {
-      ...adapters.lead,
-      revise: async (input) => {
-        const handle = progress.beginLead(leadIdentity);
-        try {
-          const out = await adapters.lead.revise(input);
-          handle.complete(undefined);
-          return out;
-        } catch (err) {
-          handle.abort();
-          throw err;
-        }
-      },
-    },
-    reviewerA: {
-      ...adapters.reviewerA,
-      critique: async (input) => {
-        const handle = progress.beginReviewer("reviewer_a", reviewerAIdentity);
-        try {
-          const out = await adapters.reviewerA.critique(input);
-          handle.complete({ findings: out.findings.length });
-          return out;
-        } catch (err) {
-          handle.abort();
-          throw err;
-        }
-      },
-    },
-    reviewerB: {
-      ...adapters.reviewerB,
-      critique: async (input) => {
-        const handle = progress.beginReviewer("reviewer_b", reviewerBIdentity);
-        try {
-          const out = await adapters.reviewerB.critique(input);
-          handle.complete({ findings: out.findings.length });
-          return out;
-        } catch (err) {
-          handle.abort();
-          throw err;
-        }
-      },
-    },
+  const wrappedLead = cloneWithPrototype(adapters.lead);
+  wrappedLead.revise = async (input) => {
+    const handle = progress.beginLead(leadIdentity);
+    try {
+      const out = await adapters.lead.revise(input);
+      handle.complete(undefined);
+      return out;
+    } catch (err) {
+      handle.abort();
+      throw err;
+    }
   };
+
+  const wrappedReviewerA = cloneWithPrototype(adapters.reviewerA);
+  wrappedReviewerA.critique = async (input) => {
+    const handle = progress.beginReviewer("reviewer_a", reviewerAIdentity);
+    try {
+      const out = await adapters.reviewerA.critique(input);
+      handle.complete({ findings: out.findings.length });
+      return out;
+    } catch (err) {
+      handle.abort();
+      throw err;
+    }
+  };
+
+  const wrappedReviewerB = cloneWithPrototype(adapters.reviewerB);
+  wrappedReviewerB.critique = async (input) => {
+    const handle = progress.beginReviewer("reviewer_b", reviewerBIdentity);
+    try {
+      const out = await adapters.reviewerB.critique(input);
+      handle.complete({ findings: out.findings.length });
+      return out;
+    } catch (err) {
+      handle.abort();
+      throw err;
+    }
+  };
+
+  return {
+    lead: wrappedLead,
+    reviewerA: wrappedReviewerA,
+    reviewerB: wrappedReviewerB,
+  };
+}
+
+/**
+ * Produce a prototype-preserving clone of `source` so that a caller
+ * can override selected methods as own properties without dropping
+ * any of the inherited class methods. The result satisfies
+ * `instanceof source.constructor` and delegates every non-overridden
+ * method through the prototype chain.
+ */
+function cloneWithPrototype<T extends object>(source: T): T {
+  const clone = Object.create(Object.getPrototypeOf(source) as object) as T;
+  // Copy own enumerable properties (e.g. `vendor` set via `this.vendor = ...`
+  // in the constructor). Prototype methods are reached via the prototype
+  // chain so we never copy them explicitly.
+  Object.assign(clone, source);
+  return clone;
 }
