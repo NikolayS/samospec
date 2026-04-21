@@ -61,8 +61,10 @@ const USAGE =
   "                              or 600000 (10 min). On cap, exits 4 with reason\n" +
   "                              `session-wall-clock`.\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
-  "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>]\n" +
+  "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>] [--quiet]\n" +
   "                              Run review rounds until a stopping condition fires.\n" +
+  "                              --quiet suppresses per-phase progress + heartbeat\n" +
+  "                              (default: verbose progress on stderr).\n" +
   "  status [<slug>]             Print phase, round, cost, wall-clock, and next action.\n" +
   "  publish [<slug>] [--no-lint] [--remote <name>]\n" +
   "                              Promote to blueprints/<slug>/SPEC.md, commit, push, open PR.\n" +
@@ -443,6 +445,7 @@ interface IterateArgs {
   readonly rounds?: number;
   readonly noPush: boolean;
   readonly remote: string;
+  readonly quiet: boolean;
 }
 
 function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
@@ -450,6 +453,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let rounds: number | undefined;
   let noPush = false;
   let remote = "origin";
+  let quiet = false;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) continue;
@@ -469,6 +473,12 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
     }
     if (t === "--no-push") {
       noPush = true;
+      continue;
+    }
+    if (t === "--quiet") {
+      // Issue #101: suppress per-phase + heartbeat; final summary still
+      // prints. No-op when combined with `--rounds 0` or similar.
+      quiet = true;
       continue;
     }
     if (t === "--remote") {
@@ -491,6 +501,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
     slug,
     noPush,
     remote,
+    quiet,
     ...(rounds !== undefined ? { rounds } : {}),
   };
 }
@@ -616,6 +627,7 @@ async function runIterateCommand(rest: readonly string[]) {
     resolvers: interactiveIterateResolvers(),
     adapters,
     pushOptions,
+    quiet: parsed.quiet,
     ...(parsed.rounds !== undefined ? { maxRounds: parsed.rounds } : {}),
   });
   return {

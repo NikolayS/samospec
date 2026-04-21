@@ -100,6 +100,11 @@ import {
   classifyLeadTerminal,
   formatLeadTerminalMessage,
 } from "./terminal-messages.ts";
+import {
+  createProgressReporter,
+  type ProgressOptions,
+  type ProgressReporter,
+} from "./iterate-progress.ts";
 
 // ---------- constants ----------
 
@@ -194,6 +199,16 @@ export interface IterateInput {
    * Absent = local-only, no consent prompt, no push attempts.
    */
   readonly pushOptions?: PushOptions;
+  /**
+   * Issue #101: when true, suppress per-phase progress + heartbeat.
+   * Final summary lines still go to stdout. Default: false (verbose).
+   */
+  readonly quiet?: boolean;
+  /**
+   * Issue #101: test-injection surface for clock + scheduler so the
+   * heartbeat can be exercised without real wall-clock sleeps.
+   */
+  readonly progress?: ProgressOptions;
 }
 
 export interface IterateResult {
@@ -216,6 +231,17 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
   const error = (line: string): void => {
     errLines.push(line);
   };
+  // Issue #101: progress + heartbeat stream. Everything the reporter
+  // emits lands on stderr alongside actual errors — never on stdout,
+  // so stdout-parsing scripts don't break. When `quiet: true`, the
+  // reporter returned here is a no-op shim.
+  const progress: ProgressReporter = createProgressReporter({
+    emit: (line: string): void => {
+      errLines.push(line);
+    },
+    quiet: input.quiet ?? false,
+    ...(input.progress !== undefined ? { options: input.progress } : {}),
+  });
 
   const paths = specPaths(input.cwd, input.slug);
 
@@ -471,6 +497,17 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         // lead's revise() prompt carries the AUTHORITATIVE framing.
         const ideaForRound = state.input?.idea;
 
+        // Issue #101: announce the round and wrap each adapter so its
+        // critique/revise call emits start/complete progress lines +
+        // joins the heartbeat tracker. The wrapper is per-round so
+        // identities (adapter vendor + state model_id) stay fresh.
+        progress.roundStart(roundIndex);
+        const wrappedAdapters = wrapAdaptersForProgress(
+          input.adapters,
+          currentState,
+          progress,
+        );
+
         // Run the round.
         // #100: thread a wall-clock source so round.json records real
         // started_at / completed_at instead of a single frozen `now`.
@@ -481,7 +518,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
           dirs,
           specText: currentSpec,
           decisionsHistory,
-          adapters: input.adapters,
+          adapters: wrappedAdapters,
           critiqueTimeoutMs: callTimeouts.criticA_ms,
           reviseTimeoutMs: callTimeouts.revise_ms,
           ...(manualEditDirective !== undefined ? { manualEditDirective } : {}),
@@ -833,6 +870,9 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
     }
   } finally {
     releaseLock(handle);
+    // Issue #101: always tear down the heartbeat timer so a stray
+    // setInterval doesn't keep the process alive past `iterate`.
+    progress.shutdown();
   }
 }
 
@@ -1141,4 +1181,103 @@ function finishIterate(args: FinishArgs): IterateResult {
 // Used by tests: re-read decisions.md into something structured.
 export function readDecisions(file: string): string {
   return readDecisionsFile(file);
+}
+
+// ---------- progress wrapping (#101) ----------
+
+/**
+ * Build progress-aware proxies around the real adapters. Each proxy
+ * forwards the call to its underlying adapter but also:
+ *   - emits a "<role> starting" line before the call
+ *   - joins the heartbeat tracker for the duration of the call
+ *   - emits a "<role> complete (Xs, ...)" line after the call resolves
+ *
+ * The proxy is fully transparent in behaviour — same return values,
+ * same error propagation — so `runRound`'s retry / partial-failure
+ * paths stay untouched. Identity strings are derived from the
+ * adapter's `vendor` + the state's persisted `adapters.<role>.model_id`
+ * when available, falling back to `vendor` alone.
+ *
+ * Prototype preservation: real adapters (ClaudeAdapter, CodexAdapter)
+ * are class instances whose methods live on the prototype, not the
+ * instance. `{...adapter}` spread only copies own enumerable
+ * properties, so `detect()`, `models()`, `ask()`, `supports_*` etc.
+ * would silently disappear. We use `Object.create(proto)` to preserve
+ * the original class's prototype chain — `instanceof OriginalClass`
+ * continues to hold, every inherited method remains callable, and
+ * only `critique`/`revise` are overridden as own properties on the
+ * wrapper.
+ */
+export function wrapAdaptersForProgress(
+  adapters: IterateInput["adapters"],
+  state: State,
+  progress: ProgressReporter,
+): IterateInput["adapters"] {
+  const stateAdapters = state.adapters ?? {};
+  const leadIdentity = stateAdapters.lead?.model_id ?? adapters.lead.vendor;
+  const reviewerAIdentity =
+    stateAdapters.reviewer_a?.model_id ?? adapters.reviewerA.vendor;
+  const reviewerBIdentity =
+    stateAdapters.reviewer_b?.model_id ?? adapters.reviewerB.vendor;
+
+  const wrappedLead = cloneWithPrototype(adapters.lead);
+  wrappedLead.revise = async (input) => {
+    const handle = progress.beginLead(leadIdentity);
+    try {
+      const out = await adapters.lead.revise(input);
+      handle.complete(undefined);
+      return out;
+    } catch (err) {
+      handle.abort();
+      throw err;
+    }
+  };
+
+  const wrappedReviewerA = cloneWithPrototype(adapters.reviewerA);
+  wrappedReviewerA.critique = async (input) => {
+    const handle = progress.beginReviewer("reviewer_a", reviewerAIdentity);
+    try {
+      const out = await adapters.reviewerA.critique(input);
+      handle.complete({ findings: out.findings.length });
+      return out;
+    } catch (err) {
+      handle.abort();
+      throw err;
+    }
+  };
+
+  const wrappedReviewerB = cloneWithPrototype(adapters.reviewerB);
+  wrappedReviewerB.critique = async (input) => {
+    const handle = progress.beginReviewer("reviewer_b", reviewerBIdentity);
+    try {
+      const out = await adapters.reviewerB.critique(input);
+      handle.complete({ findings: out.findings.length });
+      return out;
+    } catch (err) {
+      handle.abort();
+      throw err;
+    }
+  };
+
+  return {
+    lead: wrappedLead,
+    reviewerA: wrappedReviewerA,
+    reviewerB: wrappedReviewerB,
+  };
+}
+
+/**
+ * Produce a prototype-preserving clone of `source` so that a caller
+ * can override selected methods as own properties without dropping
+ * any of the inherited class methods. The result satisfies
+ * `instanceof source.constructor` and delegates every non-overridden
+ * method through the prototype chain.
+ */
+function cloneWithPrototype<T extends object>(source: T): T {
+  const clone = Object.create(Object.getPrototypeOf(source) as object) as T;
+  // Copy own enumerable properties (e.g. `vendor` set via `this.vendor = ...`
+  // in the constructor). Prototype methods are reached via the prototype
+  // chain so we never copy them explicitly.
+  Object.assign(clone, source);
+  return clone;
 }
