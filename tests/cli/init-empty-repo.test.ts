@@ -79,7 +79,8 @@ describe("samospec init — empty repo (no commits) (#65)", () => {
     // Confirm empty repo: HEAD is not resolvable yet.
     expect(headCommit(tmp)).toBeNull();
 
-    const result = runInit({ cwd: tmp });
+    // yes: true opts into the git preflight (same as --yes / --no-interactive).
+    const result = runInit({ cwd: tmp, yes: true });
 
     expect(result.exitCode).toBe(0);
     // An initial commit should now exist.
@@ -91,7 +92,7 @@ describe("samospec init — empty repo (no commits) (#65)", () => {
   test("empty repo: auto-commit message logged to stdout", () => {
     initEmptyRepo(tmp);
 
-    const result = runInit({ cwd: tmp });
+    const result = runInit({ cwd: tmp, yes: true });
 
     expect(result.exitCode).toBe(0);
     // Must log that it created an initial commit.
@@ -103,7 +104,7 @@ describe("samospec init — empty repo (no commits) (#65)", () => {
   test("empty repo: initial commit subject is 'chore: init'", () => {
     initEmptyRepo(tmp);
 
-    runInit({ cwd: tmp });
+    runInit({ cwd: tmp, yes: true });
 
     expect(logMessages(tmp)).toContain("chore: init");
   });
@@ -111,7 +112,7 @@ describe("samospec init — empty repo (no commits) (#65)", () => {
   test("empty repo: proceeds without crashing (no git rev-parse error surfaced)", () => {
     initEmptyRepo(tmp);
 
-    const result = runInit({ cwd: tmp });
+    const result = runInit({ cwd: tmp, yes: true });
 
     // Must not error out with git-layer confusion.
     expect(result.exitCode).toBe(0);

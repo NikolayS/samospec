@@ -23,14 +23,10 @@
 //     protected branch (createSpecBranch throws with exit 2; specCommit
 //     additionally refuses).
 
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+
+import { archiveSlugDir } from "./archive.ts";
 
 import type { Adapter } from "../adapter/types.ts";
 import { discoverContext } from "../context/discover.ts";
@@ -132,9 +128,9 @@ export interface RunNewInput {
   readonly skipSections?: readonly string[];
   /**
    * When true, archive any pre-existing slug directory to
-   * `.samo/spec/<slug>.bak.<timestamp>/` before starting a fresh run
-   * (issue #63). When false or omitted, a pre-existing slug directory
-   * returns exit 1.
+   * `.samo/spec/<slug>.archived-<timestamp>/` before starting a fresh
+   * run (SPEC §10, issues #63 / #69). When false or omitted, a
+   * pre-existing slug directory returns exit 1.
    */
   readonly force?: boolean;
 }
@@ -160,11 +156,16 @@ export async function runNew(
   // directory and suggest resume / --force.
   if (existsSync(slugDir)) {
     if (input.force) {
-      // Archive the old run by renaming to a timestamped backup dir.
-      const ts = input.now.replace(/[:.]/g, "-");
-      const bakDir = path.join(specsDir, `${input.slug}.bak.${ts}`);
-      renameSync(slugDir, bakDir);
-      notice(`archived existing run to .samo/spec/${input.slug}.bak.${ts}/`);
+      // Archive the old run to .samo/spec/<slug>.archived-<ts>/ per SPEC §10.
+      const result = archiveSlugDir({
+        specsDir,
+        slug: input.slug,
+        now: new Date(input.now),
+      });
+      if (result.kind === "archived") {
+        const archiveName = path.basename(result.archivedPath);
+        notice(`archived existing run to .samo/spec/${archiveName}/`);
+      }
     } else {
       errors.push(
         `samospec: .samo/spec/${input.slug}/ already exists. ` +

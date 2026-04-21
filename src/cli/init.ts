@@ -264,20 +264,13 @@ function hasHead(cwd: string): boolean {
  */
 function ensureGitIdentity(cwd: string): void {
   // Check whether a name/email exist (global or local).
-  const nameOk =
-    runGitCmd(cwd, ["config", "user.name"]).status === 0;
-  const emailOk =
-    runGitCmd(cwd, ["config", "user.email"]).status === 0;
+  const nameOk = runGitCmd(cwd, ["config", "user.name"]).status === 0;
+  const emailOk = runGitCmd(cwd, ["config", "user.email"]).status === 0;
   if (!nameOk) {
     runGitCmd(cwd, ["config", "--local", "user.name", "samospec"]);
   }
   if (!emailOk) {
-    runGitCmd(cwd, [
-      "config",
-      "--local",
-      "user.email",
-      "samospec@localhost",
-    ]);
+    runGitCmd(cwd, ["config", "--local", "user.email", "samospec@localhost"]);
   }
   // Disable GPG signing locally to avoid passphrase prompts in CI.
   runGitCmd(cwd, ["config", "--local", "commit.gpgsign", "false"]);
@@ -379,9 +372,15 @@ export function runInit(args: RunInitArgs): RunInitResult {
       }
       messages.push("created git repo and initial commit (chore: init)");
     }
-  } else if (hasGitDir(args.cwd) && !hasHead(args.cwd)) {
+  } else if (
+    hasGitDir(args.cwd) &&
+    !hasHead(args.cwd) &&
+    resolveGitInitDecision(args) !== null
+  ) {
     // .git exists but no commits yet (#65 — empty repo).
-    // Auto-create initial commit; no prompt needed (always safe).
+    // Only triggered when the caller opts in (yes: true or gitInitAnswer).
+    // When neither is set (legacy / library call), skip — `runNew`'s
+    // ensureHasCommit handles this path for the `new` command.
     const err = createInitialCommit(args.cwd);
     if (err !== null) {
       return {

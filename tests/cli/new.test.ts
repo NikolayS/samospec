@@ -339,11 +339,12 @@ describe("samospec new --force (issue #63)", () => {
     const content = JSON.parse(stateRaw) as Record<string, unknown>;
     expect(content).not.toHaveProperty("old");
 
-    // A bak dir matching the pattern must exist.
+    // An archived dir matching the SPEC §10 pattern must exist.
     const specDir = path.join(tmp, ".samo", "spec");
     const entries = readdirSync(specDir);
-    const bakDirs = entries.filter((e) => e.startsWith("demo.bak."));
-    expect(bakDirs.length).toBe(1);
+    // SPEC §10 / #69: must use .archived-<ts>, not .bak.<ts>.
+    const archiveDirs = entries.filter((e) => e.startsWith("demo.archived-"));
+    expect(archiveDirs.length).toBe(1);
   });
 
   test("force=false + existing dir => exit 1 (unchanged behaviour)", async () => {
