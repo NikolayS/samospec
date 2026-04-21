@@ -81,6 +81,11 @@ import {
 
 const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
 
+// Session wall-clock cap: 10 minutes by default (#81).
+// Configurable via budget.max_session_wall_clock_minutes in config.json,
+// or overridden per-call via RunNewInput.maxSessionWallClockMs.
+const DEFAULT_SESSION_WALL_CLOCK_MS = 10 * 60 * 1_000;
+
 const V01_VERSION = "0.1.0" as const;
 
 export interface RunNewResult {
@@ -139,6 +144,99 @@ export interface RunNewInput {
    * per-seat dumps and full prompt echoes are gated behind verbose=true.
    */
   readonly verbose?: boolean;
+  /**
+   * Session wall-clock cap in milliseconds (#81). When the total elapsed
+   * time since runNew() entry exceeds this value, the current phase is
+   * preempted and runNew() returns exit 4 with a "session-wall-clock"
+   * message. Falls back to budget.max_session_wall_clock_minutes from
+   * config.json, then to DEFAULT_SESSION_WALL_CLOCK_MS (10 min).
+   */
+  readonly maxSessionWallClockMs?: number;
+}
+
+// ---------- session wall-clock guard (#81) ----------
+
+/** Thrown by withDeadline() when the session wall-clock cap is exceeded. */
+class SessionWallClockError extends Error {
+  readonly phase: string;
+  readonly elapsedMs: number;
+  readonly limitMs: number;
+  constructor(phase: string, elapsedMs: number, limitMs: number) {
+    super(
+      `session-wall-clock: ${phase} exceeded ${String(limitMs)}ms limit ` +
+        `(elapsed ${String(elapsedMs)}ms)`,
+    );
+    this.name = "SessionWallClockError";
+    this.phase = phase;
+    this.elapsedMs = elapsedMs;
+    this.limitMs = limitMs;
+  }
+}
+
+/**
+ * Race `promise` against a deadline derived from `startMs + limitMs`.
+ * If the deadline fires first, throws `SessionWallClockError`.
+ */
+async function withDeadline<T>(
+  promise: Promise<T>,
+  phase: string,
+  startMs: number,
+  limitMs: number,
+): Promise<T> {
+  const remaining = limitMs - (Date.now() - startMs);
+  if (remaining <= 0) {
+    throw new SessionWallClockError(phase, Date.now() - startMs, limitMs);
+  }
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new SessionWallClockError(phase, Date.now() - startMs, limitMs));
+    }, remaining);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
+
+/**
+ * Resolve the session wall-clock limit (ms) from:
+ * 1. input.maxSessionWallClockMs (explicit override)
+ * 2. budget.max_session_wall_clock_minutes in config.json
+ * 3. DEFAULT_SESSION_WALL_CLOCK_MS (10 min)
+ */
+function resolveSessionWallClockMs(input: RunNewInput): number {
+  if (typeof input.maxSessionWallClockMs === "number") {
+    return input.maxSessionWallClockMs;
+  }
+  try {
+    const configPath = path.join(input.cwd, ".samo", "config.json");
+    if (existsSync(configPath)) {
+      const raw = readFileSync(configPath, "utf8");
+      const cfg = JSON.parse(raw) as Record<string, unknown>;
+      const budget = cfg["budget"];
+      if (
+        typeof budget === "object" &&
+        budget !== null &&
+        !Array.isArray(budget)
+      ) {
+        const minutes = (budget as Record<string, unknown>)[
+          "max_session_wall_clock_minutes"
+        ];
+        if (typeof minutes === "number" && minutes > 0) {
+          return Math.round(minutes * 60 * 1_000);
+        }
+      }
+    }
+  } catch {
+    // config unreadable — fall through to default.
+  }
+  return DEFAULT_SESSION_WALL_CLOCK_MS;
 }
 
 // ---------- CLI entry ----------
@@ -152,6 +250,10 @@ export async function runNew(
   const notice = (line: string): void => {
     lines.push(line);
   };
+
+  // Session wall-clock guard (#81): track start time and cap.
+  const sessionStartMs = Date.now();
+  const sessionLimitMs = resolveSessionWallClockMs(input);
 
   const samoDir = path.join(input.cwd, ".samo");
   const specsDir = path.join(samoDir, "spec");
@@ -323,17 +425,37 @@ export async function runNew(
     const subAuth = await resolveSubscriptionAuth(adapter);
     let persona: PersonaProposal;
     try {
-      persona = await proposePersonaInteractive(
-        {
-          idea: input.idea,
-          explain: input.explain,
-          subscriptionAuth: subAuth,
-          onNotice: notice,
-          resolver: input.resolvers.persona,
-        },
-        adapter,
+      persona = await withDeadline(
+        proposePersonaInteractive(
+          {
+            idea: input.idea,
+            explain: input.explain,
+            subscriptionAuth: subAuth,
+            onNotice: notice,
+            resolver: input.resolvers.persona,
+          },
+          adapter,
+        ),
+        "persona",
+        sessionStartMs,
+        sessionLimitMs,
       );
     } catch (err) {
+      if (err instanceof SessionWallClockError) {
+        state = { ...state, round_state: "lead_terminal" };
+        state.updated_at = input.now;
+        writeState(statePath, state);
+        errors.push(
+          `samospec: session-wall-clock exceeded at persona phase ` +
+            `(${String(err.elapsedMs)}ms elapsed, limit ${String(err.limitMs)}ms). ` +
+            `Restart with --force or increase budget.max_session_wall_clock_minutes.`,
+        );
+        return {
+          exitCode: 4,
+          stdout: lines.join("\n"),
+          stderr: `${errors.join("\n")}\n`,
+        };
+      }
       if (err instanceof PersonaTerminalError) {
         state = { ...state, round_state: "lead_terminal" };
         state.updated_at = input.now;
@@ -407,20 +529,40 @@ export async function runNew(
     const interviewPath = path.join(slugDir, "interview.json");
     let interview: InterviewResult;
     try {
-      interview = await runInterview(
-        {
-          slug: input.slug,
-          persona: persona.persona,
-          explain: input.explain,
-          subscriptionAuth: subAuth,
-          onQuestion: input.resolvers.question,
-          onNotice: notice,
-          outputPath: interviewPath,
-          now: input.now,
-        },
-        adapter,
+      interview = await withDeadline(
+        runInterview(
+          {
+            slug: input.slug,
+            persona: persona.persona,
+            explain: input.explain,
+            subscriptionAuth: subAuth,
+            onQuestion: input.resolvers.question,
+            onNotice: notice,
+            outputPath: interviewPath,
+            now: input.now,
+          },
+          adapter,
+        ),
+        "interview",
+        sessionStartMs,
+        sessionLimitMs,
       );
     } catch (err) {
+      if (err instanceof SessionWallClockError) {
+        state = { ...state, round_state: "lead_terminal" };
+        state.updated_at = input.now;
+        writeState(statePath, state);
+        errors.push(
+          `samospec: session-wall-clock exceeded at interview phase ` +
+            `(${String(err.elapsedMs)}ms elapsed, limit ${String(err.limitMs)}ms). ` +
+            `Restart with --force or increase budget.max_session_wall_clock_minutes.`,
+        );
+        return {
+          exitCode: 4,
+          stdout: lines.join("\n"),
+          stderr: `${errors.join("\n")}\n`,
+        };
+      }
       if (err instanceof InterviewTerminalError) {
         state = { ...state, round_state: "lead_terminal" };
         state.updated_at = input.now;
@@ -458,21 +600,41 @@ export async function runNew(
 
     let draft;
     try {
-      draft = await authorDraft(
-        {
-          slug: input.slug,
-          idea: input.idea,
-          persona: persona.persona,
-          interview,
-          contextChunks: chunks,
-          explain: input.explain,
-          ...(input.skipSections !== undefined
-            ? { skipSections: input.skipSections }
-            : {}),
-        },
-        adapter,
+      draft = await withDeadline(
+        authorDraft(
+          {
+            slug: input.slug,
+            idea: input.idea,
+            persona: persona.persona,
+            interview,
+            contextChunks: chunks,
+            explain: input.explain,
+            ...(input.skipSections !== undefined
+              ? { skipSections: input.skipSections }
+              : {}),
+          },
+          adapter,
+        ),
+        "draft",
+        sessionStartMs,
+        sessionLimitMs,
       );
     } catch (err) {
+      if (err instanceof SessionWallClockError) {
+        state = { ...state, round_state: "lead_terminal" };
+        state.updated_at = input.now;
+        writeState(statePath, state);
+        errors.push(
+          `samospec: session-wall-clock exceeded at draft phase ` +
+            `(${String(err.elapsedMs)}ms elapsed, limit ${String(err.limitMs)}ms). ` +
+            `Restart with --force or increase budget.max_session_wall_clock_minutes.`,
+        );
+        return {
+          exitCode: 4,
+          stdout: lines.join("\n"),
+          stderr: `${errors.join("\n")}\n`,
+        };
+      }
       if (err instanceof DraftTerminalError) {
         state = { ...state, round_state: "lead_terminal" };
         state.updated_at = input.now;

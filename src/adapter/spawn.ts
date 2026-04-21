@@ -137,9 +137,11 @@ export async function spawnCli(input: SpawnCliInput): Promise<SpawnCliResult> {
     // ignore: child may have already exited.
   }
 
+  const ac = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
+    ac.abort();
     try {
       proc.kill("SIGKILL");
     } catch {
@@ -147,10 +149,56 @@ export async function spawnCli(input: SpawnCliInput): Promise<SpawnCliResult> {
     }
   }, input.timeoutMs);
 
+  // Bun's `new Response(stream).text()` blocks even after SIGKILL because
+  // the pipe FD doesn't close immediately. We use a manual reader with
+  // Promise.race against an abort signal so the stream read unblocks on
+  // timeout without waiting for EOF (#81).
+  async function readStream(
+    stream: ReadableStream<Uint8Array>,
+  ): Promise<string> {
+    const reader = stream.getReader();
+    const chunks: Uint8Array[] = [];
+    let onAbort: (() => void) | undefined;
+    const abortPromise = new Promise<never>((_resolve, reject) => {
+      if (ac.signal.aborted) {
+        reject(new DOMException("aborted", "AbortError"));
+        return;
+      }
+      onAbort = () => reject(new DOMException("aborted", "AbortError"));
+      ac.signal.addEventListener("abort", onAbort, { once: true });
+    });
+    try {
+      for (;;) {
+        const { done, value } = await Promise.race([
+          reader.read(),
+          abortPromise,
+        ]);
+        if (done) break;
+        if (value !== undefined) chunks.push(value);
+      }
+    } catch {
+      void reader.cancel().catch(() => {
+        /* ignore */
+      });
+    } finally {
+      if (onAbort !== undefined)
+        ac.signal.removeEventListener("abort", onAbort);
+      reader.releaseLock();
+    }
+    const totalLength = chunks.reduce((n, c) => n + c.length, 0);
+    const merged = new Uint8Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return new TextDecoder().decode(merged);
+  }
+
   const [stdoutText, stderrText, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
+    readStream(proc.stdout),
+    readStream(proc.stderr),
+    proc.exited.catch(() => -1),
   ]);
   clearTimeout(timer);
 

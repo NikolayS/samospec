@@ -11,16 +11,17 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 
 import { ClaudeAdapter, ClaudeAdapterError } from "../../src/adapter/claude.ts";
-import { spawnCli, type SpawnCliInput, type SpawnCliResult } from "../../src/adapter/spawn.ts";
-
-const BUN_DIR = dirname(process.execPath);
+import { spawnCli } from "../../src/adapter/spawn.ts";
 
 const TMP: string[] = [];
 
-function makeFakeBinaryDir(name: string, script: string): { dir: string; binary: string } {
+function makeFakeBinaryDir(
+  name: string,
+  script: string,
+): { dir: string; binary: string } {
   const dir = mkdtempSync(join(tmpdir(), "samospec-timeout-bin-"));
   TMP.push(dir);
   const binary = join(dir, name);
@@ -31,7 +32,11 @@ function makeFakeBinaryDir(name: string, script: string): { dir: string; binary:
 
 afterAll(() => {
   for (const d of TMP) {
-    try { rmSync(d, { recursive: true, force: true }); } catch { /* ignore */ }
+    try {
+      rmSync(d, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   }
 });
 
