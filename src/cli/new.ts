@@ -405,7 +405,7 @@ export async function runNew(
     //   - default: try the real `createSpecBranch`. Outside a git repo
     //     this throws; we catch + surface "branch creation skipped"
     //     so legacy tests that don't initialize a git repo still run.
-    const branchResult = createBranch(input);
+    let branchResult = createBranch(input);
     if (branchResult.kind === "protected") {
       errors.push(
         `samospec: refusing to branch on protected branch '${branchResult.branch}'. ` +
@@ -424,17 +424,43 @@ export async function runNew(
       // #94: a prior crashed run left this branch behind. Check it out
       // so the v0.1 draft lands on the right ref and is not silently
       // skipped.
+      //
+      // PR #99 review must-fix: if the checkout itself fails (e.g. a
+      // dirty working tree on the caller's feature branch would be
+      // overwritten by the checkout), HEAD stays on the caller's branch.
+      // We MUST demote the branchResult to "skipped" so the downstream
+      // commit gate does not fire `specCommit` and leak the v0.1 draft
+      // onto `feat/...`. Abort the whole run with exit 2 (same class as
+      // the protected-branch refusal path) so the caller knows no work
+      // landed and can resolve the conflict before retrying.
       try {
         checkoutExistingBranch(branchResult.branch, input.cwd);
         notice(
           `branch ${branchResult.branch} already exists — checked out to resume on it.`,
         );
       } catch (err) {
-        notice(
-          `branch creation skipped (${branchResult.reason}); ` +
-            `could not check out existing ${branchResult.branch}: ` +
-            `${err instanceof Error ? err.message : String(err)}.`,
+        const detail = err instanceof Error ? err.message : String(err);
+        const existing = branchResult.branch;
+        branchResult = {
+          kind: "skipped",
+          reason:
+            `could not check out existing ${existing} ` +
+            `(create-branch error: ${branchResult.reason}; ` +
+            `checkout error: ${detail})`,
+        };
+        errors.push(
+          `samospec: branch '${existing}' already exists but ` +
+            `\`git checkout ${existing}\` failed: ${detail}. ` +
+            `Aborting to avoid committing the v0.1 draft onto the ` +
+            `current branch. Resolve the conflict (e.g. stash or ` +
+            `commit local changes, or delete/rename ${existing}) ` +
+            `and rerun \`samospec new ${input.slug}\`.`,
         );
+        return {
+          exitCode: 2,
+          stdout: lines.join("\n"),
+          stderr: `${errors.join("\n")}\n`,
+        };
       }
     } else if (branchResult.kind === "skipped") {
       notice(`branch creation skipped (${branchResult.reason}).`);
