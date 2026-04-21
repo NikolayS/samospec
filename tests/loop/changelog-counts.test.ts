@@ -7,21 +7,16 @@
 import { test, expect, describe } from "bun:test";
 import {
   countDecisions,
+  reviseDecisionsToReviewDecisions,
   type DecisionCounts,
 } from "../../src/loop/decisions.ts";
 import type { ReviewDecision } from "../../src/loop/decisions.ts";
 import type { ReviseOutput } from "../../src/adapter/types.ts";
 
-// Helper: build ReviewDecision[] from ReviseOutput.decisions
+// Build ReviewDecision[] via the real exported helper so this file
+// stays aligned with production behavior (no `#?` placeholder, #95).
 function toReviewDecisions(reviseOutput: ReviseOutput): ReviewDecision[] {
-  if (!reviseOutput.decisions || reviseOutput.decisions.length === 0) {
-    return [];
-  }
-  return reviseOutput.decisions.map((d) => ({
-    finding_ref: d.finding_id ?? `${d.category}#?`,
-    decision: d.verdict,
-    rationale: d.rationale,
-  }));
+  return reviseDecisionsToReviewDecisions(reviseOutput.decisions);
 }
 
 // Helper: format the changelog line (mirrors what the loop should produce)
