@@ -472,8 +472,11 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         const ideaForRound = state.input?.idea;
 
         // Run the round.
+        // #100: thread a wall-clock source so round.json records real
+        // started_at / completed_at instead of a single frozen `now`.
         const roundOutcome = await runRound({
           now: input.now,
+          nowFn: (): string => new Date(nowMsFn()).toISOString(),
           roundNumber: roundIndex,
           dirs,
           specText: currentSpec,
