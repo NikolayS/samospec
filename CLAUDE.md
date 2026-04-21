@@ -103,6 +103,13 @@ This updates `package.json` and scaffolds a CHANGELOG entry. Then:
 1. Fill in the CHANGELOG entry (Added / Fixed / Changed).
 2. Update any `vX.Y.Z` references in `README.md`.
 3. Commit: `chore: bump version to X.Y.Z`. Tag on `main` after the PR merges.
+4. Cut the GitHub Release — this triggers `.github/workflows/publish.yml`:
+
+   ```bash
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes-file /tmp/release-notes.md
+   ```
+
+   The workflow verifies `package.json` version == tag, runs lint/format/typecheck/tests, and publishes to npm with provenance (`npm publish --access public --provenance`). `NPM_TOKEN` lives in GitHub Actions secrets.
 
 ## Copyright
 

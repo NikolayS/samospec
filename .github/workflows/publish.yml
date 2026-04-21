@@ -1,0 +1,111 @@
+# Copyright 2026 Nikolay Samokhvalov.
+
+name: publish
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. v0.4.2). Must already exist."
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # reserved for future OIDC migration
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify version matches tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Check package.json version == tag
+        id: check
+        run: |
+          set -Eeuo pipefail
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          PKG=$(node -p "require('./package.json').version")
+          EXPECTED="${TAG#v}"
+          if [[ "${PKG}" != "${EXPECTED}" ]]; then
+            echo "::error::package.json version (${PKG}) != release tag (${EXPECTED})"
+            exit 1
+          fi
+          echo "version=${PKG}" >> "${GITHUB_OUTPUT}"
+          echo "Verified: tag=${TAG} → package.json=${PKG}"
+
+  test:
+    name: Test / lint / typecheck
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Format check
+        run: bun run format:check
+
+      - name: Type check
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
+
+  publish:
+    name: Publish to npm
+    needs: [verify, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/samospec/v/${{ needs.verify.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Node (for npm CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Publish to npm
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
