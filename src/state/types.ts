@@ -150,6 +150,18 @@ export const stateSchema = z
     published_pr_url: z.string().min(1).optional(),
     created_at: isoTimestampSchema,
     updated_at: isoTimestampSchema,
+    /**
+     * #85 (v0.4.0): original user inputs recorded at `samospec new` time
+     * so subsequent commands (iterate, resume) can thread the idea string
+     * into prompt builders without requiring re-supply on the CLI.
+     */
+    input: z
+      .object({
+        /** Original --idea string (AUTHORITATIVE per SPEC §7 v0.4.0). */
+        idea: z.string().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

@@ -164,6 +164,14 @@ export async function authorDraft(
       ...(input.skipSections !== undefined
         ? { skipSections: [...input.skipSections] }
         : {}),
+      // #85: thread idea + slug through to the prompt builder so the
+      // AUTHORITATIVE idea framing appears in the v0.1 draft revise call.
+      ...(input.idea !== undefined && input.idea.trim().length > 0
+        ? { idea: input.idea }
+        : {}),
+      ...(input.slug !== undefined && input.slug.trim().length > 0
+        ? { slug: input.slug }
+        : {}),
     });
   } catch (err) {
     throw classifyReviseError(err);

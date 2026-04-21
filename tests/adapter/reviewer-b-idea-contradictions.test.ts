@@ -13,9 +13,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   ClaudeReviewerBAdapter,
-  REVIEWER_B_PERSONA_PREFIX,
+  buildCritiquePromptForReviewerB,
 } from "../../src/adapter/claude-reviewer-b.ts";
-import { buildCritiquePromptForReviewerB } from "../../src/adapter/claude-reviewer-b.ts";
 import type { CritiqueInput } from "../../src/adapter/types.ts";
 import type { SpawnCliInput, SpawnCliResult } from "../../src/adapter/spawn.ts";
 
@@ -31,9 +30,10 @@ function makeInstalledHost(): Record<string, string | undefined> {
 
 const OPTS = { effort: "max" as const, timeout: 120_000 };
 
-function makeSpy(
-  scripted: SpawnCliResult,
-): { spawn: (i: SpawnCliInput) => Promise<SpawnCliResult>; calls: SpawnCliInput[] } {
+function makeSpy(scripted: SpawnCliResult): {
+  spawn: (i: SpawnCliInput) => Promise<SpawnCliResult>;
+  calls: SpawnCliInput[];
+} {
   const calls: SpawnCliInput[] = [];
   const spawn = (i: SpawnCliInput): Promise<SpawnCliResult> => {
     calls.push(i);
@@ -73,7 +73,7 @@ describe("buildCritiquePromptForReviewerB — idea-contradiction directive (#85)
     expect(prompt).toContain("contradiction");
   });
 
-  test('prompt instructs to quote the disclaimer', () => {
+  test("prompt instructs to quote the disclaimer", () => {
     const input: CritiqueInput = {
       spec: "# Spec",
       guidelines: "",

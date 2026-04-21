@@ -426,7 +426,12 @@ export async function runNew(
 
     // Initial state.json. Starts at phase 'detect' and advances as we
     // make progress so a crash leaves a truthful state record.
-    let state = newState({ slug: input.slug, now: input.now });
+    // #85: persist input.idea immediately so resume and iterate can
+    // thread it into prompt builders even if new is interrupted early.
+    let state = {
+      ...newState({ slug: input.slug, now: input.now }),
+      ...(input.idea.trim().length > 0 ? { input: { idea: input.idea } } : {}),
+    };
     const statePath = path.join(slugDir, "state.json");
     writeState(statePath, state);
 
@@ -716,6 +721,8 @@ export async function runNew(
     }
 
     // state.json: advance to committed, version v0.1, round 0.
+    // `state.input.idea` was already written at initialization time (#85)
+    // so resume + iterate have it even if new was interrupted.
     state = {
       ...state,
       round_state: "committed",

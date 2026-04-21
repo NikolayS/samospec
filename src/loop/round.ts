@@ -133,6 +133,17 @@ export interface RunRoundInput {
   readonly reviewerUnavailableNote?: string;
   readonly degradedResolution?: DegradedResult;
   readonly signal?: AbortSignal;
+  /**
+   * #85 (v0.4.0): original --idea string. When present, threaded into
+   * Reviewer B's critique() call so it can flag idea-contradictions, and
+   * into the lead's revise() call so the AUTHORITATIVE framing appears.
+   */
+  readonly idea?: string;
+  /**
+   * #85 (v0.4.0): filesystem-safe slug (non-authoritative identifier).
+   * Passed alongside `idea` into the revise() prompt builder.
+   */
+  readonly slug?: string;
 }
 
 export type RoundStopReason =
@@ -378,6 +389,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
     guidelinesA: input.guidelinesA ?? "",
     guidelinesB: input.guidelinesB ?? "",
     ...(input.signal !== undefined ? { signal: input.signal } : {}),
+    // #85: thread idea to Reviewer B for contradiction detection.
+    ...(input.idea !== undefined ? { idea: input.idea } : {}),
   });
 
   // Persist seats + critique files atomically.
@@ -396,6 +409,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       guidelinesA: input.guidelinesA ?? "",
       guidelinesB: input.guidelinesB ?? "",
       ...(input.signal !== undefined ? { signal: input.signal } : {}),
+      // #85: thread idea to Reviewer B for contradiction detection.
+      ...(input.idea !== undefined ? { idea: input.idea } : {}),
     });
     // Overwrite disk with the retry results.
     persistSeatResults(dirs, attempt2);
@@ -470,6 +485,10 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       reviews: reviewsForLead,
       decisions_history: [...input.decisionsHistory],
       opts: { effort: "max", timeout: reviseTimeout },
+      // #85: thread idea + slug into the revise prompt for AUTHORITATIVE
+      // idea framing in every review-round lead call.
+      ...(input.idea !== undefined ? { idea: input.idea } : {}),
+      ...(input.slug !== undefined ? { slug: input.slug } : {}),
     });
 
     // Extract decisions from the response. Priority:
@@ -519,6 +538,8 @@ interface ReviewerParallelInput {
   readonly guidelinesA: string;
   readonly guidelinesB: string;
   readonly signal?: AbortSignal;
+  /** #85: idea string threaded into Reviewer B's critique() call. */
+  readonly idea?: string;
 }
 
 async function runReviewersParallel(
@@ -547,6 +568,9 @@ async function runReviewersParallel(
       spec: input.specText,
       guidelines: input.guidelinesB,
       opts: { effort: "max", timeout: input.critiqueTimeoutMs },
+      // #85: thread the original idea so Reviewer B can detect
+      // idea-contradictions against disclaimed classes.
+      ...(input.idea !== undefined ? { idea: input.idea } : {}),
     })
     .then<SeatOutcome>((critique) => ({
       seat: "reviewer_b",

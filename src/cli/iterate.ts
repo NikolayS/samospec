@@ -459,6 +459,11 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         );
         mkdirSync(dirs.roundDir, { recursive: true });
 
+        // #85: thread the original idea from state.input.idea into the
+        // round so Reviewer B can detect idea-contradictions and the
+        // lead's revise() prompt carries the AUTHORITATIVE framing.
+        const ideaForRound = state.input?.idea;
+
         // Run the round.
         const roundOutcome = await runRound({
           now: input.now,
@@ -470,6 +475,9 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
           critiqueTimeoutMs: callTimeouts.criticA_ms,
           reviseTimeoutMs: callTimeouts.revise_ms,
           ...(manualEditDirective !== undefined ? { manualEditDirective } : {}),
+          ...(ideaForRound !== undefined
+            ? { idea: ideaForRound, slug: input.slug }
+            : {}),
         });
 
         // Persist state at round boundary (round_state tracking).

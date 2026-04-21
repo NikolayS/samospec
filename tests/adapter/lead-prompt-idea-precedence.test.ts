@@ -9,10 +9,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import {
-  buildAskPrompt,
-  buildRevisePrompt,
-} from "../../src/adapter/claude.ts";
+import { buildAskPrompt, buildRevisePrompt } from "../../src/adapter/claude.ts";
 import type { AskInput, ReviseInput } from "../../src/adapter/types.ts";
 
 // ---------- shared fixtures ----------
@@ -105,7 +102,7 @@ describe("buildRevisePrompt — idea-precedence framing (#85)", () => {
 // ---------- buildAskPrompt — idea-precedence framing ----------
 
 describe("buildAskPrompt — idea-precedence framing (#85)", () => {
-  test('prompt contains the AUTHORITATIVE header when idea is provided', () => {
+  test("prompt contains the AUTHORITATIVE header when idea is provided", () => {
     const prompt = buildAskPrompt(makeAskInputWithIdea());
     expect(prompt).toContain("## Project idea (AUTHORITATIVE");
   });
