@@ -1013,9 +1013,7 @@ function finalizeBookkeeping(args: {
   try {
     const branch = currentBranch(args.cwd);
     if (isProtected(branch, { repoPath: args.cwd })) return;
-    const candidatePaths: string[] = [
-      path.relative(args.cwd, args.statePath),
-    ];
+    const candidatePaths: string[] = [path.relative(args.cwd, args.statePath)];
     if (args.tldrPath !== undefined && existsSync(args.tldrPath)) {
       candidatePaths.push(path.relative(args.cwd, args.tldrPath));
     }

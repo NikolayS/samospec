@@ -255,10 +255,7 @@ describe("verifyHeadSha — state.json HEAD mismatch", () => {
     // grammar produced by `buildCommitMessage` in src/git/commit.ts.
     writeFileSync(join(local.dir, "bookkeeping.txt"), "state\n");
     runGit(["add", "bookkeeping.txt"], local.dir);
-    runGit(
-      ["commit", "-m", "spec(refunds): finalize round 1"],
-      local.dir,
-    );
+    runGit(["commit", "-m", "spec(refunds): finalize round 1"], local.dir);
     expect(() =>
       verifyHeadSha({
         repoPath: local.dir,

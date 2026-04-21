@@ -192,8 +192,7 @@ async function runOneRoundLeadTerminal(args: {
     // Throw a plain Error so the SPEC §7 sub-reason classifier falls
     // back to `adapter_error` — the exact bucket is not load-bearing
     // for this test, only that the lead_terminal path is taken.
-    revise: () =>
-      Promise.reject(new Error("synthetic lead failure for test")),
+    revise: () => Promise.reject(new Error("synthetic lead failure for test")),
   };
   const critiqueAdapter = createFakeAdapter({ critique: buildCritique(1) });
 
