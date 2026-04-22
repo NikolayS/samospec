@@ -139,9 +139,11 @@ Useful flags:
 - `samospec new --skip user-stories,sprint-plan,…` — opt out of baseline sections.
 - `samospec new --max-session-wall-clock-ms 1800000` — 30-min session cap.
 - `samospec new --force` — archive any existing `<slug>` dir as `.archived-YYYY-MM-DDThhmmssZ/` before starting.
+- `samospec new --yes` — fully non-interactive: auto-accept the lead's persona proposal and default every interview answer to `decide for me`. Pair with `--answers-file <path>` when you want to steer the five questions from JSON instead.
 - `samospec iterate --rounds 5` — cap rounds for this invocation.
 - `samospec iterate --no-push` — stay local this run.
 - `samospec iterate --quiet` — suppress the per-round progress + heartbeat stream on stderr (final summary still prints on stdout).
+- `samospec iterate --on-dirty <incorporate|overwrite|abort>` — non-interactive answer for the uncommitted-edits prompt.
 
 ---
 
