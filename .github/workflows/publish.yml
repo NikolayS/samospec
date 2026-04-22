@@ -122,9 +122,6 @@ jobs:
           } > .npmrc
           chmod 600 .npmrc
 
-      - name: Sanity-check auth (whoami)
-        run: npm whoami --registry https://registry.npmjs.org/
-
       - name: Publish to npm
         # --provenance requires a trusted-publisher config on npmjs;
         # skip it until that's set up. Re-enable via follow-up PR.
