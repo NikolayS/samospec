@@ -7,39 +7,66 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.6.0] - 2026-04-22
+
 ### Added
 
-- **Non-TTY automation for `new` + `iterate` (#114):** `samospec new`
-  now accepts `--yes`, `--accept-persona`, and `--answers-file <path>`
-  so it can run in CI / piped / background contexts without touching
-  readline. `--answers-file` loads a JSON file shaped
-  `{ "answers": [s, s, s, s, s] }` (exactly 5 entries). `samospec
-iterate` gained `--on-dirty <incorporate|overwrite|abort>`. When
-  stdin is not a TTY and neither flag is set, both commands now exit 1
-  fast with an actionable message instead of crashing with
-  `ERR_USE_AFTER_CLOSE` or readline-deadlocking.
+- **Non-TTY automation for `new` + `iterate` (#114 / #117):**
+  `samospec new` now accepts `--yes`, `--accept-persona`, and
+  `--answers-file <path>` so it can run in CI / piped / background
+  contexts without touching readline. `--answers-file` loads a JSON
+  file shaped `{ "answers": [s, s, s, s, s] }` (exactly 5 entries).
+  `samospec iterate` gained `--on-dirty <incorporate|overwrite|abort>`
+  for the uncommitted-edits prompt. When stdin is not a TTY and no
+  automation flag is set, both commands exit 1 fast with an actionable
+  message instead of crashing with `ERR_USE_AFTER_CLOSE` or
+  readline-deadlocking.
+- **`--verbose` on `samospec new` (#77 / #116):** flag was wired
+  through the parser in v0.3.0 but silently ignored; now emits
+  `[verbose +Nms] ...` diagnostic lines on stderr — per-phase entry
+  traces (persona / context / interview / draft) and post-write
+  byte-size notices for SPEC.md and TLDR.md. Stdout unchanged in both
+  modes so scripts parsing final-summary lines keep working.
 
 ### Fixed
 
-- **iterate: lead revise per-call timeout + whole-round retry (#92):**
-  the lead's `revise()` call now has a hard outer deadline enforced at
-  the round-runner level. When revise exceeds the configured timeout
-  (default 600 s, override via `budget.max_revise_call_ms` in
-  `.samo/config.json` or `callTimeouts.revise_ms` in the iterate API),
-  the round runner cancels, re-runs reviewers, and calls revise once
-  more. A second timeout surfaces as `lead_terminal` (exit 4) with
-  `state.json.exit.reason = "lead-terminal:revise_timeout"` and a
-  distinct exit-4 message so `samospec status` can tell a stuck revise
-  from a generic adapter error. Observed live on `todo-stream` r07 —
-  25+ minutes hung before SIGKILL; now capped at `2 × timeout`. The
-  per-call cap also honors the session wall-clock budget from #91 (the
-  iterate CLI threads `remainingSessionMsFn` into `runRound`), so a
-  hang near the end of a session still terminates at the session cap.
-  `RunRoundOutcome` now exposes separate `reviewersRetried` /
-  `reviseRetried` signals (the legacy `retried` flag is still the OR
-  of both for back-compat) and `iterate` writes a distinct
-  `changelog.md` note per retry kind — "reviewers retried this round
-  (SPEC §7)" vs. "lead revise retried after timeout (#92)".
+- **`iterate` honors `--max-session-wall-clock-ms` (#91 / #115):** the
+  flag was silently dropped by `parseIterateArgs` (only `new` honored
+  it). Now parsed, threaded into `runIterate`, and enforced both
+  between rounds and inside each seat call via `withSessionDeadline`.
+  On cap: exit 4 with `session-wall-clock` in stderr and
+  `state.exit.reason = "lead-terminal:wall_clock"`. The argv parser
+  also replaces the previous silent-drop of unknown `--` flags with an
+  explicit error, so typos like `--rouns 5` now fail fast.
+- **`iterate` lead revise per-call timeout + whole-round retry
+  (#92 / #118):** the lead's `revise()` call now has a hard outer
+  deadline enforced at the round runner. When revise exceeds the
+  configured timeout (default 600 s, override via
+  `budget.max_revise_call_ms` or `callTimeouts.revise_ms`), the round
+  cancels, re-runs reviewers, and calls revise once more. A second
+  timeout surfaces as `lead_terminal` (exit 4) with
+  `state.exit.reason = "lead-terminal:revise_timeout"`. Observed live
+  on `todo-stream` r07 — 25+ min hung before SIGKILL; now capped at
+  `2 × timeout`. The per-call cap honors the session wall-clock budget
+  from #91 (iterate threads `remainingSessionMsFn` into `runRound`),
+  so a hang near the end of a session still terminates at the session
+  cap. `RunRoundOutcome` exposes separate `reviewersRetried` /
+  `reviseRetried` signals (legacy `retried` kept as their OR) and
+  `changelog.md` emits a distinct note per retry kind — "reviewers
+  retried this round (SPEC §7)" vs. "lead revise retried after
+  timeout (#92)".
+- **CI publish 404 (#113 / #119):** the publish workflow failed
+  every run under node 20 (npm 10.8.2) with
+  `npm error 404 PUT /samospec`, while the same token published fine
+  from local under npm 11.x. Root cause: an npm 10.8.2 regression
+  with granular-token PUTs. Upgraded the publish job to node 24
+  (ships npm 11.x) and added a diagnostic step that logs
+  node / npm / registry before publish. Validated end-to-end via
+  `workflow_dispatch` with `tag=v0.5.0` — got the correct
+  "cannot publish over previously-published version" response.
+  Future releases will publish automatically.
 
 ---
 
