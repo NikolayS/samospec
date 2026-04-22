@@ -13,11 +13,16 @@ import { runDoctor, type DoctorAdapterBinding } from "./cli/doctor.ts";
 import {
   runIterate,
   type IterateResolvers,
+  type ManualEditResolver,
   type PushOptions,
   type SeatDiagnostics,
 } from "./cli/iterate.ts";
 import { describePrCapability } from "./git/push-consent.ts";
 import { runNew, type ChoiceResolvers } from "./cli/new.ts";
+import {
+  buildNonInteractiveResolvers,
+  loadAnswersFile,
+} from "./cli/non-interactive.ts";
 import { runPublish } from "./cli/publish.ts";
 import {
   PERSONA_FORM_RE,
@@ -27,6 +32,7 @@ import {
 } from "./cli/persona.ts";
 import { runResume } from "./cli/resume.ts";
 import { runStatus, type StatusAdapterBinding } from "./cli/status.ts";
+import type { ManualEditChoice } from "./git/manual-edit.ts";
 import packageJson from "../package.json" with { type: "json" };
 
 export interface CliResult {
@@ -48,6 +54,7 @@ const USAGE =
   "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
   "  new <slug> [--idea ...] [--force] [--skip <sections>]\n" +
   "            [--max-session-wall-clock-ms <ms>] [--verbose]\n" +
+  "            [--yes] [--accept-persona] [--answers-file <path>]\n" +
   "                              Start a new spec (persona + 5-question interview).\n" +
   "                              --force archives any existing run before starting\n" +
   "                              fresh. --skip omits named baseline sections from\n" +
@@ -62,15 +69,24 @@ const USAGE =
   "                              `session-wall-clock`.\n" +
   "                              --verbose emits targeted per-phase and per-file\n" +
   "                              diagnostic lines on stderr (stdout stays concise).\n" +
+  "                              --yes / --accept-persona skip the persona-proposal\n" +
+  "                              readline prompt. --answers-file <path> loads the\n" +
+  "                              5-question interview answers from a JSON file\n" +
+  '                              (`{ "answers": [s, s, s, s, s] }`). At least one of\n' +
+  "                              these is required when stdin is not a TTY (#114).\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
   "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>] [--quiet]\n" +
   "           [--max-session-wall-clock-ms <ms>]\n" +
+  "           [--on-dirty <incorporate|overwrite|abort>]\n" +
   "                              Run review rounds until a stopping condition fires.\n" +
   "                              --quiet suppresses per-phase progress + heartbeat\n" +
   "                              (default: verbose progress on stderr).\n" +
   "                              --max-session-wall-clock-ms caps the review loop\n" +
   "                              session wall-clock (positive integer ms). On cap,\n" +
   "                              exits 4 with reason `session-wall-clock`.\n" +
+  "                              --on-dirty answers the uncommitted-edits prompt\n" +
+  "                              without reading stdin; required when stdin is not\n" +
+  "                              a TTY and `.samo/spec/<slug>/` has dirty edits (#114).\n" +
   "  status [<slug>]             Print phase, round, cost, wall-clock, and next action.\n" +
   "  publish [<slug>] [--no-lint] [--remote <name>]\n" +
   "                              Promote to blueprints/<slug>/SPEC.md, commit, push, open PR.\n" +
@@ -159,6 +175,17 @@ interface NewArgs {
   readonly force: boolean;
   readonly maxSessionWallClockMs?: number;
   readonly verbose: boolean;
+  /**
+   * #114: non-TTY automation surface.
+   *   - `acceptPersona`: accept the lead's persona proposal without prompting.
+   *   - `answersFile`: absolute or relative path to a JSON file with
+   *     `{ "answers": [string x 5] }`. When present, skips the 5Q readline.
+   *   - `yes`: broad "accept everything" — implies `acceptPersona=true` and
+   *     lets interview fall back to `"decide for me"` for every question.
+   */
+  readonly acceptPersona: boolean;
+  readonly yes: boolean;
+  readonly answersFile?: string;
 }
 
 interface ResumeArgs {
@@ -216,6 +243,9 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let verbose = false;
   let skipSections: readonly string[] | undefined;
   let maxSessionWallClockMs: number | undefined;
+  let acceptPersona = false;
+  let yes = false;
+  let answersFile: string | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === undefined) continue;
@@ -232,6 +262,31 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
       // on stderr. stdout stays concise so pipelines that parse the
       // happy-path output don't break.
       verbose = true;
+      continue;
+    }
+    if (token === "--yes" || token === "--no-interactive") {
+      yes = true;
+      continue;
+    }
+    if (token === "--accept-persona") {
+      acceptPersona = true;
+      continue;
+    }
+    if (token === "--answers-file") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      if (raw.length === 0 || raw.startsWith("--")) {
+        return "samospec new: --answers-file requires a path";
+      }
+      answersFile = raw;
+      continue;
+    }
+    if (token.startsWith("--answers-file=")) {
+      const raw = token.slice("--answers-file=".length);
+      if (raw.length === 0) {
+        return "samospec new: --answers-file requires a path";
+      }
+      answersFile = raw;
       continue;
     }
     if (token === "--idea") {
@@ -291,8 +346,11 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     explain,
     force,
     verbose,
+    acceptPersona,
+    yes,
     ...(skipSections !== undefined ? { skipSections } : {}),
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
+    ...(answersFile !== undefined ? { answersFile } : {}),
   };
 }
 
@@ -415,6 +473,18 @@ async function runNewCommand(rest: readonly string[]) {
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
+  // Non-TTY / automation guard (#114). Decide the resolver strategy
+  // BEFORE any readline interface is created — the pre-#114 code
+  // constructed a readline at module-import time, which crashed with
+  // ERR_USE_AFTER_CLOSE the moment a non-TTY stdin got closed.
+  const resolversOrErr = buildNewResolvers(parsed);
+  if (typeof resolversOrErr === "string") {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `${resolversOrErr}\n\n${USAGE}`,
+    };
+  }
   const adapter = leadAdapter();
   return runNew(
     {
@@ -424,7 +494,7 @@ async function runNewCommand(rest: readonly string[]) {
       explain: parsed.explain,
       force: parsed.force,
       verbose: parsed.verbose,
-      resolvers: interactiveResolvers(),
+      resolvers: resolversOrErr,
       now: new Date().toISOString(),
       ...(parsed.skipSections !== undefined
         ? { skipSections: [...parsed.skipSections] }
@@ -435,6 +505,49 @@ async function runNewCommand(rest: readonly string[]) {
     },
     adapter,
   );
+}
+
+/**
+ * #114 — pick the `ChoiceResolvers` strategy for `samospec new` based
+ * on the parsed flags and whether stdin is a TTY.
+ *
+ *   - stdin is TTY: default to the interactive readline resolver.
+ *   - stdin is NOT a TTY and any of `--yes`, `--accept-persona`,
+ *     `--answers-file` is present: build a non-interactive resolver.
+ *   - stdin is NOT a TTY and NO automation flag: return an error
+ *     string so the CLI exits 1 fast with actionable guidance, rather
+ *     than crashing on the first `rl.question()` call.
+ *
+ * When `--answers-file` is present but malformed, surface the loader's
+ * error verbatim so the user can jump to the offending line.
+ */
+function buildNewResolvers(parsed: NewArgs): ChoiceResolvers | string {
+  const hasAutomationFlag =
+    parsed.yes || parsed.acceptPersona || parsed.answersFile !== undefined;
+  const stdinIsTty = process.stdin.isTTY === true;
+
+  if (!stdinIsTty && !hasAutomationFlag) {
+    return (
+      "samospec new: stdin is not a TTY (piped, CI, background). " +
+      "Pass one of --yes, --accept-persona, or --answers-file <path> " +
+      "to run non-interactively."
+    );
+  }
+
+  let answers: readonly string[] | undefined;
+  if (parsed.answersFile !== undefined) {
+    const loaded = loadAnswersFile(parsed.answersFile);
+    if (!loaded.ok) return loaded.error;
+    answers = loaded.answers;
+  }
+
+  if (hasAutomationFlag) {
+    return buildNonInteractiveResolvers({
+      acceptPersona: parsed.yes || parsed.acceptPersona,
+      answers,
+    });
+  }
+  return interactiveResolvers();
 }
 
 async function runResumeCommand(rest: readonly string[]) {
@@ -464,6 +577,35 @@ interface IterateArgs {
   readonly remote: string;
   readonly quiet: boolean;
   readonly maxSessionWallClockMs?: number;
+  /**
+   * #114: when set, `iterate` answers the uncommitted-edits prompt
+   * without reading stdin. Required in non-TTY contexts where
+   * `.samo/spec/<slug>/` has dirty edits.
+   */
+  readonly onDirty?: ManualEditChoice;
+}
+
+const ON_DIRTY_CHOICES: readonly ManualEditChoice[] = [
+  "incorporate",
+  "overwrite",
+  "abort",
+];
+
+type ParseOnDirtyResult =
+  | { readonly ok: true; readonly value: ManualEditChoice }
+  | { readonly ok: false; readonly error: string };
+
+function parseOnDirty(raw: string): ParseOnDirtyResult {
+  const norm = raw.trim().toLowerCase();
+  if (ON_DIRTY_CHOICES.includes(norm as ManualEditChoice)) {
+    return { ok: true, value: norm as ManualEditChoice };
+  }
+  return {
+    ok: false,
+    error:
+      `samospec iterate: --on-dirty must be one of ${ON_DIRTY_CHOICES.join("|")} ` +
+      `(got '${raw}')`,
+  };
 }
 
 /**
@@ -479,6 +621,8 @@ const ITERATE_ALLOWED_FLAGS: ReadonlySet<string> = new Set([
   "--remote",
   "--quiet",
   "--max-session-wall-clock-ms",
+  // #114: non-TTY automation.
+  "--on-dirty",
 ]);
 
 function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
@@ -488,6 +632,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let remote = "origin";
   let quiet = false;
   let maxSessionWallClockMs: number | undefined;
+  let onDirty: ManualEditChoice | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) continue;
@@ -513,6 +658,21 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
       // Issue #101: suppress per-phase + heartbeat; final summary still
       // prints. No-op when combined with `--rounds 0` or similar.
       quiet = true;
+      continue;
+    }
+    if (t === "--on-dirty") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parseOnDirty(raw);
+      if (!parsed.ok) return parsed.error;
+      onDirty = parsed.value;
+      continue;
+    }
+    if (t.startsWith("--on-dirty=")) {
+      const raw = t.slice("--on-dirty=".length);
+      const parsed = parseOnDirty(raw);
+      if (!parsed.ok) return parsed.error;
+      onDirty = parsed.value;
       continue;
     }
     if (t === "--remote") {
@@ -568,6 +728,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
     quiet,
     ...(rounds !== undefined ? { rounds } : {}),
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
+    ...(onDirty !== undefined ? { onDirty } : {}),
   };
 }
 
@@ -597,28 +758,65 @@ function buildReviewLoopAdapters(): {
   return { lead, reviewerA, reviewerB };
 }
 
-function interactiveIterateResolvers(): IterateResolvers {
+/**
+ * #114 — build the manual-edit resolver.
+ *
+ *   - `onDirty` flag set: return a resolver that answers without any
+ *     readline call, so `iterate` never touches stdin.
+ *   - stdin is NOT a TTY and `onDirty` is NOT set: return a resolver
+ *     that surfaces a clear error string via `throw` when the dirty
+ *     path fires. `iterate` catches this and exits 1 cleanly rather
+ *     than deadlocking the readline prompt.
+ *   - default: the legacy interactive prompt.
+ */
+function buildManualEditResolver(
+  rl: readline.Interface,
+  onDirty: ManualEditChoice | undefined,
+): ManualEditResolver {
+  if (onDirty !== undefined) {
+    return (_files) => Promise.resolve(onDirty);
+  }
+  const stdinIsTty = process.stdin.isTTY === true;
+  if (!stdinIsTty) {
+    return (files) => {
+      const detail =
+        files.length === 0 ? "(0 files)" : `(${String(files.length)} file(s))`;
+      return Promise.reject(
+        new Error(
+          `samospec iterate: uncommitted edits under .samo/spec/ ${detail} ` +
+            "but stdin is not a TTY. Pass --on-dirty " +
+            "<incorporate|overwrite|abort> to run non-interactively.",
+        ),
+      );
+    };
+  }
+  return async (files) => {
+    process.stdout.write(
+      `\nUncommitted edits detected under .samo/spec/ (${String(files.length)} file(s)):\n`,
+    );
+    for (const f of files) process.stdout.write(`  - ${f}\n`);
+    const ans = (
+      await rl.question(
+        "[I]ncorporate / [O]verwrite / [A]bort [Enter=incorporate]: ",
+      )
+    )
+      .trim()
+      .toLowerCase();
+    if (ans === "o" || ans === "overwrite") return "overwrite";
+    if (ans === "a" || ans === "abort") return "abort";
+    return "incorporate";
+  };
+}
+
+function interactiveIterateResolvers(
+  onDirty: ManualEditChoice | undefined,
+): IterateResolvers {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
   return {
-    onManualEdit: async (files) => {
-      process.stdout.write(
-        `\nUncommitted edits detected under .samo/spec/ (${String(files.length)} file(s)):\n`,
-      );
-      for (const f of files) process.stdout.write(`  - ${f}\n`);
-      const ans = (
-        await rl.question(
-          "[I]ncorporate / [O]verwrite / [A]bort [Enter=incorporate]: ",
-        )
-      )
-        .trim()
-        .toLowerCase();
-      if (ans === "o" || ans === "overwrite") return "overwrite";
-      if (ans === "a" || ans === "abort") return "abort";
-      return "incorporate";
-    },
+    onManualEdit: buildManualEditResolver(rl, onDirty),
     onDegraded: async (summary) => {
       process.stdout.write(`\n${summary}\n`);
       const ans = (await rl.question("[A]ccept / [B]bort [Enter=accept]: "))
@@ -685,24 +883,35 @@ async function runIterateCommand(rest: readonly string[]) {
     remote: parsed.remote,
     noPush: parsed.noPush,
   };
-  const result = await runIterate({
-    cwd: process.cwd(),
-    slug: parsed.slug,
-    now: new Date().toISOString(),
-    resolvers: interactiveIterateResolvers(),
-    adapters,
-    pushOptions,
-    quiet: parsed.quiet,
-    ...(parsed.rounds !== undefined ? { maxRounds: parsed.rounds } : {}),
-    ...(parsed.maxSessionWallClockMs !== undefined
-      ? { maxSessionWallClockMs: parsed.maxSessionWallClockMs }
-      : {}),
-  });
-  return {
-    exitCode: result.exitCode,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  };
+  try {
+    const result = await runIterate({
+      cwd: process.cwd(),
+      slug: parsed.slug,
+      now: new Date().toISOString(),
+      resolvers: interactiveIterateResolvers(parsed.onDirty),
+      adapters,
+      pushOptions,
+      quiet: parsed.quiet,
+      ...(parsed.rounds !== undefined ? { maxRounds: parsed.rounds } : {}),
+      ...(parsed.maxSessionWallClockMs !== undefined
+        ? { maxSessionWallClockMs: parsed.maxSessionWallClockMs }
+        : {}),
+    });
+    return {
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    };
+  } catch (err) {
+    // #114: the non-TTY manual-edit resolver rejects with an Error so
+    // iterate exits cleanly instead of readline-deadlocking. Translate
+    // the rejection to an exit-1 CliResult with the actionable message.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("--on-dirty")) {
+      return { exitCode: 1, stdout: "", stderr: `${msg}\n` };
+    }
+    throw err;
+  }
 }
 
 async function runStatusCommand(rest: readonly string[]) {
