@@ -2,8 +2,9 @@
 
 // SPEC §3 + Issue #107 — integration tests asserting that `samospec
 // new` emits an architecture.json and a sentinel-delimited ASCII block
-// in SPEC.md, and that iterate re-renders the block from architecture
-// .json on each round.
+// in SPEC.md, that iterate re-renders the block from architecture.json
+// on each round, and that resume seeds/preserves architecture.json and
+// commits it alongside SPEC.md (the new + iterate + resume triad).
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -20,8 +21,15 @@ import type {
 import { runIterate } from "../../src/cli/iterate.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { runInit } from "../../src/cli/init.ts";
-import { writeArchitecture } from "../../src/state/architecture-store.ts";
-import { parseArchitecture } from "../../src/state/architecture.ts";
+import { runResume } from "../../src/cli/resume.ts";
+import {
+  readArchitectureOrEmpty,
+  writeArchitecture,
+} from "../../src/state/architecture-store.ts";
+import {
+  emptyArchitecture,
+  parseArchitecture,
+} from "../../src/state/architecture.ts";
 import { writeState } from "../../src/state/store.ts";
 import { createTempRepo, type TempRepo } from "../git/helpers/tempRepo.ts";
 
@@ -281,5 +289,183 @@ describe("samospec iterate — architecture block re-render (#107)", () => {
     expect(spec).toContain("App");
     expect(spec).toContain("user → app");
     expect(spec).not.toContain("(architecture not yet specified)");
+  });
+});
+
+// ---------- resume ----------
+//
+// These tests exercise runResume's "Case C" path (persona + interview
+// on disk, SPEC.md missing — resume re-runs the draft). They complete
+// the new + iterate + resume triad required by issue #107: coverage is
+// retroactive (the resume wiring in src/cli/resume.ts already seeds +
+// preserves + commits architecture.json, see lines 349-363 / 428), but
+// without these tests the idempotency note on resume.ts:352 and the
+// architecturePath entry in the specCommit paths array are unverified.
+
+// Adapter for the *resume* leg: persona is already on disk, so the
+// first ask is the interview's questions call, and revise() is the
+// draft call. Sequenced to match the single expected ask.
+function makeResumeAdapter(): Adapter {
+  const base = createFakeAdapter();
+  const answers = [questionsJson()];
+  let askCall = 0;
+  return {
+    ...base,
+    ask: (_input: AskInput): Promise<AskOutput> => {
+      const a = answers[askCall] ?? answers[answers.length - 1] ?? "";
+      askCall += 1;
+      return Promise.resolve(askOut(a));
+    },
+    revise: (_input: ReviseInput): Promise<ReviseOutput> =>
+      Promise.resolve({
+        spec: SAMPLE_SPEC,
+        ready: false,
+        rationale: "v0.1 draft (resumed)",
+        usage: null,
+        effort_used: "max",
+      }),
+  };
+}
+
+describe("samospec resume — architecture.json + SPEC.md block (#107)", () => {
+  // Drives runNew to the point where state.json + persona are written
+  // but the interview rejects, so interview.json / SPEC.md / architecture
+  // .json are absent on disk — exactly the shape that resume's Case C
+  // expects.
+  async function seedDraftPhaseWithKilledInterview(
+    slug: string,
+  ): Promise<void> {
+    const killResolvers: ChoiceResolvers = {
+      persona: () => Promise.resolve({ kind: "accept" }),
+      question: (_q) => Promise.reject(new Error("simulated kill")),
+    };
+    const first = await runNew(
+      {
+        cwd: tmp,
+        slug,
+        idea: "a CLI that emits architecture diagrams",
+        explain: false,
+        resolvers: killResolvers,
+        now: "2026-04-21T00:00:00Z",
+        noPush: true,
+      },
+      makeLeadAdapter(),
+    );
+    // Non-zero (interview was killed). Persona survives on disk.
+    expect(first.exitCode).not.toBe(0);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
+    expect(existsSync(path.join(slugDir, "state.json"))).toBe(true);
+    expect(existsSync(path.join(slugDir, "interview.json"))).toBe(false);
+    expect(existsSync(path.join(slugDir, "SPEC.md"))).toBe(false);
+  }
+
+  test("seeds the empty-placeholder architecture.json when missing", async () => {
+    const slug = "arch-resume-seed";
+    await seedDraftPhaseWithKilledInterview(slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
+    const archPath = path.join(slugDir, "architecture.json");
+    // Pre-condition: resume has not run yet, architecture.json is absent.
+    expect(existsSync(archPath)).toBe(false);
+
+    const result = await runResume(
+      {
+        cwd: tmp,
+        slug,
+        now: "2026-04-21T01:00:00Z",
+        resolvers: acceptResolver(),
+      },
+      makeResumeAdapter(),
+    );
+    expect(result.exitCode).toBe(0);
+
+    expect(existsSync(archPath)).toBe(true);
+    const doc = parseArchitecture(
+      JSON.parse(readFileSync(archPath, "utf8")) as unknown,
+    );
+    // Shape matches emptyArchitecture() exactly (SPEC §7 zero-node
+    // placeholder).
+    expect(doc).toEqual(emptyArchitecture());
+  });
+
+  test("preserves an existing architecture.json (idempotency per resume.ts:352)", async () => {
+    const slug = "arch-resume-preserve";
+    await seedDraftPhaseWithKilledInterview(slug);
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
+    const archPath = path.join(slugDir, "architecture.json");
+
+    // Seed a minimal but valid 2-node document the way a prior partial
+    // run might have.
+    const seeded = {
+      version: "1" as const,
+      nodes: [
+        { id: "user", label: "User", kind: "external" as const },
+        { id: "app", label: "App", kind: "component" as const },
+      ],
+      edges: [{ from: "user", to: "app", kind: "call" as const }],
+    };
+    writeArchitecture(archPath, seeded);
+    const before = readFileSync(archPath, "utf8");
+
+    const result = await runResume(
+      {
+        cwd: tmp,
+        slug,
+        now: "2026-04-21T01:00:00Z",
+        resolvers: acceptResolver(),
+      },
+      makeResumeAdapter(),
+    );
+    expect(result.exitCode).toBe(0);
+
+    // Bytes are identical — resume did not overwrite.
+    const after = readFileSync(archPath, "utf8");
+    expect(after).toBe(before);
+    // And the parsed content equals what we seeded.
+    const doc = readArchitectureOrEmpty(archPath);
+    expect(doc).toEqual(seeded);
+  });
+
+  test("SPEC.md contains both sentinels after resume", async () => {
+    const slug = "arch-resume-sentinels";
+    await seedDraftPhaseWithKilledInterview(slug);
+    const result = await runResume(
+      {
+        cwd: tmp,
+        slug,
+        now: "2026-04-21T01:00:00Z",
+        resolvers: acceptResolver(),
+      },
+      makeResumeAdapter(),
+    );
+    expect(result.exitCode).toBe(0);
+    const spec = readFileSync(
+      path.join(tmp, ".samo", "spec", slug, "SPEC.md"),
+      "utf8",
+    );
+    expect(spec).toContain("<!-- architecture:begin -->");
+    expect(spec).toContain("<!-- architecture:end -->");
+  });
+
+  test("architecture.json is tracked in git after resume (specCommit paths)", async () => {
+    const slug = "arch-resume-commit";
+    await seedDraftPhaseWithKilledInterview(slug);
+    const result = await runResume(
+      {
+        cwd: tmp,
+        slug,
+        now: "2026-04-21T01:00:00Z",
+        resolvers: acceptResolver(),
+      },
+      makeResumeAdapter(),
+    );
+    expect(result.exitCode).toBe(0);
+    // git ls-files --error-unmatch exits non-zero if the path is not
+    // tracked; exit 0 proves it's in the index.
+    const lsFiles = repo.run([
+      "ls-files",
+      "--error-unmatch",
+      `.samo/spec/${slug}/architecture.json`,
+    ]);
+    expect(lsFiles.status).toBe(0);
   });
 });
