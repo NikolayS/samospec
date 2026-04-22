@@ -94,6 +94,8 @@ At every step: `samospec status <slug>` prints phase, current version, next-step
 
 Every generated `SPEC.md` gets nine mandatory sections by default (goal & why, user stories, architecture, implementation details, tests plan with red/green TDD, team of veteran experts, sprint plan, embedded changelog, version header). Pass `--skip` to opt out.
 
+Every spec also ships a machine-readable `.samo/spec/<slug>/architecture.json` (Zod-validated; nodes/edges/groups/notes) and an auto-rendered 80-column ASCII diagram embedded in SPEC.md between `<!-- architecture:begin -->` / `<!-- architecture:end -->` sentinels. `iterate` re-renders the block from `architecture.json` on every round, so the diagram stays in lockstep with the schema.
+
 ---
 
 ## Auth — OAuth is the happy path
