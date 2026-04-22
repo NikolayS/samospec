@@ -7,26 +7,87 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.5.0] - 2026-04-22
+
 ### Added
 
-- **Architecture schema + ASCII diagram (#107):** every spec now ships a
-  machine-readable `.samo/spec/<slug>/architecture.json` (Zod-validated;
-  `version: "1"`, nodes/edges/groups/notes) alongside SPEC.md, and an
-  auto-rendered ASCII diagram embedded between
-  `<!-- architecture:begin -->` / `<!-- architecture:end -->` sentinels
-  inside SPEC.md. The renderer is deterministic, capped at 80 columns
-  hard and ~40 lines soft (sibling groups collapse to `[N label]` when
-  the soft cap trips), and zero-node schemas render a
-  `(architecture not yet specified)` placeholder. `new`, `iterate`, and
-  `resume` all maintain architecture.json and re-render the SPEC.md
+- **Architecture schema + ASCII diagram (#107 / #109):** every spec now
+  ships a machine-readable `.samo/spec/<slug>/architecture.json`
+  (Zod-validated; `version: "1"`, nodes / edges / groups / notes)
+  alongside SPEC.md, and an auto-rendered ASCII diagram embedded
+  between `<!-- architecture:begin -->` / `<!-- architecture:end -->`
+  sentinels inside SPEC.md. The renderer is deterministic, capped at
+  80 cols hard and ~40 lines soft (sibling groups collapse to
+  `[N label]` when the soft cap trips), and zero-node schemas render
+  a `(architecture not yet specified)` placeholder. `new` / `iterate`
+  / `resume` all maintain architecture.json and re-render the SPEC.md
   block from it each round.
+- **Progress + heartbeat during `iterate` (#101 / #104):**
+  `samospec iterate` now emits a human-readable progress stream on stderr —
+  round-start, per-phase start/complete with adapter identity + duration,
+  and a heartbeat line every ~30 s for each active child (so long
+  phases no longer look frozen). Stdout unchanged so scripts parsing
+  the final-summary lines keep working. New `--quiet` flag suppresses
+  progress + heartbeat; the final summary still lands on stdout.
+- **npm publish workflow (#108):** `.github/workflows/publish.yml`
+  triggers on GitHub Release publish (or manual `workflow_dispatch`
+  with an explicit tag), verifies `package.json` version matches the
+  tag, re-runs the CI gate (lint / format / typecheck / tests), then
+  `npm publish --access public`. Release flow documented in
+  `CLAUDE.md`. `--provenance` is deferred until a trusted-publisher
+  config is set up on npmjs (tracked as a follow-up).
+
+### Fixed
+
+- **state.json bookkeeping after round commits (#102 / #105):** iterate
+  now opens a small `spec(<slug>): finalize round N` follow-up commit
+  so the working tree is clean on exit — including `lead_terminal`
+  exit-4 and `push-consent-interrupted` exit-3 paths. A shared
+  `finalizeBookkeeping` helper routes all terminal paths through the
+  same flow. `state.head_sha` is populated with a reachable 40-char
+  SHA (equals HEAD when no finalize follow-up commit was opened,
+  HEAD~1 when it was) instead of `null`. `state.updated_at` tracks
+  wall-clock via a central `nowIso()` helper rather than the frozen
+  round-start timestamp. `verifyHeadSha` accepts both shapes.
+- **Real `round.json` `started_at` / `completed_at` (#100 / #103):**
+  timestamps are now captured at the actual round boundaries (start
+  when the round begins, complete after the revise commit lands),
+  not the invocation-time stamps that previously collapsed to the
+  same instant.
+- **Auto-commit the initial draft on `samospec new` (#94 / #99):**
+  `new` used to leave the v0.1 draft staged-but-uncommitted in some
+  phase orderings, so the immediately-following `iterate` hit the
+  uncommitted-edits guard. The draft now commits cleanly as
+  `spec(<slug>): draft v0.1` on every `new` path.
+- **Unified next-action across `status` / `tldr` / `iterate` (#96 /
+  #98):** the three commands previously emitted slightly different
+  next-step phrasings for the same phase + round state. Consolidated
+  into one `computeNextAction(state)` helper used by all three; every
+  phase+round state transition has an assertion test.
+- **Substitute finding IDs in `decisions.md` (#95 / #97):** template
+  placeholders like `{{finding_id}}` persisted in committed
+  decisions.md entries instead of the real IDs (`rA.3.missing-risk`,
+  etc.). The template interpolation now runs at emit time.
+
+### Changed
+
+- **License → Apache-2.0 (#106):** `LICENSE` file added (verbatim
+  canonical text); `package.json` `license` flipped from `UNLICENSED`
+  to `Apache-2.0` and the `LICENSE` ships in the npm tarball.
+- **README rewrite (#106):** live demo link, panel-architecture ASCII
+  diagram, safety model, full command table, OAuth-first auth,
+  deferred items rescoped from v0.1.0 to v1.1+. Badges (CI / npm /
+  license / Bun).
 
 ### Known limitations
 
-- Architecture schema + ASCII diagram shipped (#107); the lead adapter
-  does not yet populate `architecture.json`, so all specs produced by
-  this release render the `(architecture not yet specified)`
-  placeholder. Lead-prompt enrichment tracked as a follow-up.
+- Architecture schema + ASCII diagram shipped (#107 / #109); the lead
+  adapter does not yet populate `architecture.json`, so all specs
+  produced by this release render the
+  `(architecture not yet specified)` placeholder until the
+  lead-prompt enrichment lands.
 
 ---
 
@@ -34,13 +95,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
-- **state.json bookkeeping (#102):** after each round iterate now opens
-  a small `spec(<slug>): finalize round N` follow-up commit so the
-  working tree is clean on exit (including `lead_terminal` exit-4 and
-  `push-consent-interrupted` exit-3 paths), `state.head_sha` is
-  populated with a reachable 40-char SHA instead of null, and
-  `state.updated_at` tracks wall-clock rather than the frozen
-  round-start timestamp.
 - **Codex pinned-model fallback under ChatGPT-auth (#88):** `gpt-5.1-codex-max`
   returns `exit 1` with an `invalid_request_error` JSON on stdout when
   rejected under ChatGPT-account auth. The adapter used to call
