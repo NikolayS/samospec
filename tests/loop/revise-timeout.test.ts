@@ -12,6 +12,12 @@
 //      iterate writes state.json.exit.reason accordingly).
 //
 // A separate iterate-level assertion verifies state.json.exit.reason.
+//
+// Follow-up REV-review tests (PR #118 BLOCKING fixes):
+//   - `remainingSessionMsFn` clamp is live-wired from iterate.ts — revise
+//     fires at the session-budget boundary, not the configured cap.
+//   - `runRound` distinguishes reviewer-retry from revise-retry so
+//     iterate.ts writes the right CHANGELOG note per scenario.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -337,5 +343,457 @@ describe("iterate — revise timeout propagates to state.json.exit.reason (#92)"
     // src/cli/terminal-messages.ts.
     expect(persisted.exit?.reason).toBe("lead-terminal:revise_timeout");
     expect(persisted.round_state).toBe("lead_terminal");
+  }, 30_000);
+});
+
+// ---------- REV BLOCKING 1: session wall-clock clamp ----------
+
+describe("loop/round — session wall-clock clamps per-call revise (#92 REV)", () => {
+  test("remainingSessionMsFn smaller than configured → revise fires at ~remaining", async () => {
+    const lead = hangingLead();
+    const revA = passingReviewer();
+    const revB = passingReviewer();
+
+    const dirs = roundDirsFor(tmp, 1);
+    // Configured 60s, session remaining 200ms — revise must trip at
+    // ~200ms (+ generous jitter), never at 60s.
+    const startMs = Date.now();
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+      critiqueTimeoutMs: 5_000,
+      reviseTimeoutMs: 60_000,
+      // Fresh session budget of 200ms — shrinks to 0 fast.
+      remainingSessionMsFn: () => 200 - (Date.now() - startMs),
+    });
+    const elapsedMs = Date.now() - startMs;
+
+    // Must preempt well before the configured 60s cap. 10x headroom.
+    expect(elapsedMs).toBeLessThan(5_000);
+    expect(outcome.roundStopReason).toBe("lead_terminal");
+  });
+});
+
+describe("iterate — threads remainingSessionMsFn into runRound (#92 REV)", () => {
+  test("session cap smaller than configured revise → round-level clamp fires first (revise_timeout, not wall_clock)", async () => {
+    // This test distinguishes the round-level clamp from #91's outer
+    // `withSessionDeadline` wrapper. Both race against roughly the same
+    // absolute deadline; whoever fires first wins the exit.reason:
+    //   - inner `withReviseDeadline` -> lead-terminal:revise_timeout
+    //   - outer `withSessionDeadline` -> lead-terminal:wall_clock
+    //
+    // To bias the race toward the inner clamp, the reviewers take a
+    // measurable amount of time (200ms each). That delay eats into the
+    // outer session budget BEFORE revise starts, but the inner clamp
+    // is taken AT revise-start time from `remainingSessionMsFn`, so the
+    // inner deadline resolves to ~remaining-after-reviewers which fires
+    // before the outer absolute deadline on the already-paid-for budget.
+    runInit({ cwd: tmp });
+    const slug = "demo";
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
+    const seeded = {
+      ...newState({ slug, now: "2026-04-19T12:00:00Z" }),
+      phase: "review_loop" as const,
+      round_state: "committed" as const,
+      version: "0.1.0",
+    };
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(slugDir, { recursive: true });
+    writeState(path.join(slugDir, "state.json"), seeded);
+    writeFileSync(path.join(slugDir, "SPEC.md"), "# SPEC\n\nbody\n", "utf8");
+    writeFileSync(
+      path.join(slugDir, "decisions.md"),
+      "# decisions\n\n- none.\n",
+      "utf8",
+    );
+    writeFileSync(
+      path.join(slugDir, "changelog.md"),
+      "# changelog\n\n- v0.1\n",
+      "utf8",
+    );
+
+    const { spawnSync } = await import("node:child_process");
+    spawnSync("git", ["init", "-b", "main"], { cwd: tmp });
+    spawnSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: tmp,
+    });
+    spawnSync("git", ["config", "user.name", "Test"], { cwd: tmp });
+    spawnSync("git", ["add", "."], { cwd: tmp });
+    spawnSync("git", ["commit", "-m", "initial"], { cwd: tmp });
+    spawnSync("git", ["checkout", "-b", `samospec/${slug}`], { cwd: tmp });
+
+    const lead = hangingLead();
+    const revA = passingReviewer();
+    const revB = passingReviewer();
+
+    const startMs = Date.now();
+    const nowIso = new Date(startMs).toISOString();
+    // 2000ms session cap, 60s configured revise, so without the clamp
+    // revise would wait the full 60s and the outer withSessionDeadline
+    // wrapper would fire first (wall_clock). WITH the clamp, revise
+    // caps at ~remaining (~2s or less) and trips revise_timeout.
+    //
+    // We also configure two attempts — on the first timeout the round
+    // runner retries once; the retry also times out because the session
+    // budget is already spent, so the terminal leadTerminalError carries
+    // `revise_timeout`.
+    const sessionCapMs = 2_000;
+    const result = await runIterate({
+      cwd: tmp,
+      slug,
+      now: nowIso,
+      resolvers: {
+        onManualEdit: () => Promise.resolve("incorporate"),
+        onDegraded: () => Promise.resolve("accept"),
+        onReviewerExhausted: () => Promise.resolve("abort"),
+      },
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+      maxRounds: 1,
+      sessionStartedAtMs: startMs,
+      maxSessionWallClockMs: sessionCapMs,
+      callTimeouts: {
+        criticA_ms: 5_000,
+        criticB_ms: 5_000,
+        revise_ms: 60_000,
+      },
+    });
+    const elapsedMs = Date.now() - startMs;
+
+    // Hard ceiling: without the clamp, revise would hang up to 60s
+    // (outer deadline cuts at 2s though). Either way must exit within
+    // well under that.
+    expect(elapsedMs).toBeLessThan(15_000);
+    expect(result.exitCode).toBe(4);
+
+    // Proof of wiring: state.exit.reason must be `revise_timeout`, not
+    // `wall_clock`. That is only possible when the round-level clamp
+    // fired BEFORE the outer `withSessionDeadline` wrapper. If
+    // `remainingSessionMsFn` is dead code, revise hangs the full 60s
+    // and the outer wrapper wins with `wall_clock`.
+    const statePath = path.join(slugDir, "state.json");
+    const persisted = JSON.parse(readFileSync(statePath, "utf8")) as {
+      exit?: { reason?: string } | null;
+    };
+    expect(persisted.exit?.reason).toBe("lead-terminal:revise_timeout");
+  }, 30_000);
+});
+
+// ---------- REV BLOCKING 2: reviewer-retry vs revise-retry ----------
+
+describe("loop/round — distinguishes reviewer-retry from revise-retry (#92 REV)", () => {
+  test("reviewer-retry path sets reviewersRetried=true, reviseRetried=false", async () => {
+    const lead = {
+      vendor: "fake",
+      detect: () =>
+        Promise.resolve({ installed: true, version: "0", path: "/fake" }),
+      auth_status: () => Promise.resolve({ authenticated: true }),
+      supports_structured_output: () => true,
+      supports_effort: () => true,
+      models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
+      ask: () => Promise.reject(new Error("ask not used")),
+      critique: () => Promise.reject(new Error("critique not used on lead")),
+      revise: (_i: ReviseInput): Promise<ReviseOutput> =>
+        Promise.resolve({
+          spec: "# SPEC\n\nrevised body",
+          ready: true,
+          rationale: "ok",
+          usage: null,
+          effort_used: "max" as const,
+        }),
+    } as Adapter;
+    // Both reviewers fail on first attempt, succeed on retry.
+    const flakyReviewerFactory = (): Adapter => {
+      let n = 0;
+      return {
+        vendor: "fake-reviewer",
+        detect: () =>
+          Promise.resolve({ installed: true, version: "0", path: "/fake" }),
+        auth_status: () => Promise.resolve({ authenticated: true }),
+        supports_structured_output: () => true,
+        supports_effort: () => true,
+        models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
+        ask: () => Promise.reject(new Error("ask not used")),
+        critique: (): Promise<CritiqueOutput> => {
+          n += 1;
+          if (n === 1) return Promise.reject(new Error("first-fail"));
+          return Promise.resolve({
+            findings: [
+              {
+                category: "ambiguity" as const,
+                text: "spec is ambiguous",
+                severity: "minor" as const,
+              },
+            ],
+            summary: "one finding",
+            suggested_next_version: "0.2",
+            usage: null,
+            effort_used: "max" as const,
+          });
+        },
+        revise: () => Promise.reject(new Error("revise not used")),
+      };
+    };
+
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: {
+        lead,
+        reviewerA: flakyReviewerFactory(),
+        reviewerB: flakyReviewerFactory(),
+      },
+      critiqueTimeoutMs: 5_000,
+      reviseTimeoutMs: 5_000,
+    });
+
+    expect(outcome.roundStopReason).toBe("ok");
+    expect(outcome.reviewersRetried).toBe(true);
+    expect(outcome.reviseRetried).toBe(false);
+    // Legacy `retried` flag still reflects "any retry happened".
+    expect(outcome.retried).toBe(true);
+  });
+
+  test("revise-retry path sets reviewersRetried=false, reviseRetried=true", async () => {
+    const revA = passingReviewer();
+    const revB = passingReviewer();
+    // Lead hangs once, then succeeds.
+    let calls = 0;
+    const lead: Adapter = {
+      vendor: "fake-lead-flaky",
+      detect: () =>
+        Promise.resolve({ installed: true, version: "0", path: "/fake" }),
+      auth_status: () => Promise.resolve({ authenticated: true }),
+      supports_structured_output: () => true,
+      supports_effort: () => true,
+      models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
+      ask: () => Promise.reject(new Error("ask not used")),
+      critique: () => Promise.reject(new Error("critique not used on lead")),
+      revise: (_i: ReviseInput): Promise<ReviseOutput> => {
+        calls += 1;
+        if (calls === 1) {
+          return new Promise(() => {
+            /* never */
+          });
+        }
+        return Promise.resolve({
+          spec: "# SPEC\n\nretry body",
+          ready: true,
+          rationale: "ok",
+          usage: null,
+          effort_used: "max" as const,
+        });
+      },
+    };
+
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+      critiqueTimeoutMs: 5_000,
+      reviseTimeoutMs: 200,
+    });
+
+    expect(outcome.roundStopReason).toBe("ok");
+    expect(outcome.reviewersRetried).toBe(false);
+    expect(outcome.reviseRetried).toBe(true);
+    expect(outcome.retried).toBe(true);
+  });
+});
+
+describe("iterate — changelog note differs by retry kind (#92 REV)", () => {
+  async function seedSlugDir(slug: string): Promise<string> {
+    runInit({ cwd: tmp });
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
+    const seeded = {
+      ...newState({ slug, now: "2026-04-19T12:00:00Z" }),
+      phase: "review_loop" as const,
+      round_state: "committed" as const,
+      version: "0.1.0",
+    };
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(slugDir, { recursive: true });
+    writeState(path.join(slugDir, "state.json"), seeded);
+    writeFileSync(path.join(slugDir, "SPEC.md"), "# SPEC\n\nbody\n", "utf8");
+    writeFileSync(
+      path.join(slugDir, "decisions.md"),
+      "# decisions\n\n- none.\n",
+      "utf8",
+    );
+    writeFileSync(
+      path.join(slugDir, "changelog.md"),
+      "# changelog\n\n- v0.1\n",
+      "utf8",
+    );
+    const { spawnSync } = await import("node:child_process");
+    spawnSync("git", ["init", "-b", "main"], { cwd: tmp });
+    spawnSync("git", ["config", "user.email", "test@example.com"], {
+      cwd: tmp,
+    });
+    spawnSync("git", ["config", "user.name", "Test"], { cwd: tmp });
+    spawnSync("git", ["add", "."], { cwd: tmp });
+    spawnSync("git", ["commit", "-m", "initial"], { cwd: tmp });
+    spawnSync("git", ["checkout", "-b", `samospec/${slug}`], { cwd: tmp });
+    return slugDir;
+  }
+
+  test("revise retry → changelog says 'lead revise retried after timeout'", async () => {
+    const slug = "demo-revise-retry";
+    const slugDir = await seedSlugDir(slug);
+
+    // Lead hangs once, succeeds on second attempt — same pattern as the
+    // round-level test above, but here we assert the CHANGELOG entry
+    // downstream of `reviseRetried=true`.
+    let calls = 0;
+    const lead: Adapter = {
+      vendor: "fake-lead-flaky",
+      detect: () =>
+        Promise.resolve({ installed: true, version: "0", path: "/fake" }),
+      auth_status: () => Promise.resolve({ authenticated: true }),
+      supports_structured_output: () => true,
+      supports_effort: () => true,
+      models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
+      ask: () => Promise.reject(new Error("ask not used")),
+      critique: () => Promise.reject(new Error("critique not used on lead")),
+      revise: (_i: ReviseInput): Promise<ReviseOutput> => {
+        calls += 1;
+        if (calls === 1) {
+          return new Promise(() => {
+            /* never */
+          });
+        }
+        return Promise.resolve({
+          spec: "# SPEC\n\nretry body",
+          ready: false,
+          rationale: "still iterating",
+          usage: null,
+          effort_used: "max" as const,
+        });
+      },
+    };
+    const revA = passingReviewer();
+    const revB = passingReviewer();
+
+    const startMs = Date.now();
+    const nowIso = new Date(startMs).toISOString();
+    await runIterate({
+      cwd: tmp,
+      slug,
+      now: nowIso,
+      resolvers: {
+        onManualEdit: () => Promise.resolve("incorporate"),
+        onDegraded: () => Promise.resolve("accept"),
+        onReviewerExhausted: () => Promise.resolve("abort"),
+      },
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+      maxRounds: 1,
+      sessionStartedAtMs: startMs,
+      callTimeouts: {
+        criticA_ms: 5_000,
+        criticB_ms: 5_000,
+        revise_ms: 200,
+      },
+    });
+
+    const changelog = readFileSync(path.join(slugDir, "changelog.md"), "utf8");
+    expect(changelog).toContain("lead revise retried after timeout");
+    expect(changelog).not.toContain("reviewers retried this round");
+  }, 30_000);
+
+  test("reviewer retry → changelog says 'reviewers retried', not the revise note", async () => {
+    const slug = "demo-reviewer-retry";
+    const slugDir = await seedSlugDir(slug);
+
+    // Lead always succeeds; reviewers fail first time, succeed second.
+    const lead: Adapter = {
+      vendor: "fake-lead",
+      detect: () =>
+        Promise.resolve({ installed: true, version: "0", path: "/fake" }),
+      auth_status: () => Promise.resolve({ authenticated: true }),
+      supports_structured_output: () => true,
+      supports_effort: () => true,
+      models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
+      ask: () => Promise.reject(new Error("ask not used")),
+      critique: () => Promise.reject(new Error("critique not used on lead")),
+      revise: (_i: ReviseInput): Promise<ReviseOutput> =>
+        Promise.resolve({
+          spec: "# SPEC\n\nrevised body",
+          ready: false,
+          rationale: "iterating",
+          usage: null,
+          effort_used: "max" as const,
+        }),
+    };
+    const flakyReviewerFactory = (): Adapter => {
+      let n = 0;
+      return {
+        vendor: "fake-reviewer",
+        detect: () =>
+          Promise.resolve({ installed: true, version: "0", path: "/fake" }),
+        auth_status: () => Promise.resolve({ authenticated: true }),
+        supports_structured_output: () => true,
+        supports_effort: () => true,
+        models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
+        ask: () => Promise.reject(new Error("ask not used")),
+        critique: (): Promise<CritiqueOutput> => {
+          n += 1;
+          if (n === 1) return Promise.reject(new Error("first-fail"));
+          return Promise.resolve({
+            findings: [
+              {
+                category: "ambiguity" as const,
+                text: "spec is ambiguous",
+                severity: "minor" as const,
+              },
+            ],
+            summary: "one finding",
+            suggested_next_version: "0.2",
+            usage: null,
+            effort_used: "max" as const,
+          });
+        },
+        revise: () => Promise.reject(new Error("revise not used")),
+      };
+    };
+
+    const startMs = Date.now();
+    const nowIso = new Date(startMs).toISOString();
+    await runIterate({
+      cwd: tmp,
+      slug,
+      now: nowIso,
+      resolvers: {
+        onManualEdit: () => Promise.resolve("incorporate"),
+        onDegraded: () => Promise.resolve("accept"),
+        onReviewerExhausted: () => Promise.resolve("abort"),
+      },
+      adapters: {
+        lead,
+        reviewerA: flakyReviewerFactory(),
+        reviewerB: flakyReviewerFactory(),
+      },
+      maxRounds: 1,
+      sessionStartedAtMs: startMs,
+      callTimeouts: {
+        criticA_ms: 5_000,
+        criticB_ms: 5_000,
+        revise_ms: 5_000,
+      },
+    });
+
+    const changelog = readFileSync(path.join(slugDir, "changelog.md"), "utf8");
+    expect(changelog).toContain("reviewers retried this round");
+    expect(changelog).not.toContain("lead revise retried after timeout");
   }, 30_000);
 });
