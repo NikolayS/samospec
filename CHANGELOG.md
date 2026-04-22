@@ -7,14 +7,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.6.1] - 2026-04-21
+
 ### Added
 
 - **`--yes` flag documented in README (#122):** README now lists
   `samospec new --yes` under the useful-flags section so samo.team's
   headless UI (and any other automation surface) can discover it
   without grepping the CHANGELOG. Also mentions `iterate`'s
-  `--on-dirty` for symmetry. No behavior change — the flag itself
-  landed in #114 / v0.6.0.
+  `--on-dirty` for symmetry. SPEC §10 v1 surface updated to include
+  the three non-TTY automation flags. No behavior change — the flag
+  itself landed in #114 / v0.6.0.
 
 ### Tests
 
