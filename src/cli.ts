@@ -62,9 +62,13 @@ const USAGE =
   "                              `session-wall-clock`.\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
   "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>] [--quiet]\n" +
+  "           [--max-session-wall-clock-ms <ms>]\n" +
   "                              Run review rounds until a stopping condition fires.\n" +
   "                              --quiet suppresses per-phase progress + heartbeat\n" +
   "                              (default: verbose progress on stderr).\n" +
+  "                              --max-session-wall-clock-ms caps the review loop\n" +
+  "                              session wall-clock (positive integer ms). On cap,\n" +
+  "                              exits 4 with reason `session-wall-clock`.\n" +
   "  status [<slug>]             Print phase, round, cost, wall-clock, and next action.\n" +
   "  publish [<slug>] [--no-lint] [--remote <name>]\n" +
   "                              Promote to blueprints/<slug>/SPEC.md, commit, push, open PR.\n" +
@@ -446,7 +450,23 @@ interface IterateArgs {
   readonly noPush: boolean;
   readonly remote: string;
   readonly quiet: boolean;
+  readonly maxSessionWallClockMs?: number;
 }
+
+/**
+ * Centralised allow-list of long flags recognised by `samospec iterate`
+ * (Issue #91). Parser compares every `--…` token against this set and
+ * rejects unknown flags instead of silently dropping them — this catches
+ * typos like `--rouns 5`. Keep bare names (no `=value` suffix); the
+ * parser strips `=…` before lookup.
+ */
+const ITERATE_ALLOWED_FLAGS: ReadonlySet<string> = new Set([
+  "--rounds",
+  "--no-push",
+  "--remote",
+  "--quiet",
+  "--max-session-wall-clock-ms",
+]);
 
 function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let slug: string | null = null;
@@ -454,6 +474,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let noPush = false;
   let remote = "origin";
   let quiet = false;
+  let maxSessionWallClockMs: number | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) continue;
@@ -491,7 +512,37 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
       remote = t.slice("--remote=".length);
       continue;
     }
-    if (t.startsWith("--")) continue;
+    if (t === "--max-session-wall-clock-ms") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parseMaxSessionWallClockMs(raw);
+      if (typeof parsed === "string") {
+        // Rewrite the `new`-prefixed error so the CLI path matches
+        // `iterate` (same helper; different subcommand).
+        return parsed.replace("samospec new", "samospec iterate");
+      }
+      maxSessionWallClockMs = parsed;
+      continue;
+    }
+    if (t.startsWith("--max-session-wall-clock-ms=")) {
+      const raw = t.slice("--max-session-wall-clock-ms=".length);
+      const parsed = parseMaxSessionWallClockMs(raw);
+      if (typeof parsed === "string") {
+        return parsed.replace("samospec new", "samospec iterate");
+      }
+      maxSessionWallClockMs = parsed;
+      continue;
+    }
+    if (t.startsWith("--")) {
+      // Issue #91: reject unknown flags instead of silently dropping
+      // them. Strip any `=value` suffix before the allow-list lookup
+      // so `--rouns=5` is caught the same as `--rouns 5`.
+      const bareFlag = t.includes("=") ? t.slice(0, t.indexOf("=")) : t;
+      if (!ITERATE_ALLOWED_FLAGS.has(bareFlag)) {
+        return `samospec iterate: unknown flag '${bareFlag}'`;
+      }
+      continue;
+    }
     slug ??= t;
   }
   if (slug === null || slug.length === 0) {
@@ -503,6 +554,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
     remote,
     quiet,
     ...(rounds !== undefined ? { rounds } : {}),
+    ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
   };
 }
 
@@ -629,6 +681,9 @@ async function runIterateCommand(rest: readonly string[]) {
     pushOptions,
     quiet: parsed.quiet,
     ...(parsed.rounds !== undefined ? { maxRounds: parsed.rounds } : {}),
+    ...(parsed.maxSessionWallClockMs !== undefined
+      ? { maxSessionWallClockMs: parsed.maxSessionWallClockMs }
+      : {}),
   });
   return {
     exitCode: result.exitCode,
