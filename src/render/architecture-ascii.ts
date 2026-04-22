@@ -108,7 +108,9 @@ function renderBody(doc: Architecture, opts: RenderOpts): string {
     lines.push("");
     lines.push("groups:");
     for (const g of doc.groups) {
-      lines.push(truncateLine(`- ${g.id} (${g.label}): ${g.members.join(", ")}`));
+      lines.push(
+        truncateLine(`- ${g.id} (${g.label}): ${g.members.join(", ")}`),
+      );
     }
   }
 

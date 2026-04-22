@@ -46,11 +46,7 @@ export function injectArchitectureBlock(
   // Case 1: sentinels already exist — swap the body.
   const begin = spec.indexOf(ARCHITECTURE_BEGIN_SENTINEL);
   const end = spec.indexOf(ARCHITECTURE_END_SENTINEL);
-  if (
-    begin !== -1 &&
-    end !== -1 &&
-    end > begin
-  ) {
+  if (begin !== -1 && end !== -1 && end > begin) {
     const before = spec.slice(0, begin);
     const after = spec.slice(end + ARCHITECTURE_END_SENTINEL.length);
     return `${before}${block}${after}`;

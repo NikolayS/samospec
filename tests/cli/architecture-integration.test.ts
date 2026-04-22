@@ -6,12 +6,7 @@
 // .json on each round.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
@@ -120,13 +115,7 @@ describe("samospec new — architecture.json + SPEC.md block (#107)", () => {
       makeLeadAdapter(),
     );
     expect(result.exitCode).toBe(0);
-    const archPath = path.join(
-      tmp,
-      ".samo",
-      "spec",
-      slug,
-      "architecture.json",
-    );
+    const archPath = path.join(tmp, ".samo", "spec", slug, "architecture.json");
     expect(existsSync(archPath)).toBe(true);
     const doc = parseArchitecture(
       JSON.parse(readFileSync(archPath, "utf8")) as unknown,

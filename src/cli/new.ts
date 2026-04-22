@@ -745,7 +745,11 @@ export async function runNew(
       ensureTrailingNewline(draft.spec),
       readArchitectureOrEmpty(architecturePath),
     );
-    writeFileSync(specPath, ensureTrailingNewline(specWithArchitecture), "utf8");
+    writeFileSync(
+      specPath,
+      ensureTrailingNewline(specWithArchitecture),
+      "utf8",
+    );
 
     // TLDR.md: heuristic render. Pass state so the Next-action section
     // is derived from state via computeNextAction (#96).
