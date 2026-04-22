@@ -4,130 +4,191 @@
 // new` emits an architecture.json and a sentinel-delimited ASCII block
 // in SPEC.md, and that iterate re-renders the block from architecture
 // .json on each round.
-//
-// Red-first: the hooks assert artifacts the current new/iterate don't
-// yet produce.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
-  rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
-import type { Adapter, AskInput, AskOutput } from "../../src/adapter/types.ts";
+import type {
+  Adapter,
+  AskInput,
+  AskOutput,
+  ReviseInput,
+  ReviseOutput,
+} from "../../src/adapter/types.ts";
+import { runIterate } from "../../src/cli/iterate.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { runInit } from "../../src/cli/init.ts";
+import { writeArchitecture } from "../../src/state/architecture-store.ts";
 import { parseArchitecture } from "../../src/state/architecture.ts";
+import { writeState } from "../../src/state/store.ts";
+import { createTempRepo, type TempRepo } from "../git/helpers/tempRepo.ts";
 
 function askOut(answer: string): AskOutput {
   return { answer, usage: null, effort_used: "max" };
 }
 
+function personaJson(): string {
+  return JSON.stringify({
+    persona: 'Veteran "architecture diagram" expert',
+    rationale: "matches the idea",
+  });
+}
+
+function questionsJson(): string {
+  return JSON.stringify({
+    questions: [
+      { id: "q1", text: "framework?", options: ["a", "b"] },
+      { id: "q2", text: "auth?", options: ["a", "b"] },
+    ],
+  });
+}
+
+const SAMPLE_SPEC =
+  "# arch-demo\n\n" +
+  "## Goal\n\nEmit diagrams alongside specs.\n\n" +
+  "## 3. Architecture\n\nInitial prose.\n\n" +
+  "## 4. Other\n\n- bullet\n";
+
 function makeLeadAdapter(): Adapter {
   const base = createFakeAdapter();
-  let call = 0;
-  const canned = [
-    // persona
-    JSON.stringify({
-      persona: 'Veteran "CLI tooling" expert',
-      rationale: "Matches the idea.",
-    }),
-    // interview Q1..Q5
-    JSON.stringify({ id: "Q1", text: "q?", options: [{ id: "a", text: "a" }] }),
-    JSON.stringify({ id: "Q2", text: "q?", options: [{ id: "a", text: "a" }] }),
-    JSON.stringify({ id: "Q3", text: "q?", options: [{ id: "a", text: "a" }] }),
-    JSON.stringify({ id: "Q4", text: "q?", options: [{ id: "a", text: "a" }] }),
-    JSON.stringify({ id: "Q5", text: "q?", options: [{ id: "a", text: "a" }] }),
-  ];
-  const ask = (input: AskInput): Promise<AskOutput> => {
-    const out = canned[call] ?? "{}";
-    call += 1;
-    return Promise.resolve(askOut(out));
-  };
+  const answers = [personaJson(), questionsJson()];
+  let askCall = 0;
   return {
     ...base,
-    vendor: "fake-lead",
-    ask,
-    revise: () =>
+    ask: (_input: AskInput): Promise<AskOutput> => {
+      const a = answers[askCall] ?? answers[answers.length - 1] ?? "";
+      askCall += 1;
+      return Promise.resolve(askOut(a));
+    },
+    revise: (_input: ReviseInput): Promise<ReviseOutput> =>
       Promise.resolve({
-        spec:
-          "# arch-demo\n\n## 3. Architecture\n\nPlaceholder prose.\n\n" +
-          "## 4. Other\n\nMore text.\n",
+        spec: SAMPLE_SPEC,
         ready: false,
-        rationale: "first draft",
+        rationale: "v0.1 draft",
         usage: null,
         effort_used: "max",
       }),
   };
 }
 
-async function runNewWithArchitecture(cwd: string, slug: string) {
-  await runInit({
-    cwd,
-    force: true,
-    yes: true,
-    interactiveFn: (): Promise<boolean> => Promise.resolve(true),
-  });
-  const adapter = makeLeadAdapter();
-  const resolvers: ChoiceResolvers = {
+function acceptResolver(): ChoiceResolvers {
+  return {
     persona: () => Promise.resolve({ kind: "accept" }),
-    question: (_q) => Promise.resolve({ kind: "choice", choice: "a" }),
+    question: (_q) => Promise.resolve({ choice: "decide for me" }),
   };
-  return await runNew(
-    {
-      cwd,
-      slug,
-      idea: "a CLI that emits architecture diagrams",
-      explain: false,
-      resolvers,
-      now: "2026-04-21T00:00:00.000Z",
-      noPush: true,
-    },
-    adapter,
-  );
 }
 
-let tmpRoot: string;
+// ---------- fixtures ----------
+
+let repo: TempRepo;
+let tmp: string;
 
 beforeEach(() => {
-  tmpRoot = mkdtempSync(path.join(tmpdir(), "arch107-"));
-  // Initialize a git repo so `samospec new` can branch + commit.
-  spawnSync("git", ["init", "--initial-branch=main", tmpRoot], {
-    encoding: "utf8",
-  });
-  spawnSync("git", ["-C", tmpRoot, "config", "user.email", "a@b.c"]);
-  spawnSync("git", ["-C", tmpRoot, "config", "user.name", "Test"]);
-  // Seed a minimal commit so HEAD resolves.
-  writeFileSync(path.join(tmpRoot, "README.md"), "seed\n");
-  spawnSync("git", ["-C", tmpRoot, "add", "README.md"]);
-  spawnSync("git", ["-C", tmpRoot, "commit", "-m", "seed"]);
+  repo = createTempRepo({ initialBranch: "work" });
+  tmp = repo.dir;
+  runInit({ cwd: tmp });
+  repo.run(["add", ".samo"]);
+  repo.run(["commit", "-m", "chore: init .samo"]);
 });
 
 afterEach(() => {
-  if (tmpRoot !== undefined) rmSync(tmpRoot, { recursive: true, force: true });
+  repo.cleanup();
 });
+
+// ---------- new ----------
+
+describe("samospec new — architecture.json + SPEC.md block (#107)", () => {
+  test("writes .samo/spec/<slug>/architecture.json parseable by the schema", async () => {
+    const slug = "arch-demo";
+    const result = await runNew(
+      {
+        cwd: tmp,
+        slug,
+        idea: "a CLI that emits architecture diagrams",
+        explain: false,
+        resolvers: acceptResolver(),
+        now: "2026-04-21T00:00:00Z",
+        noPush: true,
+      },
+      makeLeadAdapter(),
+    );
+    expect(result.exitCode).toBe(0);
+    const archPath = path.join(
+      tmp,
+      ".samo",
+      "spec",
+      slug,
+      "architecture.json",
+    );
+    expect(existsSync(archPath)).toBe(true);
+    const doc = parseArchitecture(
+      JSON.parse(readFileSync(archPath, "utf8")) as unknown,
+    );
+    expect(doc.version).toBe("1");
+  });
+
+  test("SPEC.md contains the sentinel-delimited architecture block", async () => {
+    const slug = "arch-demo";
+    await runNew(
+      {
+        cwd: tmp,
+        slug,
+        idea: "a CLI that emits architecture diagrams",
+        explain: false,
+        resolvers: acceptResolver(),
+        now: "2026-04-21T00:00:00Z",
+        noPush: true,
+      },
+      makeLeadAdapter(),
+    );
+    const spec = readFileSync(
+      path.join(tmp, ".samo", "spec", slug, "SPEC.md"),
+      "utf8",
+    );
+    expect(spec).toContain("<!-- architecture:begin -->");
+    expect(spec).toContain("<!-- architecture:end -->");
+    // Empty architecture => placeholder inside the sentinels.
+    expect(spec).toContain("(architecture not yet specified)");
+  });
+
+  test("architecture.json is tracked in git on the first commit (#94)", async () => {
+    const slug = "arch-demo";
+    await runNew(
+      {
+        cwd: tmp,
+        slug,
+        idea: "a CLI that emits architecture diagrams",
+        explain: false,
+        resolvers: acceptResolver(),
+        now: "2026-04-21T00:00:00Z",
+        noPush: true,
+      },
+      makeLeadAdapter(),
+    );
+    const lsFiles = repo.run([
+      "ls-files",
+      "--error-unmatch",
+      `.samo/spec/${slug}/architecture.json`,
+    ]);
+    expect(lsFiles.status).toBe(0);
+  });
+});
+
+// ---------- iterate ----------
 
 describe("samospec iterate — architecture block re-render (#107)", () => {
   test("re-renders the SPEC.md block from architecture.json each round", async () => {
-    // Lazily import iterate helpers to avoid a top-level circular build path.
-    const { runIterate } = await import("../../src/cli/iterate.ts");
-    const { writeState } = await import("../../src/state/store.ts");
-    const { writeArchitecture } = await import(
-      "../../src/state/architecture-store.ts"
-    );
     const slug = "arch-iter";
-    const slugDir = path.join(tmpRoot, ".samo", "spec", slug);
+    // Minimal spec on disk so iterate can load state + spec.
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
     mkdirSync(slugDir, { recursive: true });
-    // Seed a SPEC.md with an empty architecture block so we can watch
-    // iterate replace it with the rendered version of architecture.json.
     const seededSpec = [
       "# SPEC",
       "",
@@ -168,8 +229,6 @@ describe("samospec iterate — architecture block re-render (#107)", () => {
         budget: { phase: "draft", tokens_used: 0, tokens_budget: 0 },
       }),
     );
-    // Seed a non-empty architecture.json so iterate re-renders a real
-    // box diagram, not the placeholder.
     writeArchitecture(path.join(slugDir, "architecture.json"), {
       version: "1",
       nodes: [
@@ -178,10 +237,6 @@ describe("samospec iterate — architecture block re-render (#107)", () => {
       ],
       edges: [{ from: "user", to: "app", kind: "call" }],
     });
-    // Switch to the spec branch so iterate can commit.
-    spawnSync("git", ["-C", tmpRoot, "checkout", "-b", `samospec/${slug}`]);
-    spawnSync("git", ["-C", tmpRoot, "add", ".samo"]);
-    spawnSync("git", ["-C", tmpRoot, "commit", "-m", `spec(${slug}): seed`]);
     writeState(path.join(slugDir, "state.json"), {
       slug,
       phase: "review_loop",
@@ -198,8 +253,9 @@ describe("samospec iterate — architecture block re-render (#107)", () => {
       created_at: "2026-04-21T00:00:00Z",
       updated_at: "2026-04-21T00:00:00Z",
     });
-    spawnSync("git", ["-C", tmpRoot, "add", ".samo"]);
-    spawnSync("git", ["-C", tmpRoot, "commit", "-m", `spec(${slug}): state`]);
+    repo.run(["checkout", "-b", `samospec/${slug}`]);
+    repo.run(["add", ".samo"]);
+    repo.run(["commit", "-m", `spec(${slug}): seed`]);
     const lead = {
       ...createFakeAdapter({
         revise: {
@@ -212,7 +268,7 @@ describe("samospec iterate — architecture block re-render (#107)", () => {
       }),
     };
     await runIterate({
-      cwd: tmpRoot,
+      cwd: tmp,
       slug,
       now: "2026-04-21T01:00:00Z",
       resolvers: {
@@ -235,59 +291,6 @@ describe("samospec iterate — architecture block re-render (#107)", () => {
     expect(spec).toContain("User");
     expect(spec).toContain("App");
     expect(spec).toContain("user → app");
-    // The placeholder has been replaced.
     expect(spec).not.toContain("(architecture not yet specified)");
-  });
-});
-
-describe("samospec new — architecture.json + SPEC.md block (#107)", () => {
-  test("writes .samo/spec/<slug>/architecture.json parseable by the schema", async () => {
-    const slug = "arch-demo";
-    const result = await runNewWithArchitecture(tmpRoot, slug);
-    expect(result.exitCode).toBe(0);
-    const archPath = path.join(
-      tmpRoot,
-      ".samo",
-      "spec",
-      slug,
-      "architecture.json",
-    );
-    expect(existsSync(archPath)).toBe(true);
-    const raw = JSON.parse(readFileSync(archPath, "utf8")) as unknown;
-    const doc = parseArchitecture(raw);
-    // v0.1 of this feature starts with an empty architecture unless
-    // the lead adapter contributes one. The renderer substitutes the
-    // placeholder at render time; both are valid states for the JSON.
-    expect(doc.version).toBe("1");
-  });
-
-  test("SPEC.md contains the sentinel-delimited architecture block", async () => {
-    const slug = "arch-demo";
-    await runNewWithArchitecture(tmpRoot, slug);
-    const spec = readFileSync(
-      path.join(tmpRoot, ".samo", "spec", slug, "SPEC.md"),
-      "utf8",
-    );
-    expect(spec).toContain("<!-- architecture:begin -->");
-    expect(spec).toContain("<!-- architecture:end -->");
-    // Placeholder for a zero-node architecture.
-    expect(spec).toContain("(architecture not yet specified)");
-  });
-
-  test("architecture.json is tracked in git on the first commit (#94)", async () => {
-    const slug = "arch-demo";
-    await runNewWithArchitecture(tmpRoot, slug);
-    const lsFiles = spawnSync(
-      "git",
-      [
-        "-C",
-        tmpRoot,
-        "ls-files",
-        "--error-unmatch",
-        `.samo/spec/${slug}/architecture.json`,
-      ],
-      { encoding: "utf8" },
-    );
-    expect(lsFiles.status).toBe(0);
   });
 });
