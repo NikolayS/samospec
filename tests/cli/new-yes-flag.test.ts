@@ -158,7 +158,11 @@ describe("samospec new --yes (#122) — headless UI contract", () => {
     // Bun per-test timeout fired. Passing means every call resolved
     // purely — no stdin read was attempted.
     const { Readable } = await import("node:stream");
-    const deadStdin = new Readable({ read() { /* never push */ } });
+    const deadStdin = new Readable({
+      read() {
+        /* never push */
+      },
+    });
     deadStdin.pause();
     const originalStdin = process.stdin;
     Object.defineProperty(process, "stdin", {
