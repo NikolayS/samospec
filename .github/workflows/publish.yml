@@ -101,14 +101,35 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          registry-url: "https://registry.npmjs.org"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Write project .npmrc with auth token
+        # Avoids the setup-node `NODE_AUTH_TOKEN` substitution path
+        # (which has intermittently produced 404 on PUT in this repo
+        # despite the same token publishing fine locally). Write the
+        # token directly so npm CLI reads it straight from .npmrc.
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          IFS=$'\n\t'
+          {
+            echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}"
+            echo "registry=https://registry.npmjs.org/"
+            echo "always-auth=true"
+          } > .npmrc
+          chmod 600 .npmrc
+
+      - name: Sanity-check auth (whoami)
+        run: npm whoami --registry https://registry.npmjs.org/
 
       - name: Publish to npm
         # --provenance requires a trusted-publisher config on npmjs;
         # skip it until that's set up. Re-enable via follow-up PR.
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Scrub .npmrc
+        if: always()
+        run: rm -f .npmrc
