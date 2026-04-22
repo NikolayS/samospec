@@ -602,6 +602,15 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         // --max-session-wall-clock-ms cap. The per-call timeouts in
         // runRound (CRITIQUE_TIMEOUT_MS / REVISE_TIMEOUT_MS) still
         // apply inside the round; this is the outer bound.
+        // #92: ALSO thread `remainingSessionMsFn` so the round-level
+        // per-call revise clamp (see `resolveEffectiveReviseTimeout` in
+        // src/loop/round.ts) can shrink the revise timeout to at most
+        // the session budget that's still on the clock when revise
+        // starts. Without this the configured `revise_ms` would dominate
+        // and the inner `ReviseTimeoutError` would never fire before
+        // the outer `SessionWallClockError`, collapsing the two into
+        // the same `wall_clock` exit reason and losing the specific
+        // `revise_timeout` diagnostic.
         let roundOutcome: Awaited<ReturnType<typeof runRound>>;
         try {
           roundOutcome = await withSessionDeadline(
@@ -615,6 +624,9 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
               adapters: wrappedAdapters,
               critiqueTimeoutMs: callTimeouts.criticA_ms,
               reviseTimeoutMs: callTimeouts.revise_ms,
+              remainingSessionMsFn: (): number =>
+                sessionWallClockLimitMs -
+                (Date.now() - sessionWallClockStartMs),
               ...(manualEditDirective !== undefined
                 ? { manualEditDirective }
                 : {}),
@@ -838,6 +850,19 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
 
           // Changelog entry.
           const newVersion = bumpMinor(currentState.version);
+          // #92 REV: the two retry flags on roundOutcome map to distinct
+          // CHANGELOG notes. Combining them into a single "reviewers
+          // retried" message (as the pre-#92 code did when reusing the
+          // `retried` flag) is factually wrong in the revise-retry case:
+          // reviewers may well have completed fine on the first pass,
+          // and the round was re-run because `lead.revise()` timed out.
+          const retryNotes: string[] = [];
+          if (roundOutcome.reviewersRetried) {
+            retryNotes.push("reviewers retried this round (SPEC §7)");
+          }
+          if (roundOutcome.reviseRetried) {
+            retryNotes.push("lead revise retried after timeout (#92)");
+          }
           const changelogEntry = formatChangelogEntry({
             version: newVersion,
             now: input.now,
@@ -848,9 +873,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             ...(degraded.degraded
               ? { degradedResolution: formatDegradedSummary(degraded) }
               : {}),
-            ...(roundOutcome.retried
-              ? { notes: ["reviewers retried this round (SPEC §7)"] }
-              : {}),
+            ...(retryNotes.length > 0 ? { notes: retryNotes } : {}),
           });
           appendOrCreateChangelog(paths.changelogPath, changelogEntry);
 

@@ -89,10 +89,19 @@ export class ReviseTimeoutError extends Error {
 
 /**
  * Race `promise` against a deadline. Rejects with `ReviseTimeoutError`
- * if the deadline fires first. The pending promise is NOT awaited after
- * the timer fires — the underlying adapter is expected to clean up its
- * own subprocess on abort (adapters already wire SIGTERM/SIGKILL on
- * timeout via `Bun.spawn`'s AbortSignal).
+ * if the deadline fires first.
+ *
+ * Subprocess lifecycle: this helper ONLY rejects the orchestrator
+ * promise — it does not abort the underlying adapter call. The
+ * subprocess kill is delivered by the coincident `opts.timeout` that
+ * this helper passes to `adapter.revise(...)`: adapters use it to arm
+ * their internal `Bun.spawn` SIGTERM/SIGKILL ladder, which fires at
+ * roughly the same wall-clock moment. PR #118 REV flagged the previous
+ * wording here as overstating a shared AbortController — there isn't
+ * one, and threading one down through every adapter is future work.
+ * In practice the coincident timers land the SIGTERM within ms of the
+ * orchestrator rejection; the leaked pending Promise is GC'd once the
+ * subprocess exits.
  */
 async function withReviseDeadline<T>(
   promise: Promise<T>,
@@ -240,7 +249,29 @@ export interface RunRoundOutcome {
   readonly reviewersExhausted: boolean;
   /** The directive that WILL be included in lead's revise() — for tests. */
   readonly leadDirective?: string;
+  /**
+   * Legacy signal: `true` whenever either the reviewer retry OR the
+   * revise retry ran. Kept for back-compat with callers that only want
+   * to know "was this round non-trivial?". New code should prefer
+   * `reviewersRetried` / `reviseRetried` (REV-review on PR #118 flagged
+   * this flag as conflating the two retry kinds, so the iterate CLI
+   * can now emit distinct CHANGELOG notes).
+   */
   readonly retried: boolean;
+  /**
+   * `true` iff the SPEC §7 reviewer whole-round retry ran this round
+   * (both seats failed in the first pass, both got a second attempt).
+   * Does NOT imply the second pass succeeded — check seat states.
+   */
+  readonly reviewersRetried: boolean;
+  /**
+   * `true` iff the Issue #92 revise retry ran this round (first revise
+   * call hit `ReviseTimeoutError`, runRound re-ran reviewers + revise).
+   * The retry may have succeeded (roundStopReason="ok") or timed out
+   * again (roundStopReason="lead_terminal" + leadTerminalError is a
+   * retried ReviseTimeoutError).
+   */
+  readonly reviseRetried: boolean;
   /** Lead usage (for wall-clock + budget accounting). */
   readonly leadUsage?: CritiqueOutput["usage"];
   /**
@@ -479,12 +510,17 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
   // Persist seats + critique files atomically.
   persistSeatResults(dirs, attempt1);
 
-  let retried = false;
+  // Track reviewer-retry and revise-retry as separate signals — PR #118
+  // REV flagged that collapsing them into a single `retried` flag made
+  // the iterate CHANGELOG note wrong ("reviewers retried this round"
+  // when the retry was actually a revise-timeout retry).
+  let reviewersRetried = false;
+  let reviseRetried = false;
   let seatA = attempt1.reviewerA;
   let seatB = attempt1.reviewerB;
   if (seatA.state !== "ok" && seatB.state !== "ok") {
     // Both failed — retry whole round once (SPEC §7).
-    retried = true;
+    reviewersRetried = true;
     const attempt2 = await runReviewersParallel({
       specText: input.specText,
       adapters,
@@ -525,7 +561,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       decisions: [],
       roundStopReason: "both_seats_failed_even_after_retry",
       reviewersExhausted: true,
-      retried,
+      retried: reviewersRetried || reviseRetried,
+      reviewersRetried,
+      reviseRetried,
     };
   }
 
@@ -613,7 +651,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       decisions,
       roundStopReason: "ok",
       reviewersExhausted: false,
-      retried,
+      retried: reviewersRetried || reviseRetried,
+      reviewersRetried,
+      reviseRetried,
       leadUsage: revised.usage,
       ...(directive !== undefined ? { leadDirective: directive } : {}),
     };
@@ -632,7 +672,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
         decisions: [],
         roundStopReason: "lead_terminal",
         reviewersExhausted: false,
-        retried,
+        retried: reviewersRetried || reviseRetried,
+        reviewersRetried,
+        reviseRetried,
         leadTerminalError: firstErr,
         ...(directive !== undefined ? { leadDirective: directive } : {}),
       };
@@ -642,7 +684,7 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
     // Re-run reviewers + revise. On a retry attempt we re-use the
     // original spec text; critique outputs may differ vs. the first
     // attempt but the round semantics stay the same.
-    retried = true;
+    reviseRetried = true;
     const retryReviewers = await runReviewersParallel({
       specText: input.specText,
       adapters,
@@ -700,7 +742,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
         decisions,
         roundStopReason: "ok",
         reviewersExhausted: false,
-        retried,
+        retried: reviewersRetried || reviseRetried,
+        reviewersRetried,
+        reviseRetried,
         leadUsage: revised.usage,
         ...(directive !== undefined ? { leadDirective: directive } : {}),
       };
@@ -721,7 +765,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
         decisions: [],
         roundStopReason: "lead_terminal",
         reviewersExhausted: false,
-        retried,
+        retried: reviewersRetried || reviseRetried,
+        reviewersRetried,
+        reviseRetried,
         leadTerminalError: terminal,
         ...(directive !== undefined ? { leadDirective: directive } : {}),
       };
@@ -737,7 +783,18 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
  * When the remaining budget is smaller than the configured timeout, the
  * per-call cap shrinks so the overall session respects its deadline.
  * Always returns a positive integer ≥ 1ms so `setTimeout` is well-formed.
+ *
+ * Safety margin: the iterate CLI also wraps `runRound` in a sibling
+ * session-deadline wrapper (#91). If both deadlines fire at the same
+ * absolute wall-clock moment the race is ambiguous and the outer
+ * wrapper usually wins (registered first → `setTimeout` ordering).
+ * That collapses two distinct exit reasons — `revise_timeout` vs.
+ * `wall_clock` — into one. Subtracting a small margin biases the race
+ * so the inner `ReviseTimeoutError` fires strictly BEFORE the outer
+ * `SessionWallClockError`, preserving the diagnostic distinction.
  */
+const CLAMP_SAFETY_MARGIN_MS = 100 as const;
+
 function resolveEffectiveReviseTimeout(
   configured: number,
   remainingSessionMsFn: (() => number) | undefined,
@@ -749,7 +806,13 @@ function resolveEffectiveReviseTimeout(
     // the revise call can't hang indefinitely during the race to exit.
     return 1;
   }
-  return Math.max(1, Math.min(configured, Math.floor(remaining)));
+  const clamped = Math.min(configured, Math.floor(remaining));
+  // Bias inner < outer when the session budget is what's doing the
+  // clamping; don't shave configured-only timeouts where there's no
+  // outer deadline to race against.
+  const biased =
+    clamped === configured ? clamped : clamped - CLAMP_SAFETY_MARGIN_MS;
+  return Math.max(1, biased);
 }
 
 // ---------- parallel reviewer dispatch ----------
