@@ -114,6 +114,7 @@ jobs:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -Eeuo pipefail
+          IFS=$'\n\t'
           {
             echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}"
             echo "registry=https://registry.npmjs.org/"
