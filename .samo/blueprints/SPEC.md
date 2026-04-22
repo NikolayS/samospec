@@ -490,6 +490,7 @@ blueprints/
 samospec init                        # register .samo/ in an existing repo; idempotent
 samospec new <slug> [--idea "..."] [--persona "..."] [--effort max|high|medium|low]
                     [--context "<paths>"] [--no-commit] [--no-push] [--explain]
+                    [--yes|--accept-persona] [--answers-file <path>]
 samospec resume [<slug>]             # resume last or named spec
 samospec status [<slug>]             # phase, round state, version, next action, running cost
 samospec iterate                     # one round of review + revise
@@ -510,6 +511,8 @@ samospec version
 **Deferred to v1.1+:** `experts set`, `spec compare`, `spec diff`, `spec export` (md/pdf/html), `spec review --rounds N`, `spec ready`, `--sandbox`, non-software persona packs, OpenCode/Gemini adapters, Homebrew/apt/standalone-binary distribution. `experts set` is deferred because v1 ships only two adapter families — the one meaningful user choice (swap lead/reviewer between Claude and Codex) can be done by editing `.samo/config.json`; the command earns its keep once v1.1 ships Gemini/OpenCode. PDF/HTML drags in pandoc or Chromium headless — disproportionate dependency footprint for v1.
 
 **Interactive prompts** use plain numbered menus. Every prompt has a default in brackets; `Enter` does the safe, obvious thing.
+
+**Non-interactive automation** (issues #114 / #122): `samospec new --yes` skips the persona proposal prompt (auto-accept) and defaults every interview answer to `decide for me`. `--accept-persona` skips only the persona prompt and keeps the interview interactive. `--answers-file <path>` supplies all five interview answers from a JSON file (`{ "answers": [s, s, s, s, s] }`); combine with `--accept-persona` for a fully non-interactive run with steered answers. When stdin is not a TTY and no automation flag is set, `samospec new` exits 1 fast with an actionable message rather than readline-deadlocking. `samospec iterate --on-dirty <incorporate|overwrite|abort>` is the symmetric escape hatch for the uncommitted-edits prompt.
 
 **Exit codes:** `0` success; `1` user error; `2` infra/git/network/concurrency; `3` interrupted; `4` model refused or budget exceeded or `lead_terminal`; `5` consent refused (first push, preflight cost, sensitive-path read).
 
