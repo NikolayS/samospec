@@ -116,14 +116,19 @@ function runSamospecNew(slug: string): {
 
   // Run with a timeout; the preflight is printed before any AI call,
   // so even if the process later fails it will have already emitted it.
+  //
+  // #114: `--yes` is required because `input: "\n\n\n\n\n"` makes stdin
+  // a non-TTY pipe, which would otherwise trip the new non-TTY guard
+  // BEFORE preflight runs. `--yes` accepts the persona automatically
+  // and falls back to `decide for me` for interview answers, so the
+  // preflight line still lands on stdout before any readline call.
   const result = spawnSync(
     bun,
-    ["run", CLI_PATH, "new", slug, "--idea", "test"],
+    ["run", CLI_PATH, "new", slug, "--idea", "test", "--yes"],
     {
       cwd: tmp,
       encoding: "utf8",
       env,
-      // Pipe "\n" answers for any interactive prompts; timeout after 20s.
       input: "\n\n\n\n\n",
       timeout: 20_000,
     },
