@@ -100,7 +100,12 @@ jobs:
       - name: Install Node (for npm CLI)
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # node 24 ships npm 11.x; node 20 ships npm 10.8.2 which
+          # may be the root of the mysterious 404 on PUT seen in
+          # previous publish attempts (issue #113). npm was
+          # verified working from local with 11.8.0 on the same
+          # token + .npmrc contents.
+          node-version: "24"
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -121,6 +126,14 @@ jobs:
             echo "always-auth=true"
           } > .npmrc
           chmod 600 .npmrc
+
+      - name: npm environment (diagnostic)
+        run: |
+          set -Eeuo pipefail
+          IFS=$'\n\t'
+          echo "node: $(node --version)"
+          echo "npm: $(npm --version)"
+          npm config get registry
 
       - name: Publish to npm
         # --provenance requires a trusted-publisher config on npmjs;
