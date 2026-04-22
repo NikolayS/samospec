@@ -7,6 +7,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Architecture schema + ASCII diagram (#107):** every spec now ships a
+  machine-readable `.samo/spec/<slug>/architecture.json` (Zod-validated;
+  `version: "1"`, nodes/edges/groups/notes) alongside SPEC.md, and an
+  auto-rendered ASCII diagram embedded between
+  `<!-- architecture:begin -->` / `<!-- architecture:end -->` sentinels
+  inside SPEC.md. The renderer is deterministic, capped at 80 columns
+  hard and ~40 lines soft (sibling groups collapse to `[N label]` when
+  the soft cap trips), and zero-node schemas render a
+  `(architecture not yet specified)` placeholder. `new`, `iterate`, and
+  `resume` all maintain architecture.json and re-render the SPEC.md
+  block from it each round.
+
+### Known limitations
+
+- Architecture schema + ASCII diagram shipped (#107); the lead adapter
+  does not yet populate `architecture.json`, so all specs produced by
+  this release render the `(architecture not yet specified)`
+  placeholder. Lead-prompt enrichment tracked as a follow-up.
+
 ---
 
 ## [0.4.1] - 2026-04-21

@@ -54,7 +54,13 @@ import {
   preflightConfigFromParsed,
   type PreflightAdapter,
 } from "../policy/preflight.ts";
+import { injectArchitectureBlock } from "../render/architecture-spec.ts";
 import { renderTldr } from "../render/tldr.ts";
+import {
+  readArchitectureOrEmpty,
+  writeArchitecture,
+} from "../state/architecture-store.ts";
+import { emptyArchitecture } from "../state/architecture.ts";
 import {
   LockContendedError,
   acquireLock,
@@ -724,9 +730,26 @@ export async function runNew(
     const tldrPath = path.join(slugDir, "TLDR.md");
     const decisionsPath = path.join(slugDir, "decisions.md");
     const changelogPath = path.join(slugDir, "changelog.md");
+    const architecturePath = path.join(slugDir, "architecture.json");
 
-    // SPEC.md: lead's draft verbatim.
-    writeFileSync(specPath, ensureTrailingNewline(draft.spec), "utf8");
+    // #107: initial architecture.json is the empty placeholder. The
+    // lead adapter doesn't author architecture for v0.1 of this feature
+    // — the JSON is the source of truth, and the ASCII renderer
+    // substitutes `(architecture not yet specified)` on render. Later
+    // versions will extend the lead prompt to emit a richer schema.
+    writeArchitecture(architecturePath, emptyArchitecture());
+
+    // SPEC.md: lead's draft with the sentinel-delimited architecture
+    // block injected (or appended when no Architecture heading exists).
+    const specWithArchitecture = injectArchitectureBlock(
+      ensureTrailingNewline(draft.spec),
+      readArchitectureOrEmpty(architecturePath),
+    );
+    writeFileSync(
+      specPath,
+      ensureTrailingNewline(specWithArchitecture),
+      "utf8",
+    );
 
     // TLDR.md: heuristic render. Pass state so the Next-action section
     // is derived from state via computeNextAction (#96).
@@ -803,6 +826,9 @@ export async function runNew(
             path.relative(input.cwd, path.join(slugDir, "context.json")),
             path.relative(input.cwd, path.join(slugDir, "decisions.md")),
             path.relative(input.cwd, path.join(slugDir, "changelog.md")),
+            // #107: architecture.json joins the per-round committed
+            // artifacts so git tracks every schema change across iterate.
+            path.relative(input.cwd, architecturePath),
           ],
         });
         notice(
@@ -1110,6 +1136,8 @@ export interface SpecPaths {
   readonly contextPath: string;
   readonly decisionsPath: string;
   readonly changelogPath: string;
+  /** #107 — machine-readable architecture schema alongside SPEC.md. */
+  readonly architecturePath: string;
 }
 
 export function specPaths(cwd: string, slug: string): SpecPaths {
@@ -1124,6 +1152,7 @@ export function specPaths(cwd: string, slug: string): SpecPaths {
     contextPath: path.join(slugDir, "context.json"),
     decisionsPath: path.join(slugDir, "decisions.md"),
     changelogPath: path.join(slugDir, "changelog.md"),
+    architecturePath: path.join(slugDir, "architecture.json"),
   };
 }
 

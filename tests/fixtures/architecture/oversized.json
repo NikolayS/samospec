@@ -1,0 +1,55 @@
+{
+  "version": "1",
+  "nodes": [
+    { "id": "user", "label": "User", "kind": "external" },
+    { "id": "cli", "label": "samospec CLI", "kind": "component" },
+    { "id": "a01", "label": "adapter 01", "kind": "component" },
+    { "id": "a02", "label": "adapter 02", "kind": "component" },
+    { "id": "a03", "label": "adapter 03", "kind": "component" },
+    { "id": "a04", "label": "adapter 04", "kind": "component" },
+    { "id": "a05", "label": "adapter 05", "kind": "component" },
+    { "id": "a06", "label": "adapter 06", "kind": "component" },
+    { "id": "a07", "label": "adapter 07", "kind": "component" },
+    { "id": "a08", "label": "adapter 08", "kind": "component" },
+    { "id": "a09", "label": "adapter 09", "kind": "component" },
+    { "id": "a10", "label": "adapter 10", "kind": "component" },
+    { "id": "a11", "label": "adapter 11", "kind": "component" },
+    { "id": "a12", "label": "adapter 12", "kind": "component" },
+    { "id": "s01", "label": "datastore 01", "kind": "datastore" },
+    { "id": "s02", "label": "datastore 02", "kind": "datastore" },
+    { "id": "s03", "label": "datastore 03", "kind": "datastore" },
+    { "id": "s04", "label": "datastore 04", "kind": "datastore" },
+    { "id": "s05", "label": "datastore 05", "kind": "datastore" },
+    { "id": "s06", "label": "datastore 06", "kind": "datastore" }
+  ],
+  "edges": [
+    { "from": "user", "to": "cli", "kind": "call" },
+    { "from": "cli", "to": "adapters", "kind": "call" },
+    { "from": "cli", "to": "datastores", "kind": "data" }
+  ],
+  "groups": [
+    {
+      "id": "adapters",
+      "label": "adapters",
+      "members": [
+        "a01",
+        "a02",
+        "a03",
+        "a04",
+        "a05",
+        "a06",
+        "a07",
+        "a08",
+        "a09",
+        "a10",
+        "a11",
+        "a12"
+      ]
+    },
+    {
+      "id": "datastores",
+      "label": "datastores",
+      "members": ["s01", "s02", "s03", "s04", "s05", "s06"]
+    }
+  ]
+}

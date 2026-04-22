@@ -147,9 +147,40 @@ Before any paid lead call, run the **preflight cost estimate** (§11). Uses scaf
 | `loop` | round scheduling, convergence + repeat-findings halt, cost summary emission |
 | `adapter` | uniform interface over `claude`, `codex`; schema validation; JSON code-fence stripping; retry/repair |
 | `policy` | budget guard: iteration/reviewer caps, token/$ budgets, wall-clock, preflight estimate |
-| `render` | TL;DR, status, changelog formatting |
+| `render` | TL;DR, status, changelog formatting, architecture ASCII diagram (#107) |
 | `publish` | promote to `blueprints/`, open PR, publish lint |
 | `doctor` | CLI availability, auth, subscription-auth flag, git/remote health, config sanity, entropy warning, global-config detection |
+
+### Architecture schema + ASCII diagram (#107)
+
+Every spec ships a machine-readable `architecture.json` alongside
+SPEC.md; the ASCII rendering of it is embedded in SPEC.md between
+`<!-- architecture:begin -->` / `<!-- architecture:end -->` sentinel
+comments so the renderer can replace the block each round without
+touching surrounding prose.
+
+- **Source of truth**: JSON + Zod at `.samo/spec/<slug>/architecture.json`.
+  Shape: `{ version: "1", nodes, edges, groups?, notes? }`. Node kinds:
+  `external | component | datastore | boundary`. Edge kinds:
+  `call | data | control`. IDs unique; every edge endpoint must resolve
+  to a node or a group.
+- **ASCII rendering**: 80 cols hard, ~40 lines soft. When the soft cap
+  trips, sibling groups collapse to a single `[N <label>]` pill.
+  Oversized labels truncated with `…`; the full label lives in the JSON.
+- **Zero-node placeholder**: `(architecture not yet specified)` (single
+  line) when no nodes have been contributed yet.
+- **Round-trip**: the ASCII block is a pure function of
+  `architecture.json`. `iterate` re-renders it on every round so even
+  if the lead regenerates SPEC.md prose, the diagram stays in lockstep
+  with the schema.
+
+**v0.1 scope:** the lead adapter does not yet emit architecture
+content, so every spec currently ships a zero-node `architecture.json`
+rendered as `(architecture not yet specified)`. Enriching the lead
+prompt to author architecture data is deferred to a later release. The
+schema, renderer, and sentinel block are live and stable — when the
+lead prompt lands, existing specs begin to populate architecture on
+the next `iterate` round without migration.
 
 ### Model roles
 
@@ -422,6 +453,7 @@ Stale removal is logged; the new process writes its own lockfile.
     context.json                 # discovery/ranking/provenance + risk_flags
     decisions.md                 # append-only; includes user-edit entries
     changelog.md
+    architecture.json            # machine-readable schema (#107)
     reviews/r01/
       codex.md                   # structured critique (security/ops persona)
       claude.md                  # structured critique (QA/pedant persona)
@@ -438,7 +470,7 @@ blueprints/
 
 **Rules:**
 
-- **Committed by default:** `SPEC.md`, `TLDR.md`, `state.json`, `interview.json`, `context.json`, `decisions.md`, `changelog.md`, `reviews/` (incl. `round.json`).
+- **Committed by default:** `SPEC.md`, `TLDR.md`, `state.json`, `interview.json`, `context.json`, `decisions.md`, `changelog.md`, `architecture.json`, `reviews/` (incl. `round.json`).
 - **Not committed by default:** `transcripts/`, `cache/`, `.lock`. Opt-in retention for transcripts via `samospec config set storage.retain_transcripts true`; trimmed + redacted either way.
 - **Secrets redaction.** Regex corpus drawn from the gitleaks and truffleHog rule sets. Tightened patterns:
   - AWS: `AKIA[0-9A-Z]{16}`, `ASIA[0-9A-Z]{16}`.

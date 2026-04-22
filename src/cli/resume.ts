@@ -29,7 +29,13 @@ import { contextJsonPath, writeContextJson } from "../context/provenance.ts";
 import { specCommit } from "../git/commit.ts";
 import { ProtectedBranchError } from "../git/errors.ts";
 import { writeCalibrationSample } from "../policy/calibration.ts";
+import { injectArchitectureBlock } from "../render/architecture-spec.ts";
 import { renderTldr } from "../render/tldr.ts";
+import {
+  readArchitectureOrEmpty,
+  writeArchitecture,
+} from "../state/architecture-store.ts";
+import { emptyArchitecture } from "../state/architecture.ts";
 import {
   LockContendedError,
   acquireLock,
@@ -340,7 +346,25 @@ export async function runResume(
         throw err;
       }
 
-      writeFileSync(paths.specPath, ensureTrailingNewline(draft.spec), "utf8");
+      // #107: seed architecture.json (empty placeholder) the same way
+      // runNew does on its happy path so resumed drafts ship the same
+      // file set. Idempotent — if a prior partial run already wrote
+      // architecture.json we keep whatever's on disk.
+      if (!existsSync(paths.architecturePath)) {
+        writeArchitecture(paths.architecturePath, emptyArchitecture());
+      }
+      const architectureForDraft = readArchitectureOrEmpty(
+        paths.architecturePath,
+      );
+      const specWithArchitecture = injectArchitectureBlock(
+        ensureTrailingNewline(draft.spec),
+        architectureForDraft,
+      );
+      writeFileSync(
+        paths.specPath,
+        ensureTrailingNewline(specWithArchitecture),
+        "utf8",
+      );
       writeFileSync(
         paths.tldrPath,
         renderTldr(draft.spec, { slug: input.slug, state: nextState }),
@@ -398,6 +422,10 @@ export async function runResume(
               relative(input.cwd, paths.contextPath),
               relative(input.cwd, paths.decisionsPath),
               relative(input.cwd, paths.changelogPath),
+              // #107: architecture.json is a committed artifact alongside
+              // SPEC.md. Added to the commit set here so resume leaves a
+              // file set identical to runNew's happy path (SPEC §13.5).
+              relative(input.cwd, paths.architecturePath),
             ],
           });
           notice(`committed spec(${input.slug}): draft v0.1`);

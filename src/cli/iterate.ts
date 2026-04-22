@@ -55,7 +55,9 @@ import {
   shouldStartNextRound,
   type CallTimeoutsMs,
 } from "../policy/wallclock.ts";
+import { injectArchitectureBlock } from "../render/architecture-spec.ts";
 import { renderTldr } from "../render/tldr.ts";
+import { readArchitectureOrEmpty } from "../state/architecture-store.ts";
 import {
   acquireLock,
   releaseLock,
@@ -654,7 +656,17 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
 
         // Write spec + TLDR + decisions + changelog, bump version, commit.
         if (roundOutcome.revisedSpec !== undefined) {
-          const newSpec = ensureTrailingNewline(roundOutcome.revisedSpec);
+          // #107: re-render the architecture block from architecture.json
+          // on every round. The JSON is the source of truth; even if the
+          // lead rewrote SPEC.md prose this round, the ASCII block stays
+          // a deterministic function of the schema.
+          const architecture = readArchitectureOrEmpty(paths.architecturePath);
+          const newSpec = ensureTrailingNewline(
+            injectArchitectureBlock(
+              ensureTrailingNewline(roundOutcome.revisedSpec),
+              architecture,
+            ),
+          );
           writeFileSync(paths.specPath, newSpec, "utf8");
           // TLDR is re-rendered in finishIterate once `exit` is set so
           // the Next-action section reflects convergence. Render here
@@ -743,6 +755,13 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
                 path.relative(input.cwd, paths.decisionsPath),
                 path.relative(input.cwd, paths.changelogPath),
                 path.relative(input.cwd, dirs.roundJson),
+                // #107: include architecture.json whenever it exists,
+                // so iterate rounds track schema changes in git alongside
+                // SPEC.md. Older specs that predate this feature simply
+                // skip this path.
+                ...(existsSync(paths.architecturePath)
+                  ? [path.relative(input.cwd, paths.architecturePath)]
+                  : []),
                 ...(existsSync(dirs.codexPath)
                   ? [path.relative(input.cwd, dirs.codexPath)]
                   : []),
