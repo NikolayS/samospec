@@ -19,6 +19,28 @@ iterate` gained `--on-dirty <incorporate|overwrite|abort>`. When
   fast with an actionable message instead of crashing with
   `ERR_USE_AFTER_CLOSE` or readline-deadlocking.
 
+### Fixed
+
+- **iterate: lead revise per-call timeout + whole-round retry (#92):**
+  the lead's `revise()` call now has a hard outer deadline enforced at
+  the round-runner level. When revise exceeds the configured timeout
+  (default 600 s, override via `budget.max_revise_call_ms` in
+  `.samo/config.json` or `callTimeouts.revise_ms` in the iterate API),
+  the round runner cancels, re-runs reviewers, and calls revise once
+  more. A second timeout surfaces as `lead_terminal` (exit 4) with
+  `state.json.exit.reason = "lead-terminal:revise_timeout"` and a
+  distinct exit-4 message so `samospec status` can tell a stuck revise
+  from a generic adapter error. Observed live on `todo-stream` r07 —
+  25+ minutes hung before SIGKILL; now capped at `2 × timeout`. The
+  per-call cap also honors the session wall-clock budget from #91 (the
+  iterate CLI threads `remainingSessionMsFn` into `runRound`), so a
+  hang near the end of a session still terminates at the session cap.
+  `RunRoundOutcome` now exposes separate `reviewersRetried` /
+  `reviseRetried` signals (the legacy `retried` flag is still the OR
+  of both for back-compat) and `iterate` writes a distinct
+  `changelog.md` note per retry kind — "reviewers retried this round
+  (SPEC §7)" vs. "lead revise retried after timeout (#92)".
+
 ---
 
 ## [0.5.0] - 2026-04-22

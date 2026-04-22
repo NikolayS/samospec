@@ -24,6 +24,7 @@ export type LeadTerminalSubReason =
   | "invalid_input"
   | "budget"
   | "wall_clock"
+  | "revise_timeout"
   | "adapter_error";
 
 /**
@@ -53,6 +54,15 @@ export function classifyLeadTerminal(err: unknown): {
   }
   if (lower.includes("invalid input") || lower.includes("too large")) {
     return { sub_reason: "invalid_input", detail: message };
+  }
+  // Issue #92: revise-layer per-call timeout has a distinct exit-4 copy
+  // so `samospec status` can tell a stuck revise from a generic adapter
+  // error. Matched BEFORE wall_clock because "revise timeout" lexically
+  // includes neither "wall-clock" nor "budget". Match the phrase
+  // combination so a generic adapter timeout (rate-limit retries) isn't
+  // misclassified.
+  if (lower.includes("revise") && lower.includes("timeout")) {
+    return { sub_reason: "revise_timeout", detail: message };
   }
   // Check wall-clock BEFORE budget: the phrase "wall-clock budget"
   // legitimately appears in some error messages, and wall_clock is the
@@ -103,6 +113,12 @@ export function formatLeadTerminalMessage(
       return (
         `samospec: lead_terminal — session wall-clock hit. ` +
         `Resume to continue.${detailSuffix}`
+      );
+    case "revise_timeout":
+      return (
+        `samospec: lead_terminal — revise call timed out. ` +
+        `Retry with \`samospec resume ${slug}\` or raise ` +
+        `budget.max_revise_call_ms.${detailSuffix}`
       );
     case "adapter_error":
       return (
