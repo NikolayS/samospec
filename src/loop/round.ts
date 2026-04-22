@@ -57,6 +57,64 @@ import type { DegradedResult } from "./degradation.ts";
 export const CRITIQUE_TIMEOUT_MS = 300_000 as const;
 export const REVISE_TIMEOUT_MS = 600_000 as const;
 
+/**
+ * Issue #92 — terminal error thrown when the lead's `revise()` call
+ * exceeds its per-call timeout at the round-runner level.
+ *
+ * The adapter already honors `opts.timeout` for its internal capped
+ * retry (SPEC §7 base -> +50% -> base -> terminal), but in the wild
+ * (see #92 live-hit demo on `todo-stream`) the underlying CLI subprocess
+ * can stay alive past that budget. This error enforces an outer deadline
+ * at the orchestrator level so a hung CLI child process is guaranteed
+ * to be preempted.
+ *
+ * `retried=true` on instances returned from `runRound` means the
+ * whole-round retry path also timed out, i.e. this is the terminal
+ * hand-off to the iterate CLI's `lead_terminal` exit-4 branch.
+ */
+export class ReviseTimeoutError extends Error {
+  readonly retried: boolean;
+  readonly timeoutMs: number;
+  constructor(timeoutMs: number, retried: boolean) {
+    const detail = retried ? "after whole-round retry" : "first attempt";
+    super(
+      `revise timeout: lead.revise() exceeded ${String(timeoutMs)}ms ` +
+        `(${detail})`,
+    );
+    this.name = "ReviseTimeoutError";
+    this.timeoutMs = timeoutMs;
+    this.retried = retried;
+  }
+}
+
+/**
+ * Race `promise` against a deadline. Rejects with `ReviseTimeoutError`
+ * if the deadline fires first. The pending promise is NOT awaited after
+ * the timer fires — the underlying adapter is expected to clean up its
+ * own subprocess on abort (adapters already wire SIGTERM/SIGKILL on
+ * timeout via `Bun.spawn`'s AbortSignal).
+ */
+async function withReviseDeadline<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new ReviseTimeoutError(timeoutMs, false));
+    }, timeoutMs);
+    promise.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
+
 // ---------- types ----------
 
 export type ReviewerSeat = "reviewer_a" | "reviewer_b";
@@ -152,6 +210,14 @@ export interface RunRoundInput {
    * Passed alongside `idea` into the revise() prompt builder.
    */
   readonly slug?: string;
+  /**
+   * Issue #92: optional getter returning how many wall-clock ms are
+   * left in the session. When supplied, the per-call revise timeout is
+   * clamped to `min(configured, remaining)` so a long revise can't
+   * outlast the session budget. Absent in legacy callers / unit tests,
+   * which use the configured timeout directly.
+   */
+  readonly remainingSessionMsFn?: () => number;
 }
 
 export type RoundStopReason =
@@ -500,17 +566,35 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
     reviewsForLead.push(seatB.critique);
   }
 
+  // Issue #92: wrap revise in a per-call deadline enforced at the
+  // orchestrator layer. Adapters already honor `opts.timeout` for their
+  // internal capped-retry loop, but the underlying CLI subprocess can
+  // stay alive past that budget (observed live on `todo-stream` r07 —
+  // 25+ minutes hung). `withReviseDeadline` is the hard outer cap.
+  //
+  // Effective timeout also respects any remaining session wall-clock
+  // (#91) when the caller supplies `remainingSessionMsFn`, so a run
+  // near the end of its session budget gets a tighter per-call cap.
+  const effectiveReviseTimeout = resolveEffectiveReviseTimeout(
+    reviseTimeout,
+    input.remainingSessionMsFn,
+  );
+
+  // ---------- first revise attempt ----------
   try {
-    const revised = await adapters.lead.revise({
-      spec: buildReviseSpec(input.specText, directive),
-      reviews: reviewsForLead,
-      decisions_history: [...input.decisionsHistory],
-      opts: { effort: "max", timeout: reviseTimeout },
-      // #85: thread idea + slug into the revise prompt for AUTHORITATIVE
-      // idea framing in every review-round lead call.
-      ...(input.idea !== undefined ? { idea: input.idea } : {}),
-      ...(input.slug !== undefined ? { slug: input.slug } : {}),
-    });
+    const revised = await withReviseDeadline(
+      adapters.lead.revise({
+        spec: buildReviseSpec(input.specText, directive),
+        reviews: reviewsForLead,
+        decisions_history: [...input.decisionsHistory],
+        opts: { effort: "max", timeout: effectiveReviseTimeout },
+        // #85: thread idea + slug into the revise prompt for AUTHORITATIVE
+        // idea framing in every review-round lead call.
+        ...(input.idea !== undefined ? { idea: input.idea } : {}),
+        ...(input.slug !== undefined ? { slug: input.slug } : {}),
+      }),
+      effectiveReviseTimeout,
+    );
 
     // Extract decisions from the response. Priority:
     //   1. revised.decisions (v0.2.0+ structured array from ReviseOutput)
@@ -533,21 +617,139 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       leadUsage: revised.usage,
       ...(directive !== undefined ? { leadDirective: directive } : {}),
     };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      roundNumber,
-      seats: { reviewer_a: seatA, reviewer_b: seatB },
-      ready: false,
-      rationale: `lead_terminal: ${msg}`,
-      decisions: [],
-      roundStopReason: "lead_terminal",
-      reviewersExhausted: false,
-      retried,
-      leadTerminalError: err,
-      ...(directive !== undefined ? { leadDirective: directive } : {}),
-    };
+  } catch (firstErr) {
+    // Only the revise-timeout class triggers the whole-round retry
+    // (#92). Other terminal failures (refusal, schema_fail, etc.) are
+    // surfaced immediately — they won't clear on retry.
+    if (!(firstErr instanceof ReviseTimeoutError)) {
+      const msg =
+        firstErr instanceof Error ? firstErr.message : String(firstErr);
+      return {
+        roundNumber,
+        seats: { reviewer_a: seatA, reviewer_b: seatB },
+        ready: false,
+        rationale: `lead_terminal: ${msg}`,
+        decisions: [],
+        roundStopReason: "lead_terminal",
+        reviewersExhausted: false,
+        retried,
+        leadTerminalError: firstErr,
+        ...(directive !== undefined ? { leadDirective: directive } : {}),
+      };
+    }
+
+    // ---------- whole-round retry on revise timeout ----------
+    // Re-run reviewers + revise. On a retry attempt we re-use the
+    // original spec text; critique outputs may differ vs. the first
+    // attempt but the round semantics stay the same.
+    retried = true;
+    const retryReviewers = await runReviewersParallel({
+      specText: input.specText,
+      adapters,
+      critiqueTimeoutMs: critiqueTimeout,
+      guidelinesA: input.guidelinesA ?? "",
+      guidelinesB: input.guidelinesB ?? "",
+      ...(input.signal !== undefined ? { signal: input.signal } : {}),
+      ...(input.idea !== undefined ? { idea: input.idea } : {}),
+    });
+    persistSeatResults(dirs, retryReviewers);
+    seatA = retryReviewers.reviewerA;
+    seatB = retryReviewers.reviewerB;
+
+    // Rebuild reviews list after retry (seat status may have shifted).
+    const retryReviewsForLead: CritiqueOutput[] = [];
+    if (seatA.state === "ok" && seatA.critique !== undefined) {
+      retryReviewsForLead.push(seatA.critique);
+    }
+    if (seatB.state === "ok" && seatB.critique !== undefined) {
+      retryReviewsForLead.push(seatB.critique);
+    }
+
+    // Recompute effective timeout for the retry — if session wall-clock
+    // has shrunk further during the first attempt, the second attempt
+    // gets a tighter cap still.
+    const retryTimeout = resolveEffectiveReviseTimeout(
+      reviseTimeout,
+      input.remainingSessionMsFn,
+    );
+
+    try {
+      const revised = await withReviseDeadline(
+        adapters.lead.revise({
+          spec: buildReviseSpec(input.specText, directive),
+          reviews: retryReviewsForLead,
+          decisions_history: [...input.decisionsHistory],
+          opts: { effort: "max", timeout: retryTimeout },
+          ...(input.idea !== undefined ? { idea: input.idea } : {}),
+          ...(input.slug !== undefined ? { slug: input.slug } : {}),
+        }),
+        retryTimeout,
+      );
+
+      const decisions =
+        revised.decisions !== undefined && revised.decisions.length > 0
+          ? reviseDecisionsToReviewDecisions(revised.decisions)
+          : extractDecisions(revised.rationale, revised.spec);
+
+      return {
+        roundNumber,
+        seats: { reviewer_a: seatA, reviewer_b: seatB },
+        revisedSpec: revised.spec,
+        ready: revised.ready,
+        rationale: revised.rationale,
+        decisions,
+        roundStopReason: "ok",
+        reviewersExhausted: false,
+        retried,
+        leadUsage: revised.usage,
+        ...(directive !== undefined ? { leadDirective: directive } : {}),
+      };
+    } catch (retryErr) {
+      // Retry also failed — terminal. Preserve the timeout signal so
+      // `classifyLeadTerminal` maps the exit to `lead-terminal:revise_timeout`.
+      const terminal =
+        retryErr instanceof ReviseTimeoutError
+          ? new ReviseTimeoutError(retryErr.timeoutMs, true)
+          : retryErr;
+      const msg =
+        terminal instanceof Error ? terminal.message : String(terminal);
+      return {
+        roundNumber,
+        seats: { reviewer_a: seatA, reviewer_b: seatB },
+        ready: false,
+        rationale: `lead_terminal: ${msg}`,
+        decisions: [],
+        roundStopReason: "lead_terminal",
+        reviewersExhausted: false,
+        retried,
+        leadTerminalError: terminal,
+        ...(directive !== undefined ? { leadDirective: directive } : {}),
+      };
+    }
   }
+}
+
+/**
+ * Issue #92 — clamp the configured revise timeout to whatever wall-clock
+ * budget remains for this session. If `remainingSessionMsFn` is absent
+ * (legacy callers, unit tests) the configured timeout is used as-is.
+ *
+ * When the remaining budget is smaller than the configured timeout, the
+ * per-call cap shrinks so the overall session respects its deadline.
+ * Always returns a positive integer ≥ 1ms so `setTimeout` is well-formed.
+ */
+function resolveEffectiveReviseTimeout(
+  configured: number,
+  remainingSessionMsFn: (() => number) | undefined,
+): number {
+  if (remainingSessionMsFn === undefined) return configured;
+  const remaining = remainingSessionMsFn();
+  if (!Number.isFinite(remaining) || remaining <= 0) {
+    // Session already over budget — still enforce some minimal cap so
+    // the revise call can't hang indefinitely during the race to exit.
+    return 1;
+  }
+  return Math.max(1, Math.min(configured, Math.floor(remaining)));
 }
 
 // ---------- parallel reviewer dispatch ----------

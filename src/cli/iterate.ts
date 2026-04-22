@@ -333,10 +333,19 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
 
   try {
     const maxRounds = input.maxRounds ?? DEFAULT_MAX_ROUNDS;
+    // Issue #92: revise timeout precedence: explicit callTimeouts.revise_ms
+    // (test injection / caller override) > budget.max_revise_call_ms in
+    // .samo/config.json > SPEC §7 default (REVISE_TIMEOUT_MS, 600s).
+    // The per-call cap applies to BOTH the first revise attempt and the
+    // whole-round retry (see src/loop/round.ts).
+    const configuredReviseMs = readReviseTimeoutFromConfig(input.cwd);
     const callTimeouts: CallTimeoutsMs = {
       criticA_ms: input.callTimeouts?.criticA_ms ?? CRITIQUE_TIMEOUT_MS,
       criticB_ms: input.callTimeouts?.criticB_ms ?? CRITIQUE_TIMEOUT_MS,
-      revise_ms: input.callTimeouts?.revise_ms ?? REVISE_TIMEOUT_MS,
+      revise_ms:
+        input.callTimeouts?.revise_ms ??
+        configuredReviseMs ??
+        REVISE_TIMEOUT_MS,
     };
     const wallClockBudget = input.maxWallClockMs ?? DEFAULT_WALL_CLOCK_MS;
     const sessionStartedMs = input.sessionStartedAtMs ?? Date.parse(input.now);
@@ -1523,4 +1532,30 @@ function cloneWithPrototype<T extends object>(source: T): T {
   // chain so we never copy them explicitly.
   Object.assign(clone, source);
   return clone;
+}
+
+/**
+ * Issue #92 — read `budget.max_revise_call_ms` from `.samo/config.json`.
+ * Returns the configured ms when the file is present and the key is a
+ * positive integer, otherwise `undefined` so the caller falls back to
+ * `REVISE_TIMEOUT_MS`. Best-effort: any read/parse error returns
+ * `undefined` silently — the round runner's own default covers us.
+ */
+function readReviseTimeoutFromConfig(cwd: string): number | undefined {
+  try {
+    const configPath = path.join(cwd, ".samo", "config.json");
+    if (!existsSync(configPath)) return undefined;
+    const raw = readFileSync(configPath, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const budget = (parsed as Record<string, unknown>)["budget"];
+    if (typeof budget !== "object" || budget === null) return undefined;
+    const v = (budget as Record<string, unknown>)["max_revise_call_ms"];
+    if (typeof v !== "number" || !Number.isFinite(v) || v <= 0) {
+      return undefined;
+    }
+    return Math.floor(v);
+  } catch {
+    return undefined;
+  }
 }

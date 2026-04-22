@@ -7,6 +7,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **iterate: lead revise per-call timeout + whole-round retry (#92):**
+  the lead's `revise()` call now has a hard outer deadline enforced at
+  the round-runner level. When revise exceeds the configured timeout
+  (default 600 s, override via `budget.max_revise_call_ms` in
+  `.samo/config.json` or `--rounds` caller), the round runner cancels,
+  re-runs reviewers, and calls revise once more. A second timeout
+  surfaces as `lead_terminal` (exit 4) with
+  `state.json.exit.reason = "lead-terminal:revise_timeout"` and a
+  distinct exit-4 message so `samospec status` can tell a stuck revise
+  from a generic adapter error. Observed live on `todo-stream` r07 —
+  25+ minutes hung before SIGKILL; now capped at `2 × timeout`.
+
 ---
 
 ## [0.5.0] - 2026-04-22
