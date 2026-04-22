@@ -47,7 +47,7 @@ const USAGE =
   "  init                        Create or refresh .samo/ in the current repo.\n" +
   "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
   "  new <slug> [--idea ...] [--force] [--skip <sections>]\n" +
-  "            [--max-session-wall-clock-ms <ms>]\n" +
+  "            [--max-session-wall-clock-ms <ms>] [--verbose]\n" +
   "                              Start a new spec (persona + 5-question interview).\n" +
   "                              --force archives any existing run before starting\n" +
   "                              fresh. --skip omits named baseline sections from\n" +
@@ -60,11 +60,17 @@ const USAGE =
   "                              budget.max_session_wall_clock_minutes in config.json\n" +
   "                              or 600000 (10 min). On cap, exits 4 with reason\n" +
   "                              `session-wall-clock`.\n" +
+  "                              --verbose emits targeted per-phase and per-file\n" +
+  "                              diagnostic lines on stderr (stdout stays concise).\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
   "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>] [--quiet]\n" +
+  "           [--max-session-wall-clock-ms <ms>]\n" +
   "                              Run review rounds until a stopping condition fires.\n" +
   "                              --quiet suppresses per-phase progress + heartbeat\n" +
   "                              (default: verbose progress on stderr).\n" +
+  "                              --max-session-wall-clock-ms caps the review loop\n" +
+  "                              session wall-clock (positive integer ms). On cap,\n" +
+  "                              exits 4 with reason `session-wall-clock`.\n" +
   "  status [<slug>]             Print phase, round, cost, wall-clock, and next action.\n" +
   "  publish [<slug>] [--no-lint] [--remote <name>]\n" +
   "                              Promote to blueprints/<slug>/SPEC.md, commit, push, open PR.\n" +
@@ -152,6 +158,7 @@ interface NewArgs {
   readonly skipSections?: readonly string[];
   readonly force: boolean;
   readonly maxSessionWallClockMs?: number;
+  readonly verbose: boolean;
 }
 
 interface ResumeArgs {
@@ -206,6 +213,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let idea: string | null = null;
   let explain = false;
   let force = false;
+  let verbose = false;
   let skipSections: readonly string[] | undefined;
   let maxSessionWallClockMs: number | undefined;
   for (let i = 0; i < argv.length; i += 1) {
@@ -217,6 +225,13 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     }
     if (token === "--force") {
       force = true;
+      continue;
+    }
+    if (token === "--verbose") {
+      // Issue #77: gate targeted per-phase + per-file diagnostic lines
+      // on stderr. stdout stays concise so pipelines that parse the
+      // happy-path output don't break.
+      verbose = true;
       continue;
     }
     if (token === "--idea") {
@@ -275,6 +290,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     idea: idea ?? slug,
     explain,
     force,
+    verbose,
     ...(skipSections !== undefined ? { skipSections } : {}),
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
   };
@@ -407,6 +423,7 @@ async function runNewCommand(rest: readonly string[]) {
       idea: parsed.idea,
       explain: parsed.explain,
       force: parsed.force,
+      verbose: parsed.verbose,
       resolvers: interactiveResolvers(),
       now: new Date().toISOString(),
       ...(parsed.skipSections !== undefined
@@ -446,7 +463,23 @@ interface IterateArgs {
   readonly noPush: boolean;
   readonly remote: string;
   readonly quiet: boolean;
+  readonly maxSessionWallClockMs?: number;
 }
+
+/**
+ * Centralised allow-list of long flags recognised by `samospec iterate`
+ * (Issue #91). Parser compares every `--…` token against this set and
+ * rejects unknown flags instead of silently dropping them — this catches
+ * typos like `--rouns 5`. Keep bare names (no `=value` suffix); the
+ * parser strips `=…` before lookup.
+ */
+const ITERATE_ALLOWED_FLAGS: ReadonlySet<string> = new Set([
+  "--rounds",
+  "--no-push",
+  "--remote",
+  "--quiet",
+  "--max-session-wall-clock-ms",
+]);
 
 function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let slug: string | null = null;
@@ -454,6 +487,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let noPush = false;
   let remote = "origin";
   let quiet = false;
+  let maxSessionWallClockMs: number | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) continue;
@@ -491,7 +525,37 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
       remote = t.slice("--remote=".length);
       continue;
     }
-    if (t.startsWith("--")) continue;
+    if (t === "--max-session-wall-clock-ms") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parseMaxSessionWallClockMs(raw);
+      if (typeof parsed === "string") {
+        // Rewrite the `new`-prefixed error so the CLI path matches
+        // `iterate` (same helper; different subcommand).
+        return parsed.replace("samospec new", "samospec iterate");
+      }
+      maxSessionWallClockMs = parsed;
+      continue;
+    }
+    if (t.startsWith("--max-session-wall-clock-ms=")) {
+      const raw = t.slice("--max-session-wall-clock-ms=".length);
+      const parsed = parseMaxSessionWallClockMs(raw);
+      if (typeof parsed === "string") {
+        return parsed.replace("samospec new", "samospec iterate");
+      }
+      maxSessionWallClockMs = parsed;
+      continue;
+    }
+    if (t.startsWith("--")) {
+      // Issue #91: reject unknown flags instead of silently dropping
+      // them. Strip any `=value` suffix before the allow-list lookup
+      // so `--rouns=5` is caught the same as `--rouns 5`.
+      const bareFlag = t.includes("=") ? t.slice(0, t.indexOf("=")) : t;
+      if (!ITERATE_ALLOWED_FLAGS.has(bareFlag)) {
+        return `samospec iterate: unknown flag '${bareFlag}'`;
+      }
+      continue;
+    }
     slug ??= t;
   }
   if (slug === null || slug.length === 0) {
@@ -503,6 +567,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
     remote,
     quiet,
     ...(rounds !== undefined ? { rounds } : {}),
+    ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
   };
 }
 
@@ -629,6 +694,9 @@ async function runIterateCommand(rest: readonly string[]) {
     pushOptions,
     quiet: parsed.quiet,
     ...(parsed.rounds !== undefined ? { maxRounds: parsed.rounds } : {}),
+    ...(parsed.maxSessionWallClockMs !== undefined
+      ? { maxSessionWallClockMs: parsed.maxSessionWallClockMs }
+      : {}),
   });
   return {
     exitCode: result.exitCode,

@@ -266,6 +266,7 @@ export async function runNew(
 ): Promise<RunNewResult> {
   const lines: string[] = [];
   const errors: string[] = [];
+  const verboseLines: string[] = [];
   const notice = (line: string): void => {
     lines.push(line);
   };
@@ -273,6 +274,24 @@ export async function runNew(
   // Session wall-clock guard (#81): track start time and cap.
   const sessionStartMs = Date.now();
   const sessionLimitMs = resolveSessionWallClockMs(input);
+
+  // Issue #77: `--verbose` — when on, emit targeted diagnostic lines to
+  // **stderr** (matching `iterate`'s progress-stream convention). stdout
+  // stays the concise summary so pipelines parsing the happy-path output
+  // don't break. No-op when verbose is false/omitted.
+  const verboseEnabled = input.verbose === true;
+  const trace = (line: string): void => {
+    if (!verboseEnabled) return;
+    const elapsed = Date.now() - sessionStartMs;
+    verboseLines.push(`[verbose +${String(elapsed)}ms] ${line}`);
+  };
+  const buildStderr = (): string => {
+    const parts: string[] = [];
+    if (verboseLines.length > 0) parts.push(verboseLines.join("\n"));
+    if (errors.length > 0) parts.push(errors.join("\n"));
+    if (parts.length === 0) return "";
+    return `${parts.join("\n")}\n`;
+  };
 
   const samoDir = path.join(input.cwd, ".samo");
   const specsDir = path.join(samoDir, "spec");
@@ -302,7 +321,7 @@ export async function runNew(
       return {
         exitCode: 1,
         stdout: lines.join("\n"),
-        stderr: `${errors.join("\n")}\n`,
+        stderr: buildStderr(),
       };
     }
   }
@@ -327,7 +346,7 @@ export async function runNew(
       return {
         exitCode: 2,
         stdout: lines.join("\n"),
-        stderr: `${errors.join("\n")}\n`,
+        stderr: buildStderr(),
       };
     }
     throw err;
@@ -380,7 +399,7 @@ export async function runNew(
           return {
             exitCode: consent.exitCode ?? CONSENT_ABORT_EXIT_CODE,
             stdout: lines.join("\n"),
-            stderr: `${errors.join("\n")}\n`,
+            stderr: buildStderr(),
           };
         }
         if (consent.decision === "downshift") {
@@ -421,7 +440,7 @@ export async function runNew(
       return {
         exitCode: 2,
         stdout: lines.join("\n"),
-        stderr: `${errors.join("\n")}\n`,
+        stderr: buildStderr(),
       };
     }
     if (branchResult.kind === "created") {
@@ -465,7 +484,7 @@ export async function runNew(
         return {
           exitCode: 2,
           stdout: lines.join("\n"),
-          stderr: `${errors.join("\n")}\n`,
+          stderr: buildStderr(),
         };
       }
     } else if (branchResult.kind === "skipped") {
@@ -494,6 +513,7 @@ export async function runNew(
     // Phase 2 — persona.
     state = advancePhase(state, "persona", { now: input.now });
     writeState(statePath, state);
+    trace(`phase persona: entering (adapter=${adapter.vendor})`);
 
     const subAuth = await resolveSubscriptionAuth(adapter);
     let persona: PersonaProposal;
@@ -526,7 +546,7 @@ export async function runNew(
         return {
           exitCode: 4,
           stdout: lines.join("\n"),
-          stderr: `${errors.join("\n")}\n`,
+          stderr: buildStderr(),
         };
       }
       if (err instanceof PersonaTerminalError) {
@@ -540,7 +560,7 @@ export async function runNew(
         return {
           exitCode: 4,
           stdout: lines.join("\n"),
-          stderr: `${errors.join("\n")}\n`,
+          stderr: buildStderr(),
         };
       }
       throw err;
@@ -557,6 +577,7 @@ export async function runNew(
     // Phase 3 — context discovery (SPEC §7).
     state = advancePhase(state, "context", { now: input.now });
     writeState(statePath, state);
+    trace(`phase context: discovering tracked + untracked files`);
 
     const ctxPath = contextJsonPath(input.cwd, input.slug);
     let chunks: readonly string[] = [];
@@ -598,6 +619,7 @@ export async function runNew(
     // Phase 4 — interview.
     state = advancePhase(state, "interview", { now: input.now });
     writeState(statePath, state);
+    trace(`phase interview: soliciting 5 questions`);
 
     const interviewPath = path.join(slugDir, "interview.json");
     let interview: InterviewResult;
@@ -633,7 +655,7 @@ export async function runNew(
         return {
           exitCode: 4,
           stdout: lines.join("\n"),
-          stderr: `${errors.join("\n")}\n`,
+          stderr: buildStderr(),
         };
       }
       if (err instanceof InterviewTerminalError) {
@@ -647,7 +669,7 @@ export async function runNew(
         return {
           exitCode: 4,
           stdout: lines.join("\n"),
-          stderr: `${errors.join("\n")}\n`,
+          stderr: buildStderr(),
         };
       }
       errors.push(
@@ -659,7 +681,7 @@ export async function runNew(
       return {
         exitCode: 3,
         stdout: lines.join("\n"),
-        stderr: `${errors.join("\n")}\n`,
+        stderr: buildStderr(),
       };
     }
 
@@ -670,6 +692,7 @@ export async function runNew(
     // Phase 5 — v0.1 draft.
     state = advancePhase(state, "draft", { now: input.now });
     writeState(statePath, state);
+    trace(`phase draft: authoring v0.1 via revise()`);
 
     let draft;
     try {
@@ -705,7 +728,7 @@ export async function runNew(
         return {
           exitCode: 4,
           stdout: lines.join("\n"),
-          stderr: `${errors.join("\n")}\n`,
+          stderr: buildStderr(),
         };
       }
       if (err instanceof DraftTerminalError) {
@@ -718,7 +741,7 @@ export async function runNew(
         return {
           exitCode: 4,
           stdout: lines.join("\n"),
-          stderr: `${errors.join("\n")}\n`,
+          stderr: buildStderr(),
         };
       }
       throw err;
@@ -750,11 +773,19 @@ export async function runNew(
       ensureTrailingNewline(specWithArchitecture),
       "utf8",
     );
+    trace(
+      `wrote ${path.relative(input.cwd, specPath)} ` +
+        `(${String(Buffer.byteLength(specWithArchitecture, "utf8"))} bytes)`,
+    );
 
     // TLDR.md: heuristic render. Pass state so the Next-action section
     // is derived from state via computeNextAction (#96).
     const tldr = renderTldr(draft.spec, { slug: input.slug, state });
     writeFileSync(tldrPath, tldr, "utf8");
+    trace(
+      `wrote ${path.relative(input.cwd, tldrPath)} ` +
+        `(${String(Buffer.byteLength(tldr, "utf8"))} bytes)`,
+    );
 
     // decisions.md: empty seed; populated by the review loop.
     writeFileSync(
@@ -846,7 +877,7 @@ export async function runNew(
           return {
             exitCode: 2,
             stdout: lines.join("\n"),
-            stderr: `${errors.join("\n")}\n`,
+            stderr: buildStderr(),
           };
         }
         throw err;
@@ -890,7 +921,7 @@ export async function runNew(
     return {
       exitCode: 0,
       stdout: lines.length === 0 ? "" : `${lines.join("\n")}\n`,
-      stderr: "",
+      stderr: buildStderr(),
     };
   } finally {
     releaseLock(handle);
