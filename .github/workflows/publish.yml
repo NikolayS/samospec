@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write # reserved for future OIDC migration
 
 concurrency:
   group: publish-${{ github.ref }}
@@ -34,9 +33,11 @@ jobs:
 
       - name: Check package.json version == tag
         id: check
+        env:
+          TAG_RAW: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           set -Eeuo pipefail
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          TAG="${TAG_RAW}"
           PKG=$(node -p "require('./package.json').version")
           EXPECTED="${TAG#v}"
           if [[ "${PKG}" != "${EXPECTED}" ]]; then

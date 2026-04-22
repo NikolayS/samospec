@@ -35,8 +35,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   triggers on GitHub Release publish (or manual `workflow_dispatch`
   with an explicit tag), verifies `package.json` version matches the
   tag, re-runs the CI gate (lint / format / typecheck / tests), then
-  `npm publish --access public --provenance`. Release flow documented
-  in `CLAUDE.md`.
+  `npm publish --access public`. Release flow documented in
+  `CLAUDE.md`. `--provenance` is deferred until a trusted-publisher
+  config is set up on npmjs (tracked as a follow-up).
 
 ### Fixed
 

@@ -141,6 +141,7 @@ Useful flags:
 - `samospec new --force` — archive any existing `<slug>` dir as `.archived-YYYY-MM-DDThhmmssZ/` before starting.
 - `samospec iterate --rounds 5` — cap rounds for this invocation.
 - `samospec iterate --no-push` — stay local this run.
+- `samospec iterate --quiet` — suppress the per-round progress + heartbeat stream on stderr (final summary still prints on stdout).
 
 ---
 
