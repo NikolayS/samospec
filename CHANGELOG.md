@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Non-TTY automation for `new` + `iterate` (#114):** `samospec new`
+  now accepts `--yes`, `--accept-persona`, and `--answers-file <path>`
+  so it can run in CI / piped / background contexts without touching
+  readline. `--answers-file` loads a JSON file shaped
+  `{ "answers": [s, s, s, s, s] }` (exactly 5 entries). `samospec
+iterate` gained `--on-dirty <incorporate|overwrite|abort>`. When
+  stdin is not a TTY and neither flag is set, both commands now exit 1
+  fast with an actionable message instead of crashing with
+  `ERR_USE_AFTER_CLOSE` or readline-deadlocking.
+
 ### Fixed
 
 - **iterate: lead revise per-call timeout + whole-round retry (#92):**
