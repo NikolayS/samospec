@@ -47,7 +47,7 @@ const USAGE =
   "  init                        Create or refresh .samo/ in the current repo.\n" +
   "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
   "  new <slug> [--idea ...] [--force] [--skip <sections>]\n" +
-  "            [--max-session-wall-clock-ms <ms>]\n" +
+  "            [--max-session-wall-clock-ms <ms>] [--verbose]\n" +
   "                              Start a new spec (persona + 5-question interview).\n" +
   "                              --force archives any existing run before starting\n" +
   "                              fresh. --skip omits named baseline sections from\n" +
@@ -60,6 +60,8 @@ const USAGE =
   "                              budget.max_session_wall_clock_minutes in config.json\n" +
   "                              or 600000 (10 min). On cap, exits 4 with reason\n" +
   "                              `session-wall-clock`.\n" +
+  "                              --verbose emits targeted per-phase and per-file\n" +
+  "                              diagnostic lines on stderr (stdout stays concise).\n" +
   "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
   "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>] [--quiet]\n" +
   "                              Run review rounds until a stopping condition fires.\n" +
@@ -152,6 +154,7 @@ interface NewArgs {
   readonly skipSections?: readonly string[];
   readonly force: boolean;
   readonly maxSessionWallClockMs?: number;
+  readonly verbose: boolean;
 }
 
 interface ResumeArgs {
@@ -206,6 +209,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let idea: string | null = null;
   let explain = false;
   let force = false;
+  let verbose = false;
   let skipSections: readonly string[] | undefined;
   let maxSessionWallClockMs: number | undefined;
   for (let i = 0; i < argv.length; i += 1) {
@@ -217,6 +221,13 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     }
     if (token === "--force") {
       force = true;
+      continue;
+    }
+    if (token === "--verbose") {
+      // Issue #77: gate targeted per-phase + per-file diagnostic lines
+      // on stderr. stdout stays concise so pipelines that parse the
+      // happy-path output don't break.
+      verbose = true;
       continue;
     }
     if (token === "--idea") {
@@ -275,6 +286,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     idea: idea ?? slug,
     explain,
     force,
+    verbose,
     ...(skipSections !== undefined ? { skipSections } : {}),
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
   };
@@ -407,6 +419,7 @@ async function runNewCommand(rest: readonly string[]) {
       idea: parsed.idea,
       explain: parsed.explain,
       force: parsed.force,
+      verbose: parsed.verbose,
       resolvers: interactiveResolvers(),
       now: new Date().toISOString(),
       ...(parsed.skipSections !== undefined
