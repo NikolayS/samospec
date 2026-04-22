@@ -174,6 +174,14 @@ touching surrounding prose.
   if the lead regenerates SPEC.md prose, the diagram stays in lockstep
   with the schema.
 
+**v0.1 scope:** the lead adapter does not yet emit architecture
+content, so every spec currently ships a zero-node `architecture.json`
+rendered as `(architecture not yet specified)`. Enriching the lead
+prompt to author architecture data is deferred to a later release. The
+schema, renderer, and sentinel block are live and stable — when the
+lead prompt lands, existing specs begin to populate architecture on
+the next `iterate` round without migration.
+
 ### Model roles
 
 - **Lead** (default `claude` CLI, `claude-opus-4-7`, effort `max`).
