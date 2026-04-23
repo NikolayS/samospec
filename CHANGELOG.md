@@ -13,25 +13,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   A new opt-in mode that makes the 5-question interview drivable over
   stdio by a wrapping UI (or any CI tool). When the flag is set, stdout
   is reserved exclusively for a newline-delimited JSON event stream:
-  `{"type":"persona-proposal","persona":"…","skill":"…","rationale":"…"}`,
-  one `{"type":"question","id":"qN","text":"…","options":[…]}` per
-  interview question, and a terminal `{"type":"complete"}` emitted after
-  the run succeeds. The consumer replies on stdin with one JSON object
-  per line: `{"type":"persona-answer","kind":"accept|edit|replace",…}`
-  and `{"type":"answer","id":"qN","choice":"…","custom"?:"…"}`.
-  Human-facing status notices are rerouted from stdout to stderr (same
-  channel as `--verbose` diagnostics from #77) so the stdout event
-  stream stays parseable by any JSON-line reader. The flag bypasses the
-  non-TTY refusal from #114 because the protocol _is_ the non-TTY
-  driver — consumers that were forced to pick `--yes` and lose
-  persona-adaptive questions now have a faithful alternative. Back-compat:
-  all existing modes (interactive TTY, `--yes`, `--accept-persona`,
-  `--answers-file`) are unchanged. New exports from
-  `src/cli/non-interactive.ts`: `buildJsonlProtocolResolvers`,
-  `emitProtocolComplete`, `JsonlProtocolOptions`,
-  `PersonaProposalEvent`, `QuestionEvent`, `CompleteEvent`,
-  `ProtocolOutEvent`. New field on `RunNewInput`: `suppressStdout`
-  (reroutes notice lines to stderr when `true`).
+  `{"type":"persona-proposal","v":1,"persona":"…","skill":"…","rationale":"…"}`,
+  one `{"type":"question","v":1,"id":"qN","text":"…","options":[…]}`
+  per interview question, and a terminal `{"type":"complete","v":1}`
+  emitted after the run succeeds. The consumer replies on stdin with
+  one JSON object per line:
+  `{"type":"persona-answer","v":1,"kind":"accept|edit|replace",…}` and
+  `{"type":"answer","v":1,"id":"qN","choice":"…","custom"?:"…"}`. Every
+  event on the wire — outbound and inbound — carries `v: 1`, the
+  protocol version. Consumers can sniff breaking changes without a
+  negotiation handshake, and samospec rejects inbound events with a
+  missing or unsupported `v` field with a clear, non-stack-trace error
+  message. When a breaking change lands the number bumps; additive
+  fields within a major version do not. Question count is bounded by
+  the lead's output (0..5) — consumers must not hard-code a fixed
+  count. When both `--yes` and `--interview-protocol jsonl` are passed,
+  the JSONL resolver wins (interview runs via the protocol; `--yes`
+  auto-accept is ignored) so persona-adaptive questions are not
+  silently bypassed. Human-facing status notices are rerouted from
+  stdout to stderr (same channel as `--verbose` diagnostics from #77)
+  so the stdout event stream stays parseable by any JSON-line reader.
+  The flag bypasses the non-TTY refusal from #114 because the protocol
+  _is_ the non-TTY driver — consumers that were forced to pick `--yes`
+  and lose persona-adaptive questions now have a faithful alternative.
+  Back-compat: all existing modes (interactive TTY, `--yes`,
+  `--accept-persona`, `--answers-file`) are unchanged. New exports from
+  `src/cli/non-interactive.ts`: `PROTOCOL_VERSION`,
+  `buildJsonlProtocolResolvers`, `emitProtocolComplete`,
+  `JsonlProtocolOptions`, `PersonaProposalEvent`, `QuestionEvent`,
+  `CompleteEvent`, `ProtocolOutEvent`. New field on `RunNewInput`:
+  `suppressStdout` (reroutes notice lines to stderr when `true`).
 
 ---
 

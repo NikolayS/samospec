@@ -197,6 +197,17 @@ export function buildNonInteractiveResolvers(
 // ---------- JSONL protocol resolvers (v0.7.0) ----------
 
 /**
+ * Wire-format version of the JSONL interview protocol. v1 is the
+ * initial release (v0.7.0). Every emitted event carries `v:
+ * PROTOCOL_VERSION`; every inbound event MUST carry the same value or
+ * the resolver rejects it with a clear error. Bumping this number is
+ * the canonical breaking-change signal for downstream consumers — any
+ * additive field MUST be compatible with consumers on the current `v`,
+ * and removing/renaming a field is the only reason to bump.
+ */
+export const PROTOCOL_VERSION = 1 as const;
+
+/**
  * Line-oriented I/O seam for the JSONL protocol. Kept abstract so unit
  * tests can drive it without spawning a subprocess: `writeLine` receives
  * the raw JSON string (no trailing newline — the caller appends one),
@@ -210,10 +221,12 @@ export interface JsonlProtocolOptions {
 /**
  * The event shapes emitted on stdout. Kept permissive (string literal
  * types only) so consumers in other languages / runtimes can round-trip
- * them via any JSON parser.
+ * them via any JSON parser. `v` carries the protocol version so
+ * consumers can sniff breaking changes without negotiation.
  */
 export interface PersonaProposalEvent {
   readonly type: "persona-proposal";
+  readonly v: typeof PROTOCOL_VERSION;
   readonly persona: string;
   readonly skill: string;
   readonly rationale: string;
@@ -221,6 +234,7 @@ export interface PersonaProposalEvent {
 
 export interface QuestionEvent {
   readonly type: "question";
+  readonly v: typeof PROTOCOL_VERSION;
   readonly id: string;
   readonly text: string;
   readonly options: readonly string[];
@@ -228,6 +242,7 @@ export interface QuestionEvent {
 
 export interface CompleteEvent {
   readonly type: "complete";
+  readonly v: typeof PROTOCOL_VERSION;
 }
 
 export type ProtocolOutEvent =
@@ -285,13 +300,31 @@ export function buildJsonlProtocolResolvers(
           "samospec interview-protocol: stdin line must be a JSON object",
         );
       }
-      return parsed as Record<string, unknown>;
+      const obj = parsed as Record<string, unknown>;
+      // v0.7.0 M2: every inbound event MUST carry the protocol version
+      // so consumers can't silently ship a breaking client. Unknown or
+      // missing `v` is an immediate reject with a clear error.
+      const v = obj["v"];
+      if (v === undefined) {
+        throw new Error(
+          "samospec interview-protocol: stdin event is missing protocol version " +
+            `field \`v\` (expected ${String(PROTOCOL_VERSION)})`,
+        );
+      }
+      if (v !== PROTOCOL_VERSION) {
+        throw new Error(
+          `samospec interview-protocol: unsupported protocol version v=${JSON.stringify(v)} ` +
+            `(this build speaks v=${String(PROTOCOL_VERSION)})`,
+        );
+      }
+      return obj;
     }
   };
 
   const persona = async (proposal: PersonaProposal): Promise<PersonaChoice> => {
     emit({
       type: "persona-proposal",
+      v: PROTOCOL_VERSION,
       persona: proposal.persona,
       skill: proposal.skill,
       rationale: proposal.rationale,
@@ -338,6 +371,7 @@ export function buildJsonlProtocolResolvers(
   }): Promise<{ readonly choice: string; readonly custom?: string }> => {
     emit({
       type: "question",
+      v: PROTOCOL_VERSION,
       id: q.id,
       text: q.text,
       options: [...q.options],
@@ -383,5 +417,10 @@ export function buildJsonlProtocolResolvers(
  * consumer can tear down its input pump (e.g. close stdin).
  */
 export function emitProtocolComplete(writeLine: (line: string) => void): void {
-  writeLine(JSON.stringify({ type: "complete" } satisfies CompleteEvent));
+  writeLine(
+    JSON.stringify({
+      type: "complete",
+      v: PROTOCOL_VERSION,
+    } satisfies CompleteEvent),
+  );
 }

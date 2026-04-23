@@ -201,8 +201,11 @@ describe("JSONL protocol version field — v: 1 (v0.7.0, M2)", () => {
     });
     await Promise.resolve();
     await Promise.resolve();
-    pendingLine.resolve(JSON.stringify({ type: "persona-answer", kind: "accept" }));
-    await expect(p).rejects.toThrow(/protocol version|missing.*v|unknown.*v/i);
+    pendingLine.resolve(
+      JSON.stringify({ type: "persona-answer", kind: "accept" }),
+    );
+    const msg = await captureRejection(p);
+    expect(msg).toMatch(/protocol version|missing.*v|unknown.*v/i);
   });
 
   test("rejects inbound answer with wrong v", async () => {
@@ -222,7 +225,8 @@ describe("JSONL protocol version field — v: 1 (v0.7.0, M2)", () => {
     pendingLine.resolve(
       JSON.stringify({ type: "answer", v: 99, id: "q1", choice: "a" }),
     );
-    await expect(q).rejects.toThrow(/protocol version|unknown.*v|unsupported/i);
+    const msg = await captureRejection(q);
+    expect(msg).toMatch(/protocol version|unknown.*v|unsupported/i);
   });
 });
 
@@ -245,7 +249,10 @@ describe("JSONL protocol error paths — unit (v0.7.0, M3)", () => {
     await Promise.resolve();
     await Promise.resolve();
     pendingLine.resolve("this is not { valid json");
-    await expect(q).rejects.toThrow(/not valid JSON/i);
+    const msg = await captureRejection(q);
+    expect(msg).toMatch(/not valid JSON/i);
+    // No Node readline stack-trace leak.
+    expect(msg).not.toMatch(/ERR_USE_AFTER_CLOSE/);
   });
 
   test("non-object stdin line throws a clear error", async () => {
@@ -264,7 +271,8 @@ describe("JSONL protocol error paths — unit (v0.7.0, M3)", () => {
     await Promise.resolve();
     await Promise.resolve();
     pendingLine.resolve(JSON.stringify([1, 2, 3]));
-    await expect(q).rejects.toThrow(/must be a JSON object/i);
+    const msg = await captureRejection(q);
+    expect(msg).toMatch(/must be a JSON object/i);
   });
 
   test("stdin-close rejection surfaces as clear error, not ERR_USE_AFTER_CLOSE", async () => {
@@ -284,11 +292,10 @@ describe("JSONL protocol error paths — unit (v0.7.0, M3)", () => {
       text: "pick",
       options: ["a"],
     });
-    await expect(q).rejects.toThrow(
-      /stdin closed before answer arrived/,
-    );
+    const msg = await captureRejection(q);
+    expect(msg).toMatch(/stdin closed before answer arrived/);
     // Must NOT be the Node readline internal crash.
-    await expect(q).rejects.not.toThrow(/ERR_USE_AFTER_CLOSE/);
+    expect(msg).not.toMatch(/ERR_USE_AFTER_CLOSE/);
   });
 });
 
@@ -596,7 +603,9 @@ describe("--interview-protocol jsonl precedence and error-path stdout (M3)", () 
     expect(result.stderr.length).toBeGreaterThan(0);
     // The emitted stream is still parseable JSONL up to the throw point.
     for (const line of emitted) {
-      expect(() => JSON.parse(line)).not.toThrow();
+      expect(() => {
+        JSON.parse(line);
+      }).not.toThrow();
     }
   });
 });
@@ -604,165 +613,172 @@ describe("--interview-protocol jsonl precedence and error-path stdout (M3)", () 
 // ---------- E2E spawn test for the readline pump (M4) ----------
 
 describe("samospec new --interview-protocol jsonl — spawnSync E2E (M4)", () => {
-  test(
-    "spawns CLI, drives stdin, reads stdout line-by-line, asserts protocol end-to-end",
-    () => {
-      // Stage a repo + fake claude/codex that produce canned adapter output.
-      const fakeBin = mkdtempSync(path.join(tmpdir(), "samospec-jsonl-bin-"));
-      const fakeHome = mkdtempSync(path.join(tmpdir(), "samospec-jsonl-home-"));
-      try {
-        // Fake claude: emit persona JSON on first call, then questions JSON,
-        // then revise output for the rest. The adapter picks up the last
-        // `--print`-flag argv entry; we just emit a fixed JSON per call.
-        //
-        // Simplest stub: track invocation count via a file so sequencing
-        // works even across re-invocations in the same PID.
-        const counterPath = path.join(fakeBin, ".claude-count");
-        writeFileSync(counterPath, "0");
-        const claudeStub =
-          "#!/usr/bin/env bash\n" +
-          'if [ "$1" = "--version" ]; then echo "0.0.0"; exit 0; fi\n' +
-          `N=$(cat "${counterPath}" 2>/dev/null || echo 0)\n` +
-          `echo $((N+1)) > "${counterPath}"\n` +
-          "case $N in\n" +
-          "  0) cat <<'EOF'\n" +
-          JSON.stringify({
-            persona: 'Veteran "CLI engineer" expert',
-            rationale: "pragmatic",
-          }) +
-          "\nEOF\n" +
-          "    ;;\n" +
-          "  1) cat <<'EOF'\n" +
-          JSON.stringify({
-            questions: [
-              { id: "q1", text: "framework?", options: ["React", "Vue"] },
-              { id: "q2", text: "db?", options: ["pg", "sqlite"] },
-              { id: "q3", text: "host?", options: ["vercel", "fly"] },
-              { id: "q4", text: "lang?", options: ["ts", "rust"] },
-              { id: "q5", text: "auth?", options: ["oauth", "magic-link"] },
-            ],
-          }) +
-          "\nEOF\n" +
-          "    ;;\n" +
-          "  *) cat <<'EOF'\n" +
-          JSON.stringify({
-            spec: "# spec\n\n## Goal\nx\n\n## Scope\n- x\n\n## Non-goals\n- n\n",
-            ready: false,
-            rationale: "v0.1 draft",
-          }) +
-          "\nEOF\n" +
-          "    ;;\n" +
-          "esac\n";
-        writeFileSync(path.join(fakeBin, "claude"), claudeStub);
-        chmodSync(path.join(fakeBin, "claude"), 0o755);
-        const codexStub =
-          '#!/usr/bin/env bash\nif [ "$1" = "--version" ]; then echo "0.0.0"; exit 0; fi\nexit 0\n';
-        writeFileSync(path.join(fakeBin, "codex"), codexStub);
-        chmodSync(path.join(fakeBin, "codex"), 0o755);
+  test("spawns CLI, drives stdin, reads stdout line-by-line, asserts protocol end-to-end", () => {
+    // Stage a repo + fake claude/codex that produce canned adapter output.
+    const fakeBin = mkdtempSync(path.join(tmpdir(), "samospec-jsonl-bin-"));
+    const fakeHome = mkdtempSync(path.join(tmpdir(), "samospec-jsonl-home-"));
+    try {
+      // Fake claude: emit persona JSON on first call, then questions JSON,
+      // then revise output for the rest. The adapter picks up the last
+      // `--print`-flag argv entry; we just emit a fixed JSON per call.
+      //
+      // Simplest stub: track invocation count via a file so sequencing
+      // works even across re-invocations in the same PID.
+      const counterPath = path.join(fakeBin, ".claude-count");
+      writeFileSync(counterPath, "0");
+      // The adapter wraps every call's structured JSON inside
+      // {"answer": "...", "usage": null, "effort_used": "max"} for ask,
+      // and {"spec": "...", "ready": ..., "rationale": "...", "usage": null,
+      // "effort_used": "max"} for revise. `answer` is a JSON-string that
+      // the caller (persona / interview) re-parses.
+      const personaJsonStr = JSON.stringify({
+        persona: 'Veteran "CLI engineer" expert',
+        rationale: "pragmatic",
+      });
+      const questionsJsonStr = JSON.stringify({
+        questions: [
+          { id: "q1", text: "framework?", options: ["React", "Vue"] },
+          { id: "q2", text: "db?", options: ["pg", "sqlite"] },
+          { id: "q3", text: "host?", options: ["vercel", "fly"] },
+          { id: "q4", text: "lang?", options: ["ts", "rust"] },
+          { id: "q5", text: "auth?", options: ["oauth", "magic-link"] },
+        ],
+      });
+      const askPersonaPayload = JSON.stringify({
+        answer: personaJsonStr,
+        usage: null,
+        effort_used: "max",
+      });
+      const askInterviewPayload = JSON.stringify({
+        answer: questionsJsonStr,
+        usage: null,
+        effort_used: "max",
+      });
+      const revisePayload = JSON.stringify({
+        spec: "# spec\n\n## Goal\nx\n\n## Scope\n- x\n\n## Non-goals\n- n\n",
+        ready: false,
+        rationale: "v0.1 draft",
+        usage: null,
+        effort_used: "max",
+      });
+      const claudeStub =
+        "#!/usr/bin/env bash\n" +
+        'if [ "$1" = "--version" ]; then echo "0.0.0"; exit 0; fi\n' +
+        `N=$(cat "${counterPath}" 2>/dev/null || echo 0)\n` +
+        `echo $((N+1)) > "${counterPath}"\n` +
+        "case $N in\n" +
+        `  0) cat <<'PAYLOAD_EOF_0'\n${askPersonaPayload}\nPAYLOAD_EOF_0\n` +
+        "    ;;\n" +
+        `  1) cat <<'PAYLOAD_EOF_1'\n${askInterviewPayload}\nPAYLOAD_EOF_1\n` +
+        "    ;;\n" +
+        `  *) cat <<'PAYLOAD_EOF_R'\n${revisePayload}\nPAYLOAD_EOF_R\n` +
+        "    ;;\n" +
+        "esac\n";
+      writeFileSync(path.join(fakeBin, "claude"), claudeStub);
+      chmodSync(path.join(fakeBin, "claude"), 0o755);
+      const codexStub =
+        '#!/usr/bin/env bash\nif [ "$1" = "--version" ]; then echo "0.0.0"; exit 0; fi\nexit 0\n';
+      writeFileSync(path.join(fakeBin, "codex"), codexStub);
+      chmodSync(path.join(fakeBin, "codex"), 0o755);
 
-        // Pre-compose stdin: persona accept + 5 answers, one per line, with v: 1.
-        const stdin =
-          [
-            JSON.stringify({ type: "persona-answer", v: 1, kind: "accept" }),
-            JSON.stringify({
-              type: "answer",
-              v: 1,
-              id: "q1",
-              choice: "Vue",
-            }),
-            JSON.stringify({ type: "answer", v: 1, id: "q2", choice: "pg" }),
-            JSON.stringify({
-              type: "answer",
-              v: 1,
-              id: "q3",
-              choice: "fly",
-            }),
-            JSON.stringify({ type: "answer", v: 1, id: "q4", choice: "ts" }),
-            JSON.stringify({
-              type: "answer",
-              v: 1,
-              id: "q5",
-              choice: "oauth",
-            }),
-          ].join("\n") + "\n";
+      // Pre-compose stdin: persona accept + 5 answers, one per line, with v: 1.
+      const stdin =
+        [
+          JSON.stringify({ type: "persona-answer", v: 1, kind: "accept" }),
+          JSON.stringify({
+            type: "answer",
+            v: 1,
+            id: "q1",
+            choice: "Vue",
+          }),
+          JSON.stringify({ type: "answer", v: 1, id: "q2", choice: "pg" }),
+          JSON.stringify({
+            type: "answer",
+            v: 1,
+            id: "q3",
+            choice: "fly",
+          }),
+          JSON.stringify({ type: "answer", v: 1, id: "q4", choice: "ts" }),
+          JSON.stringify({
+            type: "answer",
+            v: 1,
+            id: "q5",
+            choice: "oauth",
+          }),
+        ].join("\n") + "\n";
 
-        const r = spawnSync(
-          Bun.argv[0] ?? "bun",
-          [
-            "run",
-            CLI_PATH,
-            "new",
-            "spawn-demo",
-            "--idea",
-            "an idea",
-            "--interview-protocol",
-            "jsonl",
-          ],
-          {
-            cwd: tmp,
-            encoding: "utf8",
-            input: stdin,
-            env: {
-              PATH: `${fakeBin}:/usr/bin:/bin:/usr/local/bin`,
-              HOME: fakeHome,
-              NO_COLOR: "1",
-              ANTHROPIC_API_KEY: "sk-fake",
-            },
-            timeout: 30_000,
+      const r = spawnSync(
+        Bun.argv[0] ?? "bun",
+        [
+          "run",
+          CLI_PATH,
+          "new",
+          "spawn-demo",
+          "--idea",
+          "an idea",
+          "--interview-protocol",
+          "jsonl",
+        ],
+        {
+          cwd: tmp,
+          encoding: "utf8",
+          input: stdin,
+          env: {
+            PATH: `${fakeBin}:/usr/bin:/bin:/usr/local/bin`,
+            HOME: fakeHome,
+            NO_COLOR: "1",
+            ANTHROPIC_API_KEY: "sk-fake",
           },
+          timeout: 30_000,
+        },
+      );
+      const stdout = r.stdout ?? "";
+      const stderr = r.stderr ?? "";
+
+      // Stdout is pure JSONL protocol.
+      const stdoutLines = stdout.split("\n").filter((l) => l.length > 0);
+      expect(stdoutLines.length).toBeGreaterThan(0);
+      const stdoutEvents: Record<string, unknown>[] = [];
+      for (const l of stdoutLines) {
+        // Every line parses as JSON.
+        const parsed = JSON.parse(l) as Record<string, unknown>;
+        stdoutEvents.push(parsed);
+        // Every event carries v: 1.
+        expect(parsed["v"]).toBe(1);
+        // Allowed types only.
+        const eventType = String(parsed["type"]);
+        expect(["persona-proposal", "question", "complete"]).toContain(
+          eventType,
         );
-        const stdout = r.stdout ?? "";
-        const stderr = r.stderr ?? "";
-
-        // Stdout is pure JSONL protocol.
-        const stdoutLines = stdout.split("\n").filter((l) => l.length > 0);
-        expect(stdoutLines.length).toBeGreaterThan(0);
-        const stdoutEvents: Record<string, unknown>[] = [];
-        for (const l of stdoutLines) {
-          // Every line parses as JSON.
-          const parsed = JSON.parse(l) as Record<string, unknown>;
-          stdoutEvents.push(parsed);
-          // Every event carries v: 1.
-          expect(parsed["v"]).toBe(1);
-          // Allowed types only.
-          expect([
-            "persona-proposal",
-            "question",
-            "complete",
-          ]).toContain(parsed["type"]);
-        }
-        // At least: persona-proposal, 5 questions, complete.
-        const qCount = stdoutEvents.filter((e) => e["type"] === "question").length;
-        expect(qCount).toBe(5);
-        expect(
-          stdoutEvents.find((e) => e["type"] === "persona-proposal"),
-        ).toBeDefined();
-        expect(
-          stdoutEvents[stdoutEvents.length - 1]?.["type"],
-        ).toBe("complete");
-
-        // Human notices went to stderr.
-        expect(stderr.length).toBeGreaterThan(0);
-        expect(r.status).toBe(0);
-
-        // Artifacts landed.
-        expect(
-          existsSync(
-            path.join(tmp, ".samo", "spec", "spawn-demo", "state.json"),
-          ),
-        ).toBe(true);
-        expect(
-          existsSync(
-            path.join(tmp, ".samo", "spec", "spawn-demo", "interview.json"),
-          ),
-        ).toBe(true);
-      } finally {
-        rmSync(fakeBin, { recursive: true, force: true });
-        rmSync(fakeHome, { recursive: true, force: true });
       }
-    },
-    60_000,
-  );
+      // At least: persona-proposal, 5 questions, complete.
+      const qCount = stdoutEvents.filter(
+        (e) => e["type"] === "question",
+      ).length;
+      expect(qCount).toBe(5);
+      expect(
+        stdoutEvents.find((e) => e["type"] === "persona-proposal"),
+      ).toBeDefined();
+      expect(stdoutEvents[stdoutEvents.length - 1]?.["type"]).toBe("complete");
+
+      // Human notices went to stderr.
+      expect(stderr.length).toBeGreaterThan(0);
+      expect(r.status).toBe(0);
+
+      // Artifacts landed.
+      expect(
+        existsSync(path.join(tmp, ".samo", "spec", "spawn-demo", "state.json")),
+      ).toBe(true);
+      expect(
+        existsSync(
+          path.join(tmp, ".samo", "spec", "spawn-demo", "interview.json"),
+        ),
+      ).toBe(true);
+    } finally {
+      rmSync(fakeBin, { recursive: true, force: true });
+      rmSync(fakeHome, { recursive: true, force: true });
+    }
+  }, 60_000);
 });
 
 // ---------- helpers ----------
@@ -781,4 +797,19 @@ function deferred<T>(): Deferred<T> {
     reject = rej;
   });
   return { promise, resolve, reject };
+}
+
+/**
+ * Run a promise that is expected to reject and return the `Error.message`
+ * (or String(thrown)). Fails the test if the promise resolves instead.
+ * Prefer this over `await expect(p).rejects.toThrow(...)` which the
+ * repo's eslint rules (await-thenable) flag on bun:test's `rejects` shim.
+ */
+async function captureRejection(p: Promise<unknown>): Promise<string> {
+  try {
+    await p;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+  throw new Error("expected promise to reject but it resolved");
 }
