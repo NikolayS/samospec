@@ -664,6 +664,8 @@ const ITERATE_ALLOWED_FLAGS: ReadonlySet<string> = new Set([
   "--no-push",
   "--remote",
   "--quiet",
+  // #128: no-op alias so `iterate --verbose` matches muscle-memory from `new`.
+  "--verbose",
   "--max-session-wall-clock-ms",
   // #114: non-TTY automation.
   "--on-dirty",
@@ -702,6 +704,11 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
       // Issue #101: suppress per-phase + heartbeat; final summary still
       // prints. No-op when combined with `--rounds 0` or similar.
       quiet = true;
+      continue;
+    }
+    if (t === "--verbose") {
+      // Issue #128: iterate is verbose by default; accept --verbose as a
+      // no-op alias so muscle-memory from `samospec new --verbose` works.
       continue;
     }
     if (t === "--on-dirty") {
