@@ -28,6 +28,10 @@ import { discoverContext } from "../context/discover.ts";
 import { contextJsonPath, writeContextJson } from "../context/provenance.ts";
 import { specCommit } from "../git/commit.ts";
 import { ProtectedBranchError } from "../git/errors.ts";
+import {
+  formatProtectedBranchError,
+  protectedBranchSource,
+} from "../git/protected.ts";
 import { writeCalibrationSample } from "../policy/calibration.ts";
 import { injectArchitectureBlock } from "../render/architecture-spec.ts";
 import { renderTldr } from "../render/tldr.ts";
@@ -442,9 +446,14 @@ export async function runResume(
               updated_at: input.now,
             };
             writeState(paths.statePath, lr);
+            // Issue #142: use the shared canonical post-#126 refusal
+            // string (names source, recommends samospec/<slug>).
             errors.push(
-              `samospec: cannot commit v0.1 on protected branch '${err.branchName}'. ` +
-                `Check out samospec/${input.slug} and resume.`,
+              formatProtectedBranchError(
+                err.branchName,
+                input.slug,
+                protectedBranchSource(err.branchName),
+              ),
             );
             return {
               exitCode: 2,

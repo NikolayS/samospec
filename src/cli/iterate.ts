@@ -38,7 +38,11 @@ import type { Adapter, Finding } from "../adapter/types.ts";
 import { currentBranch } from "../git/branch.ts";
 import { specCommit } from "../git/commit.ts";
 import { ProtectedBranchError } from "../git/errors.ts";
-import { HARDCODED_PROTECTED_BRANCHES, isProtected } from "../git/protected.ts";
+import {
+  formatProtectedBranchError,
+  isProtected,
+  protectedBranchSource,
+} from "../git/protected.ts";
 import {
   applyManualEdit,
   detectManualEdits,
@@ -1009,15 +1013,14 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             }
           } catch (err) {
             if (err instanceof ProtectedBranchError) {
-              // Issue #139: match the wording from src/cli/new.ts —
-              // name the source and recommend samospec/<slug>.
-              const src = HARDCODED_PROTECTED_BRANCHES.includes(err.branchName)
-                ? "built-in default"
-                : "config";
+              // Issue #139 / #142: shared canonical post-#126 wording —
+              // names the source and recommends samospec/<slug>.
               error(
-                `samospec: refusing to commit on protected branch ` +
-                  `'${err.branchName}' (${src}). ` +
-                  `Check out samospec/${input.slug} and re-run.`,
+                formatProtectedBranchError(
+                  err.branchName,
+                  input.slug,
+                  protectedBranchSource(err.branchName),
+                ),
               );
               return {
                 exitCode: 2,

@@ -41,7 +41,10 @@ import {
 import { specCommit } from "../git/commit.ts";
 import { ensureHasCommit } from "../git/ensure-has-commit.ts";
 import { ProtectedBranchError, GitLayerUsageError } from "../git/errors.ts";
-import { HARDCODED_PROTECTED_BRANCHES } from "../git/protected.ts";
+import {
+  formatProtectedBranchError,
+  protectedBranchSource,
+} from "../git/protected.ts";
 import { writeCalibrationSample } from "../policy/calibration.ts";
 import {
   CONSENT_ABORT_EXIT_CODE,
@@ -433,9 +436,12 @@ export async function runNew(
     //     so legacy tests that don't initialize a git repo still run.
     let branchResult = createBranch(input);
     if (branchResult.kind === "protected") {
-      const source = HARDCODED_PROTECTED_BRANCHES.includes(branchResult.branch)
-        ? "built-in default"
-        : "config";
+      // Note: this is the 'refusing to branch' path (branch creation
+      // blocked). It has a different remedy than the 'refusing to
+      // commit' helper (formatProtectedBranchError) — we suggest
+      // `git checkout -b samospec/<slug>` because no feature branch
+      // exists yet. Source classification is shared.
+      const source = protectedBranchSource(branchResult.branch);
       errors.push(
         `samospec: refusing to branch on protected branch ` +
           `'${branchResult.branch}' (${source}). ` +
@@ -877,9 +883,14 @@ export async function runNew(
           state = { ...state, round_state: "lead_revised" };
           state.updated_at = input.now;
           writeState(statePath, state);
+          // Issue #142: use the canonical post-#126 refusal (source
+          // label + samospec/<slug> hint) via the shared helper.
           errors.push(
-            `samospec: refusing to commit on protected branch '${err.branchName}'. ` +
-              `Check out a feature branch and run \`samospec resume ${input.slug}\`.`,
+            formatProtectedBranchError(
+              err.branchName,
+              input.slug,
+              protectedBranchSource(err.branchName),
+            ),
           );
           return {
             exitCode: 2,

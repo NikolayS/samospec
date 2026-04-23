@@ -77,3 +77,51 @@ function readGitConfigBranchProtected(
   const value = (result.stdout ?? "").trim().toLowerCase();
   return value === "true" || value === "1" || value === "yes" || value === "on";
 }
+
+/**
+ * Source label used in the canonical protected-branch refusal string.
+ * Matches the vocabulary introduced by PR #132 (issue #126):
+ *   - `"built-in default"` when the branch is in
+ *     {@link HARDCODED_PROTECTED_BRANCHES}.
+ *   - `"config"` when the branch is only protected via user config
+ *     (`.samo/config.json → git.protected_branches`) or git's
+ *     `branch.<name>.protected` setting.
+ */
+export type ProtectedBranchSource = "built-in default" | "config";
+
+/**
+ * Returns the source label for a branch that is known to be protected.
+ *
+ * Call sites typically already know the branch is protected (they are
+ * formatting a refusal); this helper only classifies the source.
+ */
+export function protectedBranchSource(
+  branchName: string,
+): ProtectedBranchSource {
+  return HARDCODED_PROTECTED_BRANCHES.includes(branchName)
+    ? "built-in default"
+    : "config";
+}
+
+/**
+ * Formats the canonical post-#126 / #132 refusal string emitted when a
+ * `samospec` commit (from `new`, `iterate`, or `resume`) would otherwise
+ * land on a protected branch.
+ *
+ * Extracted per issue #142 to dedupe three call sites that were drifting
+ * on wording (pre-#126 bare form vs post-#126 sourced form).
+ *
+ * Shape: `samospec: refusing to commit on protected branch '<branch>'
+ * (<source>). Check out samospec/<slug> and re-run.`
+ */
+export function formatProtectedBranchError(
+  branch: string,
+  slug: string,
+  source: ProtectedBranchSource,
+): string {
+  return (
+    `samospec: refusing to commit on protected branch ` +
+    `'${branch}' (${source}). ` +
+    `Check out samospec/${slug} and re-run.`
+  );
+}
