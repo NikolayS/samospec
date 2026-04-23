@@ -128,17 +128,34 @@ jobs:
           chmod 600 .npmrc
 
       - name: npm environment (diagnostic)
+        # Token-sensitive output is filtered: `npm config ls -l` prints
+        # `_authToken` values, so grep them out. The whoami probe uses
+        # the token as a bearer but discards the response body — only
+        # the HTTP status code is logged, so the token owner is not
+        # disclosed beyond what CI already has access to.
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -Eeuo pipefail
           IFS=$'\n\t'
           echo "node: $(node --version)"
           echo "npm: $(npm --version)"
           npm config get registry
+          npm config ls -l 2>&1 \
+            | grep -v -iE '(authtoken|password|_auth\b)' || true
+          printf 'whoami http status: '
+          curl -sS -o /dev/null -w '%{http_code}\n' \
+            -H "Authorization: Bearer ${NPM_TOKEN}" \
+            https://registry.npmjs.org/-/whoami
 
       - name: Publish to npm
         # --provenance requires a trusted-publisher config on npmjs;
         # skip it until that's set up. Re-enable via follow-up PR.
-        run: npm publish --access public
+        # --loglevel=http surfaces the full HTTP conversation so the
+        # 404-on-new-version behavior from CI (issue #121) can be
+        # diffed against a local `npm publish --loglevel=http` log.
+        # npm redacts the Authorization header in this output.
+        run: npm publish --access public --loglevel=http
 
       - name: Scrub .npmrc
         if: always()
