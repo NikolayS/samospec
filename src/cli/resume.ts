@@ -230,6 +230,9 @@ export async function runResume(
             onNotice: notice,
             outputPath: paths.interviewPath,
             now: input.now,
+            ...(state.input?.idea !== undefined
+              ? { idea: state.input.idea }
+              : {}),
           },
           adapter,
         );

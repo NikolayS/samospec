@@ -14,6 +14,7 @@ import {
   INTERVIEW_MAX_QUESTIONS,
   INTERVIEW_ESCAPE_HATCHES,
   InterviewFileSchema,
+  ideaHasOpenLanguage,
   readInterview,
   runInterview,
   writeInterview,
@@ -245,6 +246,48 @@ describe("runInterview — escape hatches always present (SPEC §5 Phase 4)", ()
   });
 });
 
+// ---------- ideaHasOpenLanguage ----------
+
+describe("ideaHasOpenLanguage — language-open detection (#129)", () => {
+  test("explicit 'language choice open' -> true", () => {
+    expect(ideaHasOpenLanguage("Build a TUI. Language choice open.")).toBe(
+      true,
+    );
+  });
+
+  test("'language open' -> true", () => {
+    expect(ideaHasOpenLanguage("some project, language open")).toBe(true);
+  });
+
+  test("'language flexible' -> true", () => {
+    expect(ideaHasOpenLanguage("REST API. Language flexible.")).toBe(true);
+  });
+
+  test("'language any' -> true", () => {
+    expect(ideaHasOpenLanguage("CLI tool. Language any.")).toBe(true);
+  });
+
+  test("no language keyword at all -> true (open by default)", () => {
+    expect(ideaHasOpenLanguage("Build a REST API service.")).toBe(true);
+  });
+
+  test("'in Rust' -> false (language specified)", () => {
+    expect(ideaHasOpenLanguage("Build a CLI in Rust.")).toBe(false);
+  });
+
+  test("'using Python' -> false", () => {
+    expect(ideaHasOpenLanguage("data pipeline using Python")).toBe(false);
+  });
+
+  test("'TypeScript backend' -> false", () => {
+    expect(ideaHasOpenLanguage("TypeScript backend with Express")).toBe(false);
+  });
+
+  test("'Go service' -> false", () => {
+    expect(ideaHasOpenLanguage("high-throughput Go service")).toBe(false);
+  });
+});
+
 // ---------- persona + explain wiring ----------
 
 describe("runInterview — persona + explain wiring (SPEC §7)", () => {
@@ -282,6 +325,65 @@ describe("runInterview — persona + explain wiring (SPEC §7)", () => {
     expect(first.prompt.toLowerCase()).toMatch(
       /plain english|plain-english|non-technical|everyday/,
     );
+  });
+
+  test("idea with open language -> prompt includes language-first guardrail", async () => {
+    const qs = [{ id: "q1", text: "something?" }];
+    const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        idea: "Build a TUI tool. Language choice open.",
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    const first = adapter.asks[0];
+    expect(first.prompt).toMatch(
+      /language.*open|open.*language|first question.*language|language.*first question/i,
+    );
+  });
+
+  test("idea with no language -> prompt includes language-first guardrail", async () => {
+    const qs = [{ id: "q1", text: "something?" }];
+    const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        idea: "Build a REST API service.",
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    const first = adapter.asks[0];
+    expect(first.prompt).toMatch(
+      /first question.*language|language.*first question/i,
+    );
+  });
+
+  test("idea specifying a language -> guardrail anchors on it, no lang-first mandate", async () => {
+    const qs = [{ id: "q1", text: "something?" }];
+    const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        idea: "Build a CLI in Rust.",
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    const first = adapter.asks[0];
+    // Should NOT mandate language as first question; should anchor on Rust
+    expect(first.prompt).toMatch(/anchor|specified/i);
   });
 });
 

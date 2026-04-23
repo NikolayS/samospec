@@ -125,6 +125,11 @@ export interface RunInterviewInput {
   readonly now?: string;
   readonly effort?: EffortLevel;
   readonly timeoutMs?: number;
+  /**
+   * The user's raw idea/brief text. Used to detect whether a language
+   * is specified so the prompt can include the appropriate guardrail.
+   */
+  readonly idea?: string;
 }
 
 export interface InterviewResult {
@@ -146,16 +151,54 @@ export class InterviewTerminalError extends Error {
 
 // ---------- prompt builders ----------
 
+/**
+ * Returns true when the idea/brief does not specify a programming language
+ * (or explicitly says the language is open/flexible/any). Used to decide
+ * whether to inject the language-first guardrail into the prompt.
+ */
+export function ideaHasOpenLanguage(idea: string): boolean {
+  // Explicit open-language signals.
+  if (
+    /language\s+(choice\s+)?(is\s+)?(open|flexible|any|tbd|undecided)/i.test(
+      idea,
+    )
+  ) {
+    return true;
+  }
+  if (/(open|flexible|any)\s+(language|tech\s+stack)/i.test(idea)) {
+    return true;
+  }
+  // No specific language named -> treat as open.
+  const LANG_RE =
+    /\b(rust|python|go|golang|typescript|javascript|java|kotlin|swift|c\+\+|c#|ruby|elixir|haskell|scala|php|dart|zig)\b/i;
+  return !LANG_RE.test(idea);
+}
+
 function buildInterviewPrompt(input: {
   persona: string;
   explain: boolean;
+  idea?: string;
 }): string {
   const explainPreamble = input.explain
     ? "Use plain English for any user-facing copy. Avoid engineer-terse " +
       "jargon in prose fields. (Non-technical ICP.)\n\n"
     : "";
+
+  const langGuardrail =
+    input.idea !== undefined
+      ? ideaHasOpenLanguage(input.idea)
+        ? "Language guardrail: the brief does not specify a language (or " +
+          "says the language is open/flexible/any). Your FIRST question " +
+          "MUST be about language choice. Downstream questions must not " +
+          "presuppose any specific language.\n\n"
+        : "Language guardrail: the brief has already specified a language. " +
+          "Anchor your questions on that specified language choice; do not " +
+          "re-open it unless the user's brief explicitly invites it.\n\n"
+      : "";
+
   return (
     explainPreamble +
+    langGuardrail +
     `You are the samospec lead, playing the persona: ${input.persona}. ` +
     "Propose up to FIVE (5) high-signal strategic questions that the " +
     "user must answer to produce a v0.1 spec. Fewer is fine; more than 5 " +
@@ -195,6 +238,7 @@ export async function runInterview(
   const prompt = buildInterviewPrompt({
     persona: input.persona,
     explain: input.explain,
+    ...(input.idea !== undefined ? { idea: input.idea } : {}),
   });
 
   const askInput: AskInput = {
