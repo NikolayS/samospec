@@ -368,15 +368,30 @@ export class ClaudeAdapter implements Adapter {
       return outcome.value;
     }
 
+    // Issue #127: promote "other" to "claude_cli_auth_failed" when the
+    // detail carries the invalid-key sentinel token.
+    const isAuthFail =
+      outcome.detail !== undefined && isInvalidApiKeyDetail(outcome.detail);
+    const resolvedReason: ClaudeAdapterErrorPayload["reason"] = isAuthFail
+      ? "claude_cli_auth_failed"
+      : outcome.reason;
+    // Strip the sentinel token prefix from the user-visible detail.
+    const resolvedDetail =
+      outcome.detail !== undefined
+        ? isAuthFail
+          ? outcome.detail.replace(`${INVALID_API_KEY_DETAIL_TOKEN} | `, "")
+          : outcome.detail
+        : undefined;
+
     const base: ClaudeAdapterErrorPayload = {
       kind: "terminal",
-      reason: outcome.reason,
-      retryable: outcome.reason === "timeout",
+      reason: resolvedReason,
+      retryable: resolvedReason === "timeout",
       attempts: outcome.attempts,
     };
     const payload: ClaudeAdapterErrorPayload = {
       ...base,
-      ...(outcome.detail !== undefined ? { detail: outcome.detail } : {}),
+      ...(resolvedDetail !== undefined ? { detail: resolvedDetail } : {}),
       ...(sawRateLimit ? { rate_limit: true } : {}),
     };
     throw new ClaudeAdapterError(payload);
@@ -409,6 +424,16 @@ export class ClaudeAdapter implements Adapter {
     }
     if (first.exitCode !== 0) {
       return classifyExit(first.exitCode, first.stderr);
+    }
+
+    // Issue #127: CLI exits 0 but stdout signals an auth failure.
+    // Detect before JSON parsing so users get an actionable message.
+    if (isInvalidApiKeyStdout(first.stdout)) {
+      return {
+        ok: false,
+        reason: "other",
+        detail: INVALID_API_KEY_DETAIL,
+      };
     }
 
     if (!args.structured) {
@@ -745,6 +770,31 @@ function isRateLimitStderr(stderr: string): boolean {
 
 function isRateLimitDetail(detail: string): boolean {
   return detail.includes(RATE_LIMIT_DETAIL_TOKEN);
+}
+
+// Issue #127: Claude CLI exits 0 but prints "Invalid API key · Fix
+// external API key" to stdout when ANTHROPIC_API_KEY is bogus. Match
+// case-insensitively so minor wording variations are caught too.
+const INVALID_API_KEY_PATTERN = /invalid api key/i;
+
+// Stable token embedded in the detail string so `runWithRetries` can
+// promote the reason from "other" to "claude_cli_auth_failed".
+const INVALID_API_KEY_DETAIL_TOKEN = "claude_cli_auth_failed";
+
+const INVALID_API_KEY_DETAIL =
+  `${INVALID_API_KEY_DETAIL_TOKEN} | ` +
+  "Claude CLI reports Invalid API key. " +
+  "If you intended to use the Claude subscription/OAuth session, " +
+  "run: unset ANTHROPIC_API_KEY — then retry. " +
+  "If you intended to use an API key, verify it at " +
+  "https://console.anthropic.com/settings/keys.";
+
+function isInvalidApiKeyStdout(stdout: string): boolean {
+  return INVALID_API_KEY_PATTERN.test(stdout);
+}
+
+function isInvalidApiKeyDetail(detail: string): boolean {
+  return detail.startsWith(INVALID_API_KEY_DETAIL_TOKEN);
 }
 
 function classifyExit(exitCode: number, stderr: string): AttemptResult<string> {
