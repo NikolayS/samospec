@@ -4,7 +4,7 @@
       "script": [
         {
           "type": "stdout",
-          "text": "ERROR: {\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'gpt-5.1-codex-max' model is not supported when using Codex with a ChatGPT account.\"}}\n"
+          "text": "ERROR: {\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account.\"}}\n"
         },
         { "type": "exit", "code": 0 }
       ]
@@ -13,7 +13,7 @@
       "script": [
         {
           "type": "stdout",
-          "text": "ERROR: {\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'gpt-5.1-codex' model is not supported when using Codex with a ChatGPT account.\"}}\n"
+          "text": "ERROR: {\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'gpt-5.3-codex' model is not supported when using Codex with a ChatGPT account.\"}}\n"
         },
         { "type": "exit", "code": 0 }
       ]

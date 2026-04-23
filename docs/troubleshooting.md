@@ -61,16 +61,16 @@ samospec doctor
 
 ```
 samospec: terminal — model_unavailable: all fallbacks exhausted:
-  gpt-5.1-codex-max → gpt-5.1-codex → account-default (no --model flag);
+  gpt-5.4 → gpt-5.3-codex → account-default (no --model flag);
   account is not authorized or no model is available
 ```
 
 Codex under ChatGPT-account auth (browser login via `codex auth`) does not
-support the pinned models `gpt-5.1-codex-max` and `gpt-5.1-codex`. The
+support the pinned models `gpt-5.4` and `gpt-5.3-codex`. The
 adapter tries a three-tier fallback chain:
 
-- `gpt-5.1-codex-max` (default pin)
-- `gpt-5.1-codex` (explicit fallback)
+- `gpt-5.4` (default pin — flagship model, effort xhigh)
+- `gpt-5.3-codex` (explicit fallback)
 - account-default: no `--model` flag, letting codex pick the account's
   supported model
 

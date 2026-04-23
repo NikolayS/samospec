@@ -62,8 +62,13 @@ describe("samospec init — fresh directory", () => {
 
     const reviewerA = adapters["reviewer_a"] as Record<string, unknown>;
     expect(reviewerA["adapter"]).toBe("codex");
-    expect(reviewerA["model_id"]).toBe("gpt-5.1-codex-max");
-    expect(reviewerA["effort"]).toBe("high");
+    expect(reviewerA["model_id"]).toBe("gpt-5.4");
+    expect(reviewerA["effort"]).toBe("max");
+    // Regression guard: stale 5.1-codex-max must NOT appear (#130).
+    expect(reviewerA["model_id"]).not.toContain("5.1-codex");
+    const fallback = reviewerA["fallback_chain"] as string[];
+    expect(fallback[0]).toBe("gpt-5.4");
+    expect(fallback).toContain("gpt-5.3-codex");
 
     const reviewerB = adapters["reviewer_b"] as Record<string, unknown>;
     expect(reviewerB["adapter"]).toBe("claude");

@@ -84,15 +84,15 @@ describe("CodexAdapter — lifecycle (SPEC §7, §11)", () => {
     }
   });
 
-  test("models() returns pinned default gpt-5.1-codex-max + gpt-5.1-codex fallback; family 'codex'", async () => {
+  test("models() returns pinned default gpt-5.4 + gpt-5.3-codex fallback; family 'codex'", async () => {
     const adapter = new CodexAdapter();
     const models = await adapter.models();
     expect(models.length).toBeGreaterThanOrEqual(2);
     const ids = models.map((m) => m.id);
-    expect(ids).toContain("gpt-5.1-codex-max");
-    expect(ids).toContain("gpt-5.1-codex");
+    expect(ids).toContain("gpt-5.4");
+    expect(ids).toContain("gpt-5.3-codex");
     // Pinned default must be first in the chain.
-    expect(ids[0]).toBe("gpt-5.1-codex-max");
+    expect(ids[0]).toBe("gpt-5.4");
     for (const m of models) {
       expect(m.family).toBe("codex");
     }

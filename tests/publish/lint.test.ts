@@ -276,7 +276,7 @@ describe("publishLint — soft warnings: adapter/model drift", () => {
       spec,
       baseRepoState({
         repoRoot: fx.dir,
-        adapterModels: ["claude-opus-4-7", "gpt-5.1-codex-max"],
+        adapterModels: ["claude-opus-4-7", "gpt-5.4"],
       }),
     );
     const soft = report.softWarnings.filter((w) => w.kind === "adapter-drift");

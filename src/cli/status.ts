@@ -276,7 +276,7 @@ function inferStatusResolutions(
     },
     reviewer_a: {
       adapter: roleOf("reviewer_a")?.adapter.vendor ?? "codex",
-      model_id: stateAdapters.reviewer_a?.model_id ?? "gpt-5.1-codex-max",
+      model_id: stateAdapters.reviewer_a?.model_id ?? "gpt-5.4",
     },
     reviewer_b: {
       adapter: roleOf("reviewer_b")?.adapter.vendor ?? "claude",

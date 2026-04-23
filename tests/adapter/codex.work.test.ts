@@ -10,7 +10,7 @@
 // - spawn-spy: non-interactive flags (`exec`) passed on every work call
 // - spawn-spy: minimal env — only HOME, PATH, TMPDIR, OPENAI_API_KEY
 //   forwarded; no host secret leaks
-// - spawn-spy: pinned model `gpt-5.1-codex-max` passed on first attempt
+// - spawn-spy: pinned model `gpt-5.4` passed on first attempt
 // - spawn-spy: reasoning-effort flag matches the logical effort per
 //   SPEC §11 effort-level table
 // - critique(): persona system prompt + taxonomy weighting literal
@@ -257,7 +257,7 @@ describe("CodexAdapter spawn flags + minimal env (SPEC §7)", () => {
     if (workCall === undefined) return;
     expect(workCall.cmd).toContain("exec");
     expect(workCall.cmd).toContain("--model");
-    expect(workCall.cmd).toContain("gpt-5.1-codex-max");
+    expect(workCall.cmd).toContain("gpt-5.4");
   });
 
   test("ask() passes reasoning_effort flag matching logical effort (SPEC §11 table)", async () => {
@@ -640,7 +640,7 @@ describe("CodexAdapter.critique (SPEC §7)", () => {
 // ---------- model fallback chain ----------
 
 describe("CodexAdapter model fallback (SPEC §11)", () => {
-  test("pinned model rejected -> falls back to gpt-5.1-codex and succeeds", async () => {
+  test("pinned model rejected -> falls back to gpt-5.3-codex and succeeds", async () => {
     const stateDir = mkdtempSync(join(tmpdir(), "samospec-codex-fb-"));
     TMP.push(stateDir);
     const stateJson = join(stateDir, "call-state.json");
@@ -655,15 +655,15 @@ describe("CodexAdapter model fallback (SPEC §11)", () => {
 
     const out = await adapter.ask(sampleAsk());
     expect(out.answer).toBe("fallback-ok");
-    // Exactly two spawns: max (rejected), then codex.
+    // Exactly two spawns: gpt-5.4 (rejected), then gpt-5.3-codex.
     expect(spy.calls.length).toBe(2);
     // First call carried the pinned model.
     const firstCmd = spy.calls[0]?.cmd.join(" ") ?? "";
-    expect(firstCmd).toContain("gpt-5.1-codex-max");
+    expect(firstCmd).toContain("gpt-5.4");
     // Second call carried the fallback model.
     const secondCmd = spy.calls[1]?.cmd.join(" ") ?? "";
-    expect(secondCmd).toContain("gpt-5.1-codex");
-    expect(secondCmd).not.toContain("gpt-5.1-codex-max");
+    expect(secondCmd).toContain("gpt-5.3-codex");
+    expect(secondCmd).not.toContain("gpt-5.4");
   });
 
   test("all models rejected -> terminal", async () => {

@@ -92,12 +92,12 @@ const ACCOUNT_DEFAULT_OK: SpawnCliResult = {
 describe("Bug #88-1: exit-1 + invalid_request_error stdout → model_unavailable", () => {
   test("classifies exit-1 invalid_request_error stdout as model_unavailable, not other/schema_violation", async () => {
     // Single-model, no account-default: isolates the classification.
-    const spy = makeSpy([makePinnedModelExit1Response("gpt-5.1-codex-max")]);
+    const spy = makeSpy([makePinnedModelExit1Response("gpt-5.4")]);
     const adapter = new CodexAdapter({
       host: FAKE_HOST,
       spawn: spy.spawn,
       binary: "/usr/bin/codex",
-      models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+      models: [{ id: "gpt-5.4", family: "codex" }],
       accountDefaultFallback: false,
     });
 
@@ -127,14 +127,14 @@ describe("Bug #88-1: exit-1 + invalid_request_error stdout → model_unavailable
       exitCode: 1,
       stdout:
         "Reading prompt from stdin...\nOpenAI Codex v0.120.0 (research preview)\n" +
-        "--------\nworkdir: /private/tmp/x\nmodel: gpt-5.1-codex-max\n--------\n" +
+        "--------\nworkdir: /private/tmp/x\nmodel: gpt-5.4\n--------\n" +
         JSON.stringify({
           type: "error",
           status: 400,
           error: {
             type: "invalid_request_error",
             message:
-              "The 'gpt-5.1-codex-max' model is not supported when using Codex with a ChatGPT account.",
+              "The 'gpt-5.4' model is not supported when using Codex with a ChatGPT account.",
           },
         }) +
         "\n",
@@ -145,7 +145,7 @@ describe("Bug #88-1: exit-1 + invalid_request_error stdout → model_unavailable
       host: FAKE_HOST,
       spawn: spy.spawn,
       binary: "/usr/bin/codex",
-      models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+      models: [{ id: "gpt-5.4", family: "codex" }],
       accountDefaultFallback: false,
     });
 
@@ -165,10 +165,10 @@ describe("Bug #88-1: exit-1 + invalid_request_error stdout → model_unavailable
 // ---------- Bug #88-1b: fallback chain must trigger ----------
 
 describe("Bug #88-1 fallback: exit-1 invalid_request_error fires account-default fallback", () => {
-  test("gpt-5.1-codex-max exit-1 → gpt-5.1-codex exit-1 → account-default (no --model) succeeds", async () => {
+  test("gpt-5.4 exit-1 → gpt-5.3-codex exit-1 → account-default (no --model) succeeds", async () => {
     const spy = makeSpy([
-      makePinnedModelExit1Response("gpt-5.1-codex-max"),
-      makePinnedModelExit1Response("gpt-5.1-codex"),
+      makePinnedModelExit1Response("gpt-5.4"),
+      makePinnedModelExit1Response("gpt-5.3-codex"),
       ACCOUNT_DEFAULT_OK,
     ]);
     const adapter = new CodexAdapter({
@@ -194,8 +194,8 @@ describe("Bug #88-1 fallback: exit-1 invalid_request_error fires account-default
 
   test("exit-1 invalid_request_error with account-default succeeds → account_default: true in output", async () => {
     const spy = makeSpy([
-      makePinnedModelExit1Response("gpt-5.1-codex-max"),
-      makePinnedModelExit1Response("gpt-5.1-codex"),
+      makePinnedModelExit1Response("gpt-5.4"),
+      makePinnedModelExit1Response("gpt-5.3-codex"),
       ACCOUNT_DEFAULT_OK,
     ]);
     const adapter = new CodexAdapter({

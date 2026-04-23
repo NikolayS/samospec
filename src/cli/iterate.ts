@@ -1575,7 +1575,7 @@ function inferResolutions(
     },
     reviewer_a: {
       adapter: adapters.reviewerA.vendor,
-      model_id: stateAdapters.reviewer_a?.model_id ?? "gpt-5.1-codex-max",
+      model_id: stateAdapters.reviewer_a?.model_id ?? "gpt-5.4",
     },
     reviewer_b: {
       adapter: adapters.reviewerB.vendor,

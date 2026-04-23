@@ -180,7 +180,7 @@ describe("Bug #54-1: ChatGPT-auth error on stdout exit-0 → model_unavailable",
             error: {
               type: "invalid_request_error",
               message:
-                "The 'gpt-5.1-codex-max' model is not supported " +
+                "The 'gpt-5.4' model is not supported " +
                 "when using Codex with a ChatGPT account.",
             },
           }) +
@@ -193,7 +193,7 @@ describe("Bug #54-1: ChatGPT-auth error on stdout exit-0 → model_unavailable",
         spawn: spy.spawn,
         // Single-model list + no account-default so we test
         // classification in isolation without the fallback chain.
-        models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+        models: [{ id: "gpt-5.4", family: "codex" }],
         accountDefaultFallback: false,
       });
 
@@ -225,7 +225,7 @@ describe("Bug #54-1: ChatGPT-auth error on stdout exit-0 → model_unavailable",
         host,
         spawn: spy.spawn,
         // Disable account-default to isolate the classification test.
-        models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+        models: [{ id: "gpt-5.4", family: "codex" }],
         accountDefaultFallback: false,
       });
 
@@ -266,7 +266,7 @@ describe("Bug #54-2: account-default fallback after both explicit pins fail", ()
     // The adapter must succeed using the account-default tier.
     expect(out.answer).toBe("account-default-ok");
 
-    // Three spawns: gpt-5.1-codex-max (fail), gpt-5.1-codex (fail),
+    // Three spawns: gpt-5.4 (fail), gpt-5.3-codex (fail),
     // account-default (no --model flag, success).
     expect(spy.calls.length).toBe(3);
 
@@ -285,7 +285,7 @@ describe("Bug #54-2: account-default fallback after both explicit pins fail", ()
       // The adapter must expose whether it fell back to account-default
       // so the resolver can write it to state.json for visibility.
       const spy = makeSpy([
-        // gpt-5.1-codex-max: ChatGPT-auth error (exit 0, stdout)
+        // gpt-5.4: ChatGPT-auth error (exit 0, stdout)
         {
           ok: true,
           exitCode: 0,
@@ -297,14 +297,14 @@ describe("Bug #54-2: account-default fallback after both explicit pins fail", ()
               error: {
                 type: "invalid_request_error",
                 message:
-                  "The 'gpt-5.1-codex-max' model is not supported " +
+                  "The 'gpt-5.4' model is not supported " +
                   "when using Codex with a ChatGPT account.",
               },
             }) +
             "\n",
           stderr: "",
         },
-        // gpt-5.1-codex: ChatGPT-auth error (exit 0, stdout)
+        // gpt-5.3-codex: ChatGPT-auth error (exit 0, stdout)
         {
           ok: true,
           exitCode: 0,
@@ -316,7 +316,7 @@ describe("Bug #54-2: account-default fallback after both explicit pins fail", ()
               error: {
                 type: "invalid_request_error",
                 message:
-                  "The 'gpt-5.1-codex' model is not supported " +
+                  "The 'gpt-5.3-codex' model is not supported " +
                   "when using Codex with a ChatGPT account.",
               },
             }) +
@@ -370,8 +370,8 @@ describe("Bug #54-3: terminal with informative message when all tiers fail", () 
       });
 
       const spy = makeSpy([
-        chatGptError("gpt-5.1-codex-max"),
-        chatGptError("gpt-5.1-codex"),
+        chatGptError("gpt-5.4"),
+        chatGptError("gpt-5.3-codex"),
         // Account-default also fails: same error shape, no model name.
         {
           ok: true,
