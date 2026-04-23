@@ -5,6 +5,46 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.6.2] - 2026-04-23
+
+### Added
+
+- **`--verbose` now listed in `samospec iterate --help`** (#137). The
+  flag was accepted (as a no-op alias for default-verbose behavior)
+  since v0.6.1, but the help block didn't document it. Now
+  discoverable.
+
+### Fixed
+
+- **Claude adapter: invalid-key detection now covers the repair-retry
+  path too** (#138). Previously, if the Anthropic API key became
+  invalid between the first spawn and the repair-retry spawn (rare but
+  possible), the error fell through to `schema_violation` instead of
+  the actionable `claude_cli_auth_failed` reason. The check now fires
+  only when JSON parsing has already failed, so valid spec JSON
+  containing the phrase as body text cannot false-positive.
+- **Protected-branch refusal in `samospec iterate`** (#139). The
+  commit path was still using the pre-#126 bare wording; now matches
+  `src/cli/new.ts` — names the "built-in default" source and
+  recommends the `samospec/<slug>` branch convention.
+
+### Changed
+
+- **Codex `effort: "max"` now maps to `xhigh` reasoning** (was
+  `high`) (#140). Matches CLAUDE.md's "strongest latest" product
+  thesis. Users with `effort: "max"` in `.samo/config.json` will see
+  higher reasoning cost and higher review quality. To pin the previous
+  behavior, set `"effort": "high"` explicitly. Closes #140.
+
+### CI
+
+- **CI release path verified with rotated NPM_TOKEN.** This release
+  exercises the publish workflow end-to-end after NPM_TOKEN was
+  rotated to a granular token with explicit "all unscoped" packages.
+  Closes #121 if the publish lands cleanly.
+
+---
+
 ## [Unreleased]
 
 ---

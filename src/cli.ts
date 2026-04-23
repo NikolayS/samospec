@@ -123,6 +123,8 @@ const USAGE =
   "      Git remote name (default: origin).\n" +
   "  --quiet\n" +
   "      Suppress per-phase progress + heartbeat (default: verbose on stderr).\n" +
+  "  --verbose\n" +
+  "      Alias / no-op — iterate is verbose by default (see --quiet).\n" +
   "  --max-session-wall-clock-ms <ms>\n" +
   "      Cap the review-loop session wall-clock (positive integer ms). On cap:\n" +
   "      exit 4 with reason `session-wall-clock`.\n" +

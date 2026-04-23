@@ -34,7 +34,7 @@ Requires [Bun](https://bun.sh) ≥ 1.2.0.
 
 ```bash
 bun install -g samospec
-samospec --version   # 0.6.1
+samospec --version   # 0.6.2
 ```
 
 Or one-shot:
