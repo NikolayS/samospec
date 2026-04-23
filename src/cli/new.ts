@@ -172,6 +172,14 @@ export interface RunNewInput {
    * config.json, then to DEFAULT_SESSION_WALL_CLOCK_MS (10 min).
    */
   readonly maxSessionWallClockMs?: number;
+  /**
+   * v0.7.0: when true, human-facing status notices are routed to stderr
+   * (alongside the #77 verbose stream) instead of stdout. Used by the
+   * `--interview-protocol jsonl` mode so stdout remains exclusively a
+   * newline-delimited protocol event stream for machine consumers.
+   * Default (false/omitted) preserves the legacy stdout-as-summary shape.
+   */
+  readonly suppressStdout?: boolean;
 }
 
 // ---------- session wall-clock guard (#81) ----------
@@ -268,8 +276,14 @@ export async function runNew(
   const lines: string[] = [];
   const errors: string[] = [];
   const verboseLines: string[] = [];
+  // v0.7.0: when `--interview-protocol jsonl` is active, stdout is
+  // reserved for the JSONL event stream. Route the human-facing status
+  // notices to the stderr sink (same channel as verbose output) so the
+  // machine consumer sees them on stderr — or ignores them.
+  const suppressStdout = input.suppressStdout === true;
+  const noticeSink: string[] = suppressStdout ? verboseLines : lines;
   const notice = (line: string): void => {
-    lines.push(line);
+    noticeSink.push(line);
   };
 
   // Session wall-clock guard (#81): track start time and cap.

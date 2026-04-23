@@ -20,7 +20,9 @@ import {
 import { describePrCapability } from "./git/push-consent.ts";
 import { runNew, type ChoiceResolvers } from "./cli/new.ts";
 import {
+  buildJsonlProtocolResolvers,
   buildNonInteractiveResolvers,
+  emitProtocolComplete,
   loadAnswersFile,
 } from "./cli/non-interactive.ts";
 import { runPublish } from "./cli/publish.ts";
@@ -113,6 +115,14 @@ const USAGE =
   "      Load 5-question interview answers from JSON\n" +
   '      (`{ "answers": [s, s, s, s, s] }`). One of --yes, --accept-persona,\n' +
   "      or --answers-file is required when stdin is not a TTY (#114).\n" +
+  "  --interview-protocol jsonl\n" +
+  "      Drive the interview over stdin/stdout using line-delimited JSON\n" +
+  "      events. Stdout emits one JSON object per line:\n" +
+  '      `{"type":"persona-proposal"…}`, `{"type":"question","id","text","options"}`, `{"type":"complete"}`.\n' +
+  '      Stdin consumes `{"type":"persona-answer","kind":"accept"|"edit"|"replace"}`\n' +
+  '      and `{"type":"answer","id","choice","custom"?}`. Human-facing\n' +
+  "      status messages route to stderr. Bypasses the non-TTY refusal\n" +
+  "      (the protocol IS the non-TTY driver). For UI wrappers / CI.\n" +
   "\n" +
   "Options for `iterate`:\n" +
   "  --rounds <N>\n" +
@@ -232,6 +242,15 @@ interface NewArgs {
   readonly acceptPersona: boolean;
   readonly yes: boolean;
   readonly answersFile?: string;
+  /**
+   * v0.7.0: `--interview-protocol jsonl` — machine-driven interview.
+   * When set, samospec emits one JSON event per line on stdout
+   * ({"type":"persona-proposal"…}, {"type":"question"…}, {"type":"complete"})
+   * and reads one JSON answer per line on stdin. Stdout carries NOTHING
+   * else; status notices are rerouted to stderr. The #114 non-TTY
+   * refusal is bypassed because the protocol IS the non-TTY driver.
+   */
+  readonly interviewProtocol?: "jsonl";
 }
 
 interface ResumeArgs {
@@ -292,6 +311,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let acceptPersona = false;
   let yes = false;
   let answersFile: string | undefined;
+  let interviewProtocol: "jsonl" | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === undefined) continue;
@@ -333,6 +353,29 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
         return "samospec new: --answers-file requires a path";
       }
       answersFile = raw;
+      continue;
+    }
+    if (token === "--interview-protocol") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      if (raw !== "jsonl") {
+        return (
+          "samospec new: --interview-protocol must be 'jsonl' " +
+          `(got '${raw}')`
+        );
+      }
+      interviewProtocol = "jsonl";
+      continue;
+    }
+    if (token.startsWith("--interview-protocol=")) {
+      const raw = token.slice("--interview-protocol=".length);
+      if (raw !== "jsonl") {
+        return (
+          "samospec new: --interview-protocol must be 'jsonl' " +
+          `(got '${raw}')`
+        );
+      }
+      interviewProtocol = "jsonl";
       continue;
     }
     if (token === "--idea") {
@@ -397,6 +440,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     ...(skipSections !== undefined ? { skipSections } : {}),
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
     ...(answersFile !== undefined ? { answersFile } : {}),
+    ...(interviewProtocol !== undefined ? { interviewProtocol } : {}),
   };
 }
 
@@ -532,7 +576,8 @@ async function runNewCommand(rest: readonly string[]) {
     };
   }
   const adapter = leadAdapter();
-  return runNew(
+  const jsonlMode = parsed.interviewProtocol === "jsonl";
+  const result = await runNew(
     {
       cwd: process.cwd(),
       slug: parsed.slug,
@@ -542,6 +587,7 @@ async function runNewCommand(rest: readonly string[]) {
       verbose: parsed.verbose,
       resolvers: resolversOrErr,
       now: new Date().toISOString(),
+      ...(jsonlMode ? { suppressStdout: true } : {}),
       ...(parsed.skipSections !== undefined
         ? { skipSections: [...parsed.skipSections] }
         : {}),
@@ -551,12 +597,28 @@ async function runNewCommand(rest: readonly string[]) {
     },
     adapter,
   );
+  // v0.7.0: emit the terminal `complete` protocol event so consumers
+  // wrapping the subprocess can tear down their stdin pump cleanly.
+  // Emitted on stdout only when the run produced a protocol stream
+  // (jsonl mode) AND the interview actually reached completion, i.e.
+  // the run succeeded (exitCode === 0). On early exits (preflight
+  // refusal, lead_terminal) we skip the completion event so the
+  // consumer isn't confused into thinking the interview finished.
+  if (jsonlMode && result.exitCode === 0) {
+    emitProtocolComplete((line: string): void => {
+      process.stdout.write(`${line}\n`);
+    });
+  }
+  return result;
 }
 
 /**
  * #114 — pick the `ChoiceResolvers` strategy for `samospec new` based
  * on the parsed flags and whether stdin is a TTY.
  *
+ *   - `--interview-protocol jsonl` (v0.7.0): build a JSONL-protocol
+ *     resolver that speaks events over stdin/stdout. Bypasses the
+ *     non-TTY refusal below because the protocol IS the non-TTY driver.
  *   - stdin is TTY: default to the interactive readline resolver.
  *   - stdin is NOT a TTY and any of `--yes`, `--accept-persona`,
  *     `--answers-file` is present: build a non-interactive resolver.
@@ -568,6 +630,60 @@ async function runNewCommand(rest: readonly string[]) {
  * error verbatim so the user can jump to the offending line.
  */
 function buildNewResolvers(parsed: NewArgs): ChoiceResolvers | string {
+  if (parsed.interviewProtocol === "jsonl") {
+    // Stdout: protocol events only. Stdin: line-delimited JSON answers.
+    // readline.Interface over a piped stdin works fine — the pre-#114
+    // crash was rl.question() against a closed stdout; we never call
+    // question() here, only consume inbound lines via the `line` event.
+    const rl = readline.createInterface({
+      input: process.stdin,
+      crlfDelay: Infinity,
+    });
+    const pending: {
+      resolve: (v: string) => void;
+      reject: (e: unknown) => void;
+    }[] = [];
+    const queued: string[] = [];
+    let closed = false;
+    rl.on("line", (line: string) => {
+      const waiter = pending.shift();
+      if (waiter !== undefined) {
+        waiter.resolve(line);
+      } else {
+        queued.push(line);
+      }
+    });
+    rl.on("close", () => {
+      closed = true;
+      for (const w of pending.splice(0)) {
+        w.reject(
+          new Error(
+            "samospec interview-protocol: stdin closed before answer arrived",
+          ),
+        );
+      }
+    });
+    return buildJsonlProtocolResolvers({
+      writeLine: (line: string): void => {
+        process.stdout.write(`${line}\n`);
+      },
+      nextLine: (): Promise<string> => {
+        const next = queued.shift();
+        if (next !== undefined) return Promise.resolve(next);
+        if (closed) {
+          return Promise.reject(
+            new Error(
+              "samospec interview-protocol: stdin closed before answer arrived",
+            ),
+          );
+        }
+        return new Promise<string>((resolve, reject) => {
+          pending.push({ resolve, reject });
+        });
+      },
+    });
+  }
+
   const hasAutomationFlag =
     parsed.yes || parsed.acceptPersona || parsed.answersFile !== undefined;
   const stdinIsTty = process.stdin.isTTY === true;

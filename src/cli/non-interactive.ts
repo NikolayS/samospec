@@ -3,7 +3,7 @@
 // Issue #114 — non-TTY automation helpers for `samospec new` and
 // `samospec iterate`.
 //
-// Two public surfaces:
+// Three public surfaces:
 //
 //   - loadAnswersFile(path): parse a `--answers-file <path>` JSON file.
 //     Shape: `{ "answers": [string, string, string, string, string] }`
@@ -17,13 +17,22 @@
 //     (a canonical schema option from SPEC §5) when no answer is
 //     supplied or the list is exhausted.
 //
-// Both surfaces are tested in isolation before the CLI wires them;
-// see tests/cli/new-answers-file.test.ts and
-// tests/cli/new-accept-persona.test.ts.
+//   - buildJsonlProtocolResolvers({ writeLine, nextLine }): v0.7.0 —
+//     a `ChoiceResolvers` that speaks a line-delimited JSON protocol
+//     over stdio. Each event is one JSON object per line on stdout
+//     (`{"type":"persona-proposal"…}`, `{"type":"question"…}`); answers
+//     arrive one JSON object per line on stdin. Designed so a consumer
+//     wrapping samospec in a UI (samo.team wizard) can surface the
+//     interview questions to a human without screen-scraping readline.
+//
+// All three surfaces are tested in isolation before the CLI wires them;
+// see tests/cli/new-answers-file.test.ts, tests/cli/new-accept-persona.test.ts,
+// and tests/cli/new-interview-protocol-jsonl.test.ts.
 
 import { readFileSync } from "node:fs";
 
 import type { ChoiceResolvers } from "./new.ts";
+import type { PersonaChoice, PersonaProposal } from "./persona.ts";
 
 // ---------- answers-file loader ----------
 
@@ -183,4 +192,196 @@ export function buildNonInteractiveResolvers(
       return Promise.resolve({ choice: "custom", custom: next });
     },
   };
+}
+
+// ---------- JSONL protocol resolvers (v0.7.0) ----------
+
+/**
+ * Line-oriented I/O seam for the JSONL protocol. Kept abstract so unit
+ * tests can drive it without spawning a subprocess: `writeLine` receives
+ * the raw JSON string (no trailing newline — the caller appends one),
+ * `nextLine` resolves to the next inbound line (no trailing newline).
+ */
+export interface JsonlProtocolOptions {
+  readonly writeLine: (line: string) => void;
+  readonly nextLine: () => Promise<string>;
+}
+
+/**
+ * The event shapes emitted on stdout. Kept permissive (string literal
+ * types only) so consumers in other languages / runtimes can round-trip
+ * them via any JSON parser.
+ */
+export interface PersonaProposalEvent {
+  readonly type: "persona-proposal";
+  readonly persona: string;
+  readonly skill: string;
+  readonly rationale: string;
+}
+
+export interface QuestionEvent {
+  readonly type: "question";
+  readonly id: string;
+  readonly text: string;
+  readonly options: readonly string[];
+}
+
+export interface CompleteEvent {
+  readonly type: "complete";
+}
+
+export type ProtocolOutEvent =
+  | PersonaProposalEvent
+  | QuestionEvent
+  | CompleteEvent;
+
+/**
+ * Build a `ChoiceResolvers` that speaks the JSONL protocol:
+ *
+ *   Stdout (one JSON object per line, stdout is protocol-ONLY):
+ *     {"type":"persona-proposal","persona":"…","skill":"…","rationale":"…"}
+ *     {"type":"question","id":"q1","text":"…","options":["…", …]}
+ *     {"type":"complete"}
+ *
+ *   Stdin (one JSON object per line):
+ *     {"type":"persona-answer","kind":"accept"|"edit"|"replace",
+ *       "skill"?:"…","persona"?:"…"}
+ *     {"type":"answer","id":"q1","choice":"…","custom"?:"…"}
+ *
+ * Extra / unknown fields are tolerated. Missing required fields throw
+ * so the caller can surface a clear error instead of silently advancing
+ * with nonsense input.
+ */
+export function buildJsonlProtocolResolvers(
+  opts: JsonlProtocolOptions,
+): ChoiceResolvers {
+  const emit = (event: ProtocolOutEvent): void => {
+    opts.writeLine(JSON.stringify(event));
+  };
+
+  const readNextObject = async (): Promise<Record<string, unknown>> => {
+    // Skip blank lines so consumers can format readably.
+    for (;;) {
+      const line = await opts.nextLine();
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch (err) {
+        throw new Error(
+          `samospec interview-protocol: stdin line is not valid JSON: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          { cause: err },
+        );
+      }
+      if (
+        typeof parsed !== "object" ||
+        parsed === null ||
+        Array.isArray(parsed)
+      ) {
+        throw new Error(
+          "samospec interview-protocol: stdin line must be a JSON object",
+        );
+      }
+      return parsed as Record<string, unknown>;
+    }
+  };
+
+  const persona = async (proposal: PersonaProposal): Promise<PersonaChoice> => {
+    emit({
+      type: "persona-proposal",
+      persona: proposal.persona,
+      skill: proposal.skill,
+      rationale: proposal.rationale,
+    });
+    const obj = await readNextObject();
+    if (obj["type"] !== "persona-answer") {
+      throw new Error(
+        `samospec interview-protocol: expected {"type":"persona-answer"}, got ` +
+          `${JSON.stringify(obj["type"])}`,
+      );
+    }
+    const kind = obj["kind"];
+    if (kind === "accept" || kind === undefined) {
+      return { kind: "accept" };
+    }
+    if (kind === "edit") {
+      const skill = obj["skill"];
+      if (typeof skill !== "string" || skill.trim().length === 0) {
+        throw new Error(
+          "samospec interview-protocol: persona-answer kind=edit requires non-empty `skill`",
+        );
+      }
+      return { kind: "edit", skill: skill.trim() };
+    }
+    if (kind === "replace") {
+      const personaText = obj["persona"];
+      if (typeof personaText !== "string" || personaText.trim().length === 0) {
+        throw new Error(
+          "samospec interview-protocol: persona-answer kind=replace requires non-empty `persona`",
+        );
+      }
+      return { kind: "replace", persona: personaText.trim() };
+    }
+    throw new Error(
+      `samospec interview-protocol: persona-answer kind must be ` +
+        `accept|edit|replace (got ${JSON.stringify(kind)})`,
+    );
+  };
+
+  const question = async (q: {
+    readonly id: string;
+    readonly text: string;
+    readonly options: readonly string[];
+  }): Promise<{ readonly choice: string; readonly custom?: string }> => {
+    emit({
+      type: "question",
+      id: q.id,
+      text: q.text,
+      options: [...q.options],
+    });
+    const obj = await readNextObject();
+    if (obj["type"] !== "answer") {
+      throw new Error(
+        `samospec interview-protocol: expected {"type":"answer"}, got ` +
+          `${JSON.stringify(obj["type"])}`,
+      );
+    }
+    const id = obj["id"];
+    if (id !== q.id) {
+      throw new Error(
+        `samospec interview-protocol: answer id ${JSON.stringify(id)} ` +
+          `does not match question id ${JSON.stringify(q.id)}`,
+      );
+    }
+    const choice = obj["choice"];
+    if (typeof choice !== "string" || choice.trim().length === 0) {
+      throw new Error(
+        "samospec interview-protocol: answer requires non-empty `choice`",
+      );
+    }
+    if (choice === "custom") {
+      const custom = obj["custom"];
+      if (typeof custom !== "string" || custom.trim().length === 0) {
+        throw new Error(
+          "samospec interview-protocol: answer choice='custom' requires non-empty `custom`",
+        );
+      }
+      return { choice: "custom", custom };
+    }
+    return { choice };
+  };
+
+  return { persona, question };
+}
+
+/**
+ * Emit the terminal `complete` event. Called after the interview finishes
+ * but before samospec proceeds to the draft / write phases, so the
+ * consumer can tear down its input pump (e.g. close stdin).
+ */
+export function emitProtocolComplete(writeLine: (line: string) => void): void {
+  writeLine(JSON.stringify({ type: "complete" } satisfies CompleteEvent));
 }
