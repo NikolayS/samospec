@@ -34,10 +34,10 @@ describe("loop/degradation — detectDegradedResolution (SPEC §11)", () => {
     expect(res.items.some((i) => i.includes("coupled_fallback"))).toBe(true);
   });
 
-  test("Codex fell back to gpt-5.1-codex (non-max) -> flagged", () => {
+  test("Codex fell back to gpt-5.3-codex (non-default) -> flagged", () => {
     const res = detectDegradedResolution({
       lead: { adapter: "claude", model_id: DEFAULT_LEAD_MODEL },
-      reviewer_a: { adapter: "codex", model_id: "gpt-5.1-codex" },
+      reviewer_a: { adapter: "codex", model_id: "gpt-5.3-codex" },
       reviewer_b: { adapter: "claude", model_id: DEFAULT_LEAD_MODEL },
       coupled_fallback: false,
     });
@@ -50,12 +50,12 @@ describe("loop/degradation — detectDegradedResolution (SPEC §11)", () => {
       degraded: true,
       items: [
         "lead fell back to claude-sonnet-4-6",
-        "reviewer_a fell back to gpt-5.1-codex",
+        "reviewer_a fell back to gpt-5.3-codex",
       ],
     });
     expect(text).toContain("degraded model resolution");
     expect(text).toContain("lead fell back to claude-sonnet-4-6");
-    expect(text).toContain("reviewer_a fell back to gpt-5.1-codex");
+    expect(text).toContain("reviewer_a fell back to gpt-5.3-codex");
   });
 
   test("formatStatusDegradedLine empty when no degradation", () => {

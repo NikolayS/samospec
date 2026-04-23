@@ -4,7 +4,7 @@
  * SPEC §11 — degraded-resolution visibility.
  *
  * Any non-default resolution — lead fallback from Opus to Sonnet, Codex
- * fallback from `gpt-5.1-codex-max` to `gpt-5.1-codex`, or Reviewer B
+ * fallback from `gpt-5.4` to `gpt-5.3-codex`, or Reviewer B
  * in coupled_fallback — is surfaced to the user:
  *   - `samospec status` prints `running with degraded model resolution:
  *     <summary>` whenever `state.json` records a fallback.
@@ -20,7 +20,7 @@
 
 export const DEFAULT_LEAD_MODEL = "claude-opus-4-7" as const;
 export const DEFAULT_REVIEWER_B_MODEL = "claude-opus-4-7" as const;
-export const DEFAULT_CODEX_MODEL = "gpt-5.1-codex-max" as const;
+export const DEFAULT_CODEX_MODEL = "gpt-5.4" as const;
 
 export interface AdapterResolutionSnapshot {
   readonly adapter: string;

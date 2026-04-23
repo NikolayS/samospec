@@ -135,7 +135,7 @@ describe("cli/status — degraded resolution (SPEC §11)", () => {
       ],
       resolutions: {
         lead: { adapter: "claude", model_id: "claude-sonnet-4-6" },
-        reviewer_a: { adapter: "codex", model_id: "gpt-5.1-codex-max" },
+        reviewer_a: { adapter: "codex", model_id: "gpt-5.3-codex" },
         reviewer_b: { adapter: "claude", model_id: "claude-sonnet-4-6" },
         coupled_fallback: true,
       },

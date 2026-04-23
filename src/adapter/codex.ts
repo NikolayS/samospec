@@ -20,11 +20,11 @@
 //   engineer" with an explicit advisory weighting toward
 //   `missing-risk`, `weak-implementation`, `unnecessary-scope` (SPEC §7
 //   Model roles). Literal wording per issue #23.
-// - Effort mapping per SPEC §11: logical max/high → reasoning_effort
-//   high, medium → medium, low → low, off → minimal. Passed as a
-//   `--reasoning_effort <level>` flag on every work call.
-// - Pinned default model: `gpt-5.1-codex-max`. Fallback chain on
-//   model-unavailable failure: `gpt-5.1-codex-max → gpt-5.1-codex →
+// - Effort mapping per SPEC §11: logical max → reasoning_effort xhigh,
+//   high → high, medium → medium, low → low, off → minimal. Passed as
+//   a `--reasoning_effort <level>` flag on every work call.
+// - Pinned default model: `gpt-5.4`. Fallback chain on
+//   model-unavailable failure: `gpt-5.4 → gpt-5.3-codex →
 //   terminal` (SPEC §11). Fallback is triggered by a stderr heuristic
 //   on non-zero exit; resolved model is preserved within a call but
 //   not across calls (callers observe via `state.json` at round start).
@@ -96,11 +96,11 @@ const CODEX_AUTH_ENV_KEYS: readonly string[] = ["OPENAI_API_KEY"];
 // SPEC §11 pinned model + fallback chain. First entry is the default;
 // subsequent entries form the ordered fallback chain.
 const DEFAULT_MODELS: readonly ModelInfo[] = [
-  { id: "gpt-5.1-codex-max", family: "codex" },
-  { id: "gpt-5.1-codex", family: "codex" },
+  { id: "gpt-5.4", family: "codex" },
+  { id: "gpt-5.3-codex", family: "codex" },
 ];
 
-const DEFAULT_MODEL_ID = "gpt-5.1-codex-max";
+const DEFAULT_MODEL_ID = "gpt-5.4";
 
 // Sentinel value appended to the runtime fallback chain to represent
 // the account-default tier: codex is invoked with --model omitted so
@@ -109,8 +109,9 @@ const DEFAULT_MODEL_ID = "gpt-5.1-codex-max";
 const ACCOUNT_DEFAULT_SENTINEL = "__account_default__" as const;
 
 // SPEC §11 effort-level table (Codex / OpenAI-family column).
+// `max` maps to `xhigh` — the highest reasoning level gpt-5.4 supports.
 const EFFORT_TO_REASONING: Readonly<Record<EffortLevel, string>> = {
-  max: "high",
+  max: "xhigh",
   high: "high",
   medium: "medium",
   low: "low",
@@ -142,14 +143,14 @@ export interface CodexAdapterOpts {
    */
   readonly spawn?: SpawnFn;
   /**
-   * Models override. Defaults to pinned `gpt-5.1-codex-max` +
-   * `gpt-5.1-codex` fallback. Order matters: the first entry is the
+   * Models override. Defaults to pinned `gpt-5.4` +
+   * `gpt-5.3-codex` fallback. Order matters: the first entry is the
    * preferred model; subsequent entries are the fallback chain.
    */
   readonly models?: readonly ModelInfo[];
   /**
    * Default model id. Used as the first entry of the runtime fallback
-   * chain. Default `gpt-5.1-codex-max`.
+   * chain. Default `gpt-5.4`.
    */
   readonly defaultModel?: string;
   /**

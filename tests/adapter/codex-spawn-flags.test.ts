@@ -72,7 +72,7 @@ function sampleAsk(level: EffortLevel): AskInput {
 
 describe("codex spawn flags — -c model_reasoning_effort=<level> (Issue #52)", () => {
   const cases: readonly [EffortLevel, string][] = [
-    ["max", "high"],
+    ["max", "xhigh"],
     ["high", "high"],
     ["medium", "medium"],
     ["low", "low"],

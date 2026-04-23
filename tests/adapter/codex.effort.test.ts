@@ -81,7 +81,7 @@ function sampleAskWithEffort(level: EffortLevel): AskInput {
 
 describe("CodexAdapter effort-level mapping (SPEC §11 table)", () => {
   const cases: readonly [EffortLevel, string][] = [
-    ["max", "high"],
+    ["max", "xhigh"],
     ["high", "high"],
     ["medium", "medium"],
     ["low", "low"],
@@ -111,7 +111,7 @@ describe("CodexAdapter effort-level mapping (SPEC §11 table)", () => {
 });
 
 describe("CodexAdapter fallback-chain ordering (SPEC §11)", () => {
-  test("default chain is gpt-5.1-codex-max first, gpt-5.1-codex second", async () => {
+  test("default chain is gpt-5.4 first, gpt-5.3-codex second", async () => {
     // Rejecting every attempt with model-not-available forces the
     // adapter to walk the chain; the spawn cmds capture the order.
     // accountDefaultFallback: false so we isolate the two-model chain.
@@ -136,9 +136,9 @@ describe("CodexAdapter fallback-chain ordering (SPEC §11)", () => {
     expect(spy.calls.length).toBe(2);
     const first = spy.calls[0]?.cmd ?? [];
     const second = spy.calls[1]?.cmd ?? [];
-    expect(first).toContain("gpt-5.1-codex-max");
-    expect(second).toContain("gpt-5.1-codex");
-    expect(second).not.toContain("gpt-5.1-codex-max");
+    expect(first).toContain("gpt-5.4");
+    expect(second).toContain("gpt-5.3-codex");
+    expect(second).not.toContain("gpt-5.4");
   });
 
   test("custom model list is respected in order, default still leads", async () => {

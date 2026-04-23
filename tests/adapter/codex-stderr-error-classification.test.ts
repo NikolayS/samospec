@@ -95,12 +95,12 @@ function realCodexStderrErrorResponse(model: string): SpawnCliResult {
 
 describe("Bug #88-followup: invalid_request_error on STDERR → model_unavailable", () => {
   test("empty stdout + stderr-carried invalid_request_error (exit 1) classifies as model_unavailable", async () => {
-    const spy = makeSpy([realCodexStderrErrorResponse("gpt-5.1-codex-max")]);
+    const spy = makeSpy([realCodexStderrErrorResponse("gpt-5.4")]);
     const adapter = new CodexAdapter({
       host: FAKE_HOST,
       spawn: spy.spawn,
       binary: "/usr/bin/codex",
-      models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+      models: [{ id: "gpt-5.4", family: "codex" }],
       accountDefaultFallback: false,
     });
 
@@ -122,8 +122,8 @@ describe("Bug #88-followup: invalid_request_error on STDERR → model_unavailabl
 
   test("stderr-carried error with 'not supported' phrase triggers full fallback chain to account-default", async () => {
     const spy = makeSpy([
-      realCodexStderrErrorResponse("gpt-5.1-codex-max"),
-      realCodexStderrErrorResponse("gpt-5.1-codex"),
+      realCodexStderrErrorResponse("gpt-5.4"),
+      realCodexStderrErrorResponse("gpt-5.3-codex"),
       {
         ok: true,
         exitCode: 0,
@@ -142,7 +142,7 @@ describe("Bug #88-followup: invalid_request_error on STDERR → model_unavailabl
     expect(out.answer).toBe("account-default-ok");
     expect((out as Record<string, unknown>)["account_default"]).toBe(true);
 
-    // Three spawns: pinned-max (fail on stderr), pinned (fail on stderr),
+    // Three spawns: gpt-5.4 (fail on stderr), gpt-5.3-codex (fail on stderr),
     // account-default (success).
     expect(spy.calls.length).toBe(3);
     // Third call has no --model flag.
@@ -164,7 +164,7 @@ describe("Bug #88-followup: classifyExit recognizes 'not supported' as model_una
         exitCode: 1,
         stdout: "",
         stderr:
-          "Error: The 'gpt-5.1-codex-max' model is not supported when " +
+          "Error: The 'gpt-5.4' model is not supported when " +
           "using Codex with a ChatGPT account.\n",
       },
     ]);
@@ -172,7 +172,7 @@ describe("Bug #88-followup: classifyExit recognizes 'not supported' as model_una
       host: FAKE_HOST,
       spawn: spy.spawn,
       binary: "/usr/bin/codex",
-      models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+      models: [{ id: "gpt-5.4", family: "codex" }],
       accountDefaultFallback: false,
     });
 
@@ -201,7 +201,7 @@ describe("Bug #88-followup: classifyExit recognizes 'not supported' as model_una
       host: FAKE_HOST,
       spawn: spy.spawn,
       binary: "/usr/bin/codex",
-      models: [{ id: "gpt-5.1-codex-max", family: "codex" }],
+      models: [{ id: "gpt-5.4", family: "codex" }],
       accountDefaultFallback: false,
     });
 

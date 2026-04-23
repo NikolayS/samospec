@@ -525,7 +525,7 @@ samospec version
 Both adapters are pinned with the same discipline — no "strongest available" handwaving.
 
 - **Lead:** `claude` CLI, model `claude-opus-4-7`, effort `max`. Fallback chain: `claude-opus-4-7 → claude-sonnet-4-6 → terminal`.
-- **Reviewer A:** `codex` CLI, model `gpt-5.1-codex-max`. `reasoning_effort: high`. Three-tier fallback chain: `gpt-5.1-codex-max → gpt-5.1-codex → account-default (no --model flag) → terminal`. The account-default tier (#54) fires only when both explicit pins fail with `model_unavailable` (e.g. ChatGPT-account auth does not support the pinned models); it lets codex pick whatever the account supports. When the account-default tier is used, `state.json` records `account_default: true` and `samospec status` surfaces it as a degraded resolution. The `adapters.reviewer_a.account_default_fallback` config key (default `true`) can be set to `false` to force explicit-pin-only mode. Persona "Paranoid security/ops engineer". The pin is updated per `samospec` release — no runtime "strongest available" discovery.
+- **Reviewer A:** `codex` CLI, model `gpt-5.4`. `reasoning_effort: xhigh` (maps from logical effort `max`). Three-tier fallback chain: `gpt-5.4 → gpt-5.3-codex → account-default (no --model flag) → terminal`. The account-default tier (#54) fires only when both explicit pins fail with `model_unavailable` (e.g. ChatGPT-account auth does not support the pinned models); it lets codex pick whatever the account supports. When the account-default tier is used, `state.json` records `account_default: true` and `samospec status` surfaces it as a degraded resolution. The `adapters.reviewer_a.account_default_fallback` config key (default `true`) can be set to `false` to force explicit-pin-only mode. Persona "Paranoid security/ops engineer". The pin is updated per `samospec` release — no runtime "strongest available" discovery.
 - **Reviewer B:** `claude` CLI (separate session from lead), model `claude-opus-4-7`, effort `max`. Persona "Pedantic QA / testability reviewer". **Follows the lead's fallback chain in lockstep** — if the lead resolves to Sonnet, Reviewer B does too (recorded in `state.json` as `coupled_fallback: true`). **v1.1+ auto-prefers Gemini/OpenCode** for this seat when those adapters ship, which also breaks the lockstep.
 - Post-v1 adapter policy (Gemini, OpenCode) is opt-in + accounting-required + fail-closed, with the subscription-auth escape (below) as the sole exception.
 
@@ -538,7 +538,7 @@ The resolved `{ adapter, model_id, effort_requested, effort_used }` for each rol
 
 ### Degraded-resolution visibility
 
-Any non-default resolution — lead fallback to Sonnet, Codex fallback to `gpt-5.1-codex`, Codex account-default tier (`account_default: true`), or Reviewer B in `coupled_fallback: true` — is surfaced to the user:
+Any non-default resolution — lead fallback to Sonnet, Codex fallback to `gpt-5.3-codex`, Codex account-default tier (`account_default: true`), or Reviewer B in `coupled_fallback: true` — is surfaced to the user:
 
 - `samospec status` prints a `running with degraded model resolution: <summary>` line whenever `state.json` records a fallback.
 - On the **first round** to enter a degraded resolution mid-session, the loop prompts once at round-start: `[accept / abort]`.
@@ -550,7 +550,7 @@ This prevents the "silent thesis drift" case where lead + Reviewer B both degrad
 
 | Logical | Claude | Codex / OpenAI-family | Gemini (post-v1) |
 |---|---|---|---|
-| `max` | extended thinking, budget unconstrained | `reasoning_effort: high` | thinking budget unconstrained |
+| `max` | extended thinking, budget unconstrained | `reasoning_effort: xhigh` | thinking budget unconstrained |
 | `high` | extended thinking, bounded | `reasoning_effort: high` | bounded |
 | `medium` | standard | `reasoning_effort: medium` | standard |
 | `low` | standard | `reasoning_effort: low` | standard |

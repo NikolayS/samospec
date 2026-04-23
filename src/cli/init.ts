@@ -33,8 +33,8 @@ export interface LeadAdapterDefaults {
 
 export interface ReviewerAAdapterDefaults {
   readonly adapter: "codex";
-  readonly model_id: "gpt-5.1-codex-max";
-  readonly effort: "high";
+  readonly model_id: "gpt-5.4";
+  readonly effort: "max";
   readonly fallback_chain: readonly string[];
 }
 
@@ -100,7 +100,7 @@ export interface DefaultConfig {
 /**
  * Pinned v1 defaults. SPEC §11.
  * - Lead: claude / claude-opus-4-7 / max
- * - Reviewer A: codex / gpt-5.1-codex-max / high
+ * - Reviewer A: codex / gpt-5.4 / max (xhigh reasoning effort)
  * - Reviewer B: claude / claude-opus-4-7 / max (same family as lead)
  * - Budget: generous defaults (SPEC §11 Budget guardrails).
  * - Git: remote_probe off by default (SPEC §14 threat model).
@@ -116,9 +116,9 @@ export const DEFAULT_CONFIG: DefaultConfig = {
     },
     reviewer_a: {
       adapter: "codex",
-      model_id: "gpt-5.1-codex-max",
-      effort: "high",
-      fallback_chain: ["gpt-5.1-codex-max", "gpt-5.1-codex", "terminal"],
+      model_id: "gpt-5.4",
+      effort: "max",
+      fallback_chain: ["gpt-5.4", "gpt-5.3-codex", "terminal"],
     },
     reviewer_b: {
       adapter: "claude",
