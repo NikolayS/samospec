@@ -1,7 +1,10 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import * as readline from "node:readline/promises";
+import path from "node:path";
 
 import { ClaudeAdapter } from "./adapter/claude.ts";
 import { ClaudeResolver } from "./adapter/claude-resolver.ts";
@@ -14,10 +17,14 @@ import {
   runIterate,
   type IterateResolvers,
   type ManualEditResolver,
+  type PushConsentResolver,
   type PushOptions,
   type SeatDiagnostics,
 } from "./cli/iterate.ts";
-import { describePrCapability } from "./git/push-consent.ts";
+import {
+  describePrCapability,
+  loadPersistedConsent,
+} from "./git/push-consent.ts";
 import { runNew, type ChoiceResolvers } from "./cli/new.ts";
 import {
   buildNonInteractiveResolvers,
@@ -131,6 +138,11 @@ const USAGE =
   "  --on-dirty <incorporate|overwrite|abort>\n" +
   "      Answer the uncommitted-edits prompt without reading stdin. Required\n" +
   "      when stdin is not a TTY and `.samo/spec/<slug>/` has dirty edits (#114).\n" +
+  "  --push-consent <yes|no>\n" +
+  "      Answer the first-push consent prompt without reading stdin. Required\n" +
+  "      when stdin is not a TTY and the remote has no persisted consent (#136).\n" +
+  "  --yes\n" +
+  "      Accept everything non-interactively; implies --push-consent yes.\n" +
   "\n" +
   "Options for `publish`:\n" +
   "  --no-lint\n" +
@@ -629,6 +641,19 @@ interface IterateArgs {
    * `.samo/spec/<slug>/` has dirty edits.
    */
   readonly onDirty?: ManualEditChoice;
+  /**
+   * #136: when set, `iterate` answers the first-push consent prompt
+   * without reading stdin. Required in non-TTY contexts where no
+   * persisted consent exists for the target remote URL. `--yes`
+   * implies `pushConsent: "yes"`.
+   */
+  readonly pushConsent?: "yes" | "no";
+  /**
+   * #136: broad "accept everything non-interactively". Currently
+   * implies `pushConsent: "yes"`; future automation flags may fold in
+   * here too (mirrors the `new` precedent).
+   */
+  readonly yes: boolean;
 }
 
 const ON_DIRTY_CHOICES: readonly ManualEditChoice[] = [
@@ -654,6 +679,25 @@ function parseOnDirty(raw: string): ParseOnDirtyResult {
   };
 }
 
+type ParsePushConsentResult =
+  | { readonly ok: true; readonly value: "yes" | "no" }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * #136 — parse `--push-consent <yes|no>`. Rejects anything else with a
+ * message that names the valid token set so users can self-correct.
+ */
+function parsePushConsent(raw: string): ParsePushConsentResult {
+  const norm = raw.trim().toLowerCase();
+  if (norm === "yes" || norm === "no") {
+    return { ok: true, value: norm };
+  }
+  return {
+    ok: false,
+    error: `samospec iterate: --push-consent must be yes|no (got '${raw}')`,
+  };
+}
+
 /**
  * Centralised allow-list of long flags recognised by `samospec iterate`
  * (Issue #91). Parser compares every `--…` token against this set and
@@ -671,6 +715,9 @@ const ITERATE_ALLOWED_FLAGS: ReadonlySet<string> = new Set([
   "--max-session-wall-clock-ms",
   // #114: non-TTY automation.
   "--on-dirty",
+  // #136: non-TTY automation for first-push consent.
+  "--push-consent",
+  "--yes",
 ]);
 
 function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
@@ -681,6 +728,8 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let quiet = false;
   let maxSessionWallClockMs: number | undefined;
   let onDirty: ManualEditChoice | undefined;
+  let pushConsent: "yes" | "no" | undefined;
+  let yes = false;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) continue;
@@ -726,6 +775,28 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
       const parsed = parseOnDirty(raw);
       if (!parsed.ok) return parsed.error;
       onDirty = parsed.value;
+      continue;
+    }
+    // #136: --push-consent <yes|no>
+    if (t === "--push-consent") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parsePushConsent(raw);
+      if (!parsed.ok) return parsed.error;
+      pushConsent = parsed.value;
+      continue;
+    }
+    if (t.startsWith("--push-consent=")) {
+      const raw = t.slice("--push-consent=".length);
+      const parsed = parsePushConsent(raw);
+      if (!parsed.ok) return parsed.error;
+      pushConsent = parsed.value;
+      continue;
+    }
+    // #136: --yes on iterate implies push-consent=yes (matches the
+    // `new` precedent of --yes as "accept everything non-interactively").
+    if (t === "--yes") {
+      yes = true;
       continue;
     }
     if (t === "--remote") {
@@ -779,9 +850,11 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
     noPush,
     remote,
     quiet,
+    yes,
     ...(rounds !== undefined ? { rounds } : {}),
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
     ...(onDirty !== undefined ? { onDirty } : {}),
+    ...(pushConsent !== undefined ? { pushConsent } : {}),
   };
 }
 
@@ -861,8 +934,59 @@ function buildManualEditResolver(
   };
 }
 
+/**
+ * #136 — build the push-consent resolver.
+ *
+ *   - `pushConsent` flag set (`yes` / `no`): return a resolver that
+ *     answers without any readline call, so `iterate` never touches
+ *     stdin for push consent.
+ *   - stdin is NOT a TTY and no flag set: return a resolver that
+ *     rejects with a clear error string. `runIterateCommand` preflights
+ *     the non-TTY + unresolved-consent case BEFORE round 1 to avoid
+ *     wasting a round on a run that would die at the round boundary;
+ *     this resolver is a defence-in-depth backstop for the unusual
+ *     case where the preflight missed (e.g., remote URL probe failed).
+ *   - default: the legacy interactive readline prompt.
+ */
+function buildPushConsentResolver(
+  rl: readline.Interface,
+  pushConsent: "yes" | "no" | undefined,
+): PushConsentResolver {
+  if (pushConsent === "yes") return () => Promise.resolve("accept");
+  if (pushConsent === "no") return () => Promise.resolve("refuse");
+  const stdinIsTty = process.stdin.isTTY === true;
+  if (!stdinIsTty) {
+    return () =>
+      Promise.reject(
+        new Error(
+          "samospec iterate: push consent is required and stdin is not a TTY. " +
+            "Pass one of --push-consent yes, --push-consent no, --yes, or --no-push " +
+            "to run non-interactively.",
+        ),
+      );
+  }
+  return async (payload) => {
+    process.stdout.write(`\nFirst push in this repo — consent required.\n`);
+    process.stdout.write(`  remote: ${payload.remoteName}\n`);
+    process.stdout.write(`  remote URL: ${payload.remoteUrl}\n`);
+    process.stdout.write(`  branch: ${payload.targetBranch}\n`);
+    process.stdout.write(`  default branch: ${payload.defaultBranch}\n`);
+    process.stdout.write(`  ${describePrCapability(payload.prCapability)}\n`);
+    const ans = (
+      await rl.question(
+        "[A]ccept (persist) / [R]efuse (persist) [Enter=refuse]: ",
+      )
+    )
+      .trim()
+      .toLowerCase();
+    if (ans === "a" || ans === "accept") return "accept";
+    return "refuse";
+  };
+}
+
 function interactiveIterateResolvers(
   onDirty: ManualEditChoice | undefined,
+  pushConsent: "yes" | "no" | undefined,
 ): IterateResolvers {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -906,30 +1030,101 @@ function interactiveIterateResolvers(
       if (ans === "c" || ans === "continue") return "continue";
       return "abort";
     },
-    onPushConsent: async (payload) => {
-      process.stdout.write(`\nFirst push in this repo — consent required.\n`);
-      process.stdout.write(`  remote: ${payload.remoteName}\n`);
-      process.stdout.write(`  remote URL: ${payload.remoteUrl}\n`);
-      process.stdout.write(`  branch: ${payload.targetBranch}\n`);
-      process.stdout.write(`  default branch: ${payload.defaultBranch}\n`);
-      process.stdout.write(`  ${describePrCapability(payload.prCapability)}\n`);
-      const ans = (
-        await rl.question(
-          "[A]ccept (persist) / [R]efuse (persist) [Enter=refuse]: ",
-        )
-      )
-        .trim()
-        .toLowerCase();
-      if (ans === "a" || ans === "accept") return "accept";
-      return "refuse";
-    },
+    onPushConsent: buildPushConsentResolver(rl, pushConsent),
   };
+}
+
+/**
+ * #136 — resolve the effective push-consent flag, folding `--yes` in.
+ * `--yes` implies `--push-consent yes` UNLESS `--push-consent no` was
+ * explicitly set (explicit flag wins, matches `new` precedent where
+ * explicit values beat broad `--yes`).
+ */
+function effectivePushConsent(parsed: IterateArgs): "yes" | "no" | undefined {
+  if (parsed.pushConsent !== undefined) return parsed.pushConsent;
+  if (parsed.yes) return "yes";
+  return undefined;
+}
+
+/**
+ * #136 — preflight refusal for the first-push consent prompt.
+ *
+ * When stdin is not a TTY, pushOptions would fire (i.e., `--no-push` is
+ * NOT set), no automation flag is supplied, and there is no persisted
+ * consent for the target remote URL, round 1 would complete and then
+ * crash at the round-boundary readline prompt with ERR_USE_AFTER_CLOSE.
+ * Fail fast BEFORE round 1 starts so the user doesn't waste a round.
+ *
+ * Returns the error string on refusal, or `null` when the run may
+ * proceed.
+ */
+function preflightPushConsent(cwd: string, parsed: IterateArgs): string | null {
+  if (parsed.noPush) return null;
+  if (effectivePushConsent(parsed) !== undefined) return null;
+  if (process.stdin.isTTY === true) return null;
+
+  // If the spec doesn't exist, let `runIterate` surface its own
+  // "no spec found" error — don't preempt it with a push-consent
+  // message that would mislead the user.
+  const statePath = path.join(cwd, ".samo", "spec", parsed.slug, "state.json");
+  if (!existsSync(statePath)) return null;
+
+  const remoteUrl = resolveRemoteUrlForPreflight(cwd, parsed.remote);
+  if (remoteUrl === null) {
+    // No remote configured — the push path treats this as a silent
+    // local-only run (see handleRoundBoundaryPush). No refusal needed.
+    return null;
+  }
+
+  let persisted: boolean | null;
+  try {
+    persisted = loadPersistedConsent({ repoPath: cwd, remoteUrl });
+  } catch {
+    // Corrupt config.json — let the push layer surface its own error
+    // during the actual push flow. Don't double-report here.
+    return null;
+  }
+  if (persisted !== null) return null; // already decided — no prompt needed.
+
+  return (
+    "samospec iterate: push consent is required on first push and stdin " +
+    "is not a TTY. Pass one of:\n" +
+    `\n    samospec iterate ${parsed.slug} --push-consent yes\n` +
+    `    samospec iterate ${parsed.slug} --push-consent no\n` +
+    `    samospec iterate ${parsed.slug} --yes\n` +
+    `    samospec iterate ${parsed.slug} --no-push`
+  );
+}
+
+/**
+ * Return the origin remote URL for the preflight, or `null` when no
+ * such remote is configured. Kept preflight-local (not reusing
+ * iterate.ts's copy) because cli.ts is not supposed to depend on
+ * iterate internals.
+ */
+function resolveRemoteUrlForPreflight(
+  cwd: string,
+  remoteName: string,
+): string | null {
+  const res = spawnSync("git", ["remote", "get-url", remoteName], {
+    cwd,
+    encoding: "utf8",
+  });
+  if ((res.status ?? 1) !== 0) return null;
+  const url = (res.stdout ?? "").trim();
+  return url.length > 0 ? url : null;
 }
 
 async function runIterateCommand(rest: readonly string[]) {
   const parsed = parseIterateArgs(rest);
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
+  }
+  // #136: fail-fast refusal BEFORE round 1 starts when push consent
+  // would be needed mid-loop and we can't prompt for it.
+  const refusal = preflightPushConsent(process.cwd(), parsed);
+  if (refusal !== null) {
+    return { exitCode: 1, stdout: "", stderr: `${refusal}\n` };
   }
   const adapters = buildReviewLoopAdapters();
   const pushOptions: PushOptions = {
@@ -941,7 +1136,10 @@ async function runIterateCommand(rest: readonly string[]) {
       cwd: process.cwd(),
       slug: parsed.slug,
       now: new Date().toISOString(),
-      resolvers: interactiveIterateResolvers(parsed.onDirty),
+      resolvers: interactiveIterateResolvers(
+        parsed.onDirty,
+        effectivePushConsent(parsed),
+      ),
       adapters,
       pushOptions,
       quiet: parsed.quiet,
@@ -959,8 +1157,9 @@ async function runIterateCommand(rest: readonly string[]) {
     // #114: the non-TTY manual-edit resolver rejects with an Error so
     // iterate exits cleanly instead of readline-deadlocking. Translate
     // the rejection to an exit-1 CliResult with the actionable message.
+    // #136: same translation for the push-consent backstop resolver.
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes("--on-dirty")) {
+    if (msg.includes("--on-dirty") || msg.includes("--push-consent")) {
       return { exitCode: 1, stdout: "", stderr: `${msg}\n` };
     }
     throw err;

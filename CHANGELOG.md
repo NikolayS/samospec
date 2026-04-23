@@ -47,6 +47,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`samospec iterate` no longer crashes at the first-push consent
+  prompt in non-TTY contexts** (#136). Headless / CI / background-shell
+  runs that reached a round boundary in a fresh repo crashed with
+  `ERR_USE_AFTER_CLOSE` when the push-consent readline fired after
+  round 1. The prompt now participates in the #114 non-TTY safety net:
+  new `--push-consent <yes|no>` flag answers the prompt without
+  touching stdin, `--yes` on `iterate` implies `--push-consent yes`,
+  and non-TTY runs with neither flag (nor persisted consent) fail fast
+  BEFORE round 1 with a message naming the four escape hatches
+  (`--push-consent yes`, `--push-consent no`, `--yes`, `--no-push`).
+  TTY behavior is unchanged.
+
 ---
 
 ## [0.6.1] - 2026-04-23
