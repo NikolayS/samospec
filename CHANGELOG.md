@@ -5,6 +5,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.7.0] - 2026-04-23
+
+### Added
+
+- **`samospec new --interview-protocol jsonl` for machine consumers.**
+  A new opt-in mode that makes the 5-question interview drivable over
+  stdio by a wrapping UI (or any CI tool). When the flag is set, stdout
+  is reserved exclusively for a newline-delimited JSON event stream:
+  `{"type":"persona-proposal","persona":"…","skill":"…","rationale":"…"}`,
+  one `{"type":"question","id":"qN","text":"…","options":[…]}` per
+  interview question, and a terminal `{"type":"complete"}` emitted after
+  the run succeeds. The consumer replies on stdin with one JSON object
+  per line: `{"type":"persona-answer","kind":"accept|edit|replace",…}`
+  and `{"type":"answer","id":"qN","choice":"…","custom"?:"…"}`.
+  Human-facing status notices are rerouted from stdout to stderr (same
+  channel as `--verbose` diagnostics from #77) so the stdout event
+  stream stays parseable by any JSON-line reader. The flag bypasses the
+  non-TTY refusal from #114 because the protocol _is_ the non-TTY
+  driver — consumers that were forced to pick `--yes` and lose
+  persona-adaptive questions now have a faithful alternative. Back-compat:
+  all existing modes (interactive TTY, `--yes`, `--accept-persona`,
+  `--answers-file`) are unchanged. New exports from
+  `src/cli/non-interactive.ts`: `buildJsonlProtocolResolvers`,
+  `emitProtocolComplete`, `JsonlProtocolOptions`,
+  `PersonaProposalEvent`, `QuestionEvent`, `CompleteEvent`,
+  `ProtocolOutEvent`. New field on `RunNewInput`: `suppressStdout`
+  (reroutes notice lines to stderr when `true`).
+
+---
+
 ## [0.6.2] - 2026-04-23
 
 ### Added
