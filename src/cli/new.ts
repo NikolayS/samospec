@@ -41,6 +41,7 @@ import {
 import { specCommit } from "../git/commit.ts";
 import { ensureHasCommit } from "../git/ensure-has-commit.ts";
 import { ProtectedBranchError, GitLayerUsageError } from "../git/errors.ts";
+import { HARDCODED_PROTECTED_BRANCHES } from "../git/protected.ts";
 import { writeCalibrationSample } from "../policy/calibration.ts";
 import {
   CONSENT_ABORT_EXIT_CODE,
@@ -432,10 +433,15 @@ export async function runNew(
     //     so legacy tests that don't initialize a git repo still run.
     let branchResult = createBranch(input);
     if (branchResult.kind === "protected") {
+      const source = HARDCODED_PROTECTED_BRANCHES.includes(branchResult.branch)
+        ? "built-in default"
+        : "config";
       errors.push(
-        `samospec: refusing to branch on protected branch '${branchResult.branch}'. ` +
-          `Check out a feature branch first or override protection via ` +
-          `git config / .samo/config.json.`,
+        `samospec: refusing to branch on protected branch ` +
+          `'${branchResult.branch}' (${source}). ` +
+          `Override via .samo/config.json → git.protected_branches or ` +
+          `run on a feature branch. ` +
+          `Recommended: \`git checkout -b samospec/${input.slug}\`.`,
       );
       return {
         exitCode: 2,

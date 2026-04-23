@@ -508,3 +508,61 @@ describe("samospec new — empty repo (no commits, Issue #65)", () => {
     );
   });
 });
+
+// ---------- protected-branch refusal message (Issue #126) ----------
+
+describe("samospec new — protected-branch refusal message (Issue #126)", () => {
+  let repoDir: string;
+  let repoCleanup: () => void;
+
+  beforeEach(() => {
+    // Set up a real git repo on 'main' (hardcoded-protected).
+    repoDir = mkdtempSync(path.join(tmpdir(), "samospec-protected-refusal-"));
+    const gitEnv = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Samospec Test",
+      GIT_AUTHOR_EMAIL: "test@example.invalid",
+      GIT_COMMITTER_NAME: "Samospec Test",
+      GIT_COMMITTER_EMAIL: "test@example.invalid",
+    };
+    const gitRun = (args: string[]) =>
+      spawnSync("git", args, {
+        cwd: repoDir,
+        encoding: "utf8",
+        env: gitEnv,
+      });
+    gitRun(["init", "--initial-branch", "main", repoDir]);
+    gitRun(["config", "user.name", "Samospec Test"]);
+    gitRun(["config", "user.email", "test@example.invalid"]);
+    gitRun(["config", "commit.gpgsign", "false"]);
+    writeFileSync(path.join(repoDir, "README.md"), "# test\n");
+    gitRun(["add", "README.md"]);
+    gitRun(["commit", "-m", "chore: initial"]);
+    runInit({ cwd: repoDir });
+    repoCleanup = () => rmSync(repoDir, { recursive: true, force: true });
+  });
+  afterEach(() => repoCleanup());
+
+  test("refusal stderr names built-in default source and samospec/ hint", async () => {
+    const { adapter } = makeLeadAdapter([
+      personaJson("CLI engineer"),
+      questionsJson([{ id: "q1", text: "framework?" }]),
+    ]);
+    const result = await runNew(
+      {
+        cwd: repoDir,
+        slug: "myfeature",
+        idea: "some idea",
+        explain: false,
+        enableBranchCreation: true,
+        resolvers: acceptResolver(),
+        now: "2026-04-22T00:00:00Z",
+      },
+      adapter,
+    );
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("built-in default");
+    expect(result.stderr).toContain("samospec/");
+  });
+});
