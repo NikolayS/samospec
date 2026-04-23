@@ -13,7 +13,11 @@ import { formatProtectedBranchError } from "../../src/git/protected.ts";
 
 describe("formatProtectedBranchError — canonical post-#126 refusal string", () => {
   test("names the source and recommends the samospec/<slug> branch", () => {
-    const out = formatProtectedBranchError("main", "myfeature", "built-in default");
+    const out = formatProtectedBranchError(
+      "main",
+      "myfeature",
+      "built-in default",
+    );
     expect(out).toBe(
       "samospec: refusing to commit on protected branch 'main' " +
         "(built-in default). Check out samospec/myfeature and re-run.",
@@ -48,7 +52,11 @@ describe("formatProtectedBranchError — canonical post-#126 refusal string", ()
     // 'built-in default' + 'samospec/'. Guard that contract here so
     // any refactor that changes the wording fails this helper test
     // first, before tripping the e2e tests.
-    const out = formatProtectedBranchError("master", "demo", "built-in default");
+    const out = formatProtectedBranchError(
+      "master",
+      "demo",
+      "built-in default",
+    );
     expect(out).toContain("built-in default");
     expect(out).toContain("samospec/");
   });
