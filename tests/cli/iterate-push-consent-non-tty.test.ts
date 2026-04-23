@@ -41,6 +41,12 @@ beforeEach(() => {
     path.join(tmpdir(), "samospec-iterate-pushconsent-bin-"),
   );
 
+  // Adapter stubs that sleep on any non-version call. The "no refusal"
+  // assertions below rely on spawnSync timing out after a few seconds —
+  // by then, argv parsing and any preflight refusal have already run,
+  // so stderr is stable. `exit 1` stubs would otherwise push iterate
+  // into the `reviewer exhausted` path which has its own readline
+  // prompt unrelated to push-consent (out of scope for #136).
   const stubBody =
     '#!/usr/bin/env bash\nif [ "$1" = "--version" ]; then ' +
     "echo '0.0.0'; exit 0; fi\nsleep 60\n";
@@ -138,7 +144,10 @@ afterEach(() => {
   rmSync(fakeBin, { recursive: true, force: true });
 });
 
-function runCli(args: readonly string[]): {
+function runCli(
+  args: readonly string[],
+  opts: { timeoutMs?: number } = {},
+): {
   stdout: string;
   stderr: string;
   status: number;
@@ -158,7 +167,7 @@ function runCli(args: readonly string[]): {
     encoding: "utf8",
     env,
     stdio: [devNull, "pipe", "pipe"],
-    timeout: 15_000,
+    timeout: opts.timeoutMs ?? 15_000,
   });
   return {
     stdout: r.stdout ?? "",
@@ -183,19 +192,20 @@ describe("samospec iterate --push-consent (#136)", () => {
     expect(res.stderr.toLowerCase()).toMatch(/--push-consent|--yes|--no-push/);
   });
 
-  test("non-TTY + --no-push -> no refusal (already covered by #114 surface)", () => {
-    // With --no-push, there's no first-push consent to collect, so the
-    // new refusal must NOT fire. We still exit early because the fake
-    // adapter stubs are stubbed out; this test only asserts the
-    // refusal message is absent, i.e., the guard is not over-eager.
-    const res = runCli(["iterate", "demo", "--rounds", "1", "--no-push"]);
+  test("non-TTY + --no-push -> no refusal (guard must not over-fire)", () => {
+    // With --no-push, there's no first-push consent to collect, so
+    // the new refusal must NOT fire. The run proceeds into the loop
+    // where stubs sleep; spawnSync timeout fires at 3s. By then any
+    // refusal text would already be on stderr.
+    const res = runCli(["iterate", "demo", "--rounds", "1", "--no-push"], {
+      timeoutMs: 3_000,
+    });
     expect(res.stderr).not.toContain("ERR_USE_AFTER_CLOSE");
-    // Must not surface the push-consent refusal since --no-push is set.
     const mentionsPushConsentRefusal = res.stderr
       .toLowerCase()
       .includes("push consent is required");
     expect(mentionsPushConsentRefusal).toBe(false);
-  });
+  }, 10_000);
 
   test("invalid --push-consent value -> exit 1 with validation error (before any work)", () => {
     const res = runCli([
@@ -216,18 +226,13 @@ describe("samospec iterate --push-consent (#136)", () => {
   });
 
   test("--push-consent yes is a known flag (not rejected by allowlist)", () => {
-    const res = runCli([
-      "iterate",
-      "demo",
-      "--rounds",
-      "1",
-      "--push-consent",
-      "yes",
-    ]);
-    expect(res.stderr).not.toContain("ERR_USE_AFTER_CLOSE");
-    // Parser must NOT reject `--push-consent` as unknown — we go past
-    // arg parsing and hit the adapter stub (test times out, stderr
-    // does not contain the allowlist rejection).
+    const res = runCli(
+      ["iterate", "demo", "--rounds", "1", "--push-consent", "yes"],
+      { timeoutMs: 3_000 },
+    );
+    // Parser must NOT reject `--push-consent` as unknown — we go
+    // past arg parsing and hit the adapter stub, which sleeps until
+    // spawnSync's 3s timeout kills the child.
     expect(res.stderr.toLowerCase()).not.toContain(
       "unknown flag '--push-consent'",
     );
@@ -235,18 +240,13 @@ describe("samospec iterate --push-consent (#136)", () => {
       .toLowerCase()
       .includes("push consent is required");
     expect(mentionsPushConsentRefusal).toBe(false);
-  });
+  }, 10_000);
 
   test("--push-consent no is a known flag (not rejected by allowlist)", () => {
-    const res = runCli([
-      "iterate",
-      "demo",
-      "--rounds",
-      "1",
-      "--push-consent",
-      "no",
-    ]);
-    expect(res.stderr).not.toContain("ERR_USE_AFTER_CLOSE");
+    const res = runCli(
+      ["iterate", "demo", "--rounds", "1", "--push-consent", "no"],
+      { timeoutMs: 3_000 },
+    );
     expect(res.stderr.toLowerCase()).not.toContain(
       "unknown flag '--push-consent'",
     );
@@ -254,17 +254,18 @@ describe("samospec iterate --push-consent (#136)", () => {
       .toLowerCase()
       .includes("push consent is required");
     expect(mentionsPushConsentRefusal).toBe(false);
-  });
+  }, 10_000);
 
   test("--yes is a known flag on iterate (not rejected by allowlist)", () => {
-    const res = runCli(["iterate", "demo", "--rounds", "1", "--yes"]);
-    expect(res.stderr).not.toContain("ERR_USE_AFTER_CLOSE");
+    const res = runCli(["iterate", "demo", "--rounds", "1", "--yes"], {
+      timeoutMs: 3_000,
+    });
     expect(res.stderr.toLowerCase()).not.toContain("unknown flag '--yes'");
     const mentionsPushConsentRefusal = res.stderr
       .toLowerCase()
       .includes("push consent is required");
     expect(mentionsPushConsentRefusal).toBe(false);
-  });
+  }, 10_000);
 
   test("non-TTY + persisted consent (yes) -> no refusal (already decided)", () => {
     // Pre-persist consent=true so the resolver would silently
@@ -280,11 +281,12 @@ describe("samospec iterate --push-consent (#136)", () => {
       JSON.stringify(cfg, null, 2) + "\n",
       "utf8",
     );
-    const res = runCli(["iterate", "demo", "--rounds", "1"]);
-    expect(res.stderr).not.toContain("ERR_USE_AFTER_CLOSE");
+    const res = runCli(["iterate", "demo", "--rounds", "1"], {
+      timeoutMs: 3_000,
+    });
     const mentionsPushConsentRefusal = res.stderr
       .toLowerCase()
       .includes("push consent is required");
     expect(mentionsPushConsentRefusal).toBe(false);
-  });
+  }, 10_000);
 });
