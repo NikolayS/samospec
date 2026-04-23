@@ -34,7 +34,7 @@ Requires [Bun](https://bun.sh) ≥ 1.2.0.
 
 ```bash
 bun install -g samospec
-samospec --version   # 0.6.2
+samospec --version   # 0.7.0
 ```
 
 Or one-shot:
@@ -140,6 +140,7 @@ Useful flags:
 - `samospec new --max-session-wall-clock-ms 1800000` — 30-min session cap.
 - `samospec new --force` — archive any existing `<slug>` dir as `.archived-YYYY-MM-DDThhmmssZ/` before starting.
 - `samospec new --yes` — fully non-interactive: auto-accept the lead's persona proposal and default every interview answer to `decide for me`. Pair with `--answers-file <path>` when you want to steer the five questions from JSON instead.
+- `samospec new --interview-protocol jsonl` — drive the interview over stdin/stdout with a line-delimited JSON event stream. The CLI emits one JSON object per line on stdout (`{"type":"persona-proposal","v":1,…}`, `{"type":"question","v":1,…}`, terminal `{"type":"complete","v":1}`); the consumer writes `{"type":"persona-answer","v":1,…}` and `{"type":"answer","v":1,…}` on stdin. Every event carries `v: 1` — the protocol version — so consumers can sniff breaking changes; events missing or mismatching `v` are rejected. Human notices route to stderr so stdout stays protocol-clean. Bypasses the `#114` non-TTY refusal (when both `--yes` and `--interview-protocol jsonl` are passed, the JSONL resolver wins; `--yes` auto-accept is ignored). Question count is bounded by the lead's output (0..5), not a fixed wire-level contract. See [`tests/cli/new-interview-protocol-jsonl.test.ts`](tests/cli/new-interview-protocol-jsonl.test.ts) for a live example (including the spawn-based end-to-end driver).
 - `samospec iterate --rounds 5` — cap rounds for this invocation.
 - `samospec iterate --no-push` — stay local this run.
 - `samospec iterate --quiet` — suppress the per-round progress + heartbeat stream on stderr (final summary still prints on stdout).
