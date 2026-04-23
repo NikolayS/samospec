@@ -635,6 +635,7 @@ export async function runNew(
             onNotice: notice,
             outputPath: interviewPath,
             now: input.now,
+            idea: input.idea,
           },
           adapter,
         ),
