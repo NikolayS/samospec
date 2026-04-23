@@ -47,50 +47,94 @@ const VERSION_FLAGS: ReadonlySet<string> = new Set([
   "--version",
 ]);
 
+/**
+ * Wrap a comma-separated list of items across lines of at most `width`
+ * visible chars, prefixing every line (including the first) with `indent`.
+ * Used so the baseline-sections enumeration in USAGE stays readable on
+ * narrow terminals instead of blowing past 80 chars on one line.
+ */
+function wrapList(
+  items: readonly string[],
+  indent: string,
+  width: number,
+): string {
+  const lines: string[] = [];
+  let current = indent;
+  for (let i = 0; i < items.length; i += 1) {
+    const item = items[i];
+    if (item === undefined) continue;
+    const isLast = i === items.length - 1;
+    const piece = isLast ? item : `${item},`;
+    const candidate =
+      current === indent ? current + piece : `${current} ${piece}`;
+    if (candidate.length > width && current !== indent) {
+      lines.push(current);
+      current = indent + piece;
+    } else {
+      current = candidate;
+    }
+  }
+  lines.push(current);
+  return lines.join("\n");
+}
+
 const USAGE =
-  "Usage: samospec <command>\n\n" +
+  "Usage: samospec <command> [options]\n" +
+  "\n" +
   "Commands:\n" +
-  "  init                        Create or refresh .samo/ in the current repo.\n" +
-  "  doctor                      Diagnose CLI availability, auth, git, lock, and config.\n" +
-  "  new <slug> [--idea ...] [--force] [--skip <sections>]\n" +
-  "            [--max-session-wall-clock-ms <ms>] [--verbose]\n" +
-  "            [--yes] [--accept-persona] [--answers-file <path>]\n" +
-  "                              Start a new spec (persona + 5-question interview).\n" +
-  "                              --force archives any existing run before starting\n" +
-  "                              fresh. --skip omits named baseline sections from\n" +
-  "                              the mandatory template (comma-separated,\n" +
-  "                              case-insensitive). Valid sections: " +
-  BASELINE_SECTION_NAMES.join(", ") +
+  "  init              Create or refresh .samo/ in the current repo.\n" +
+  "  doctor            Diagnose CLI availability, auth, git, lock, and config.\n" +
+  "  new <slug>        Start a new spec (persona + 5-question interview).\n" +
+  "  resume [<slug>]   Resume an in-progress spec from state.json.\n" +
+  "  iterate [<slug>]  Run review rounds until a stopping condition fires.\n" +
+  "  status [<slug>]   Print phase, round, cost, wall-clock, and next action.\n" +
+  "  publish [<slug>]  Promote to blueprints/<slug>/SPEC.md; commit, push, open PR.\n" +
+  "  version           Print the samospec version and exit.\n" +
+  "\n" +
+  "Options for `new`:\n" +
+  "  --idea <text>\n" +
+  "      Initial idea text (default: the <slug>).\n" +
+  "  --force\n" +
+  "      Archive any existing run, then start fresh.\n" +
+  "  --skip <sections>\n" +
+  "      Omit baseline sections from the mandatory template\n" +
+  "      (comma-separated, case-insensitive). Valid sections:\n" +
+  wrapList(BASELINE_SECTION_NAMES, "      ", 78) +
   ".\n" +
-  "                              --max-session-wall-clock-ms caps the total session\n" +
-  "                              wall-clock time (positive integer ms); defaults to\n" +
-  "                              budget.max_session_wall_clock_minutes in config.json\n" +
-  "                              or 600000 (10 min). On cap, exits 4 with reason\n" +
-  "                              `session-wall-clock`.\n" +
-  "                              --verbose emits targeted per-phase and per-file\n" +
-  "                              diagnostic lines on stderr (stdout stays concise).\n" +
-  "                              --yes / --accept-persona skip the persona-proposal\n" +
-  "                              readline prompt. --answers-file <path> loads the\n" +
-  "                              5-question interview answers from a JSON file\n" +
-  '                              (`{ "answers": [s, s, s, s, s] }`). At least one of\n' +
-  "                              these is required when stdin is not a TTY (#114).\n" +
-  "  resume [<slug>]             Resume an in-progress spec from state.json.\n" +
-  "  iterate [<slug>] [--rounds N] [--no-push] [--remote <name>] [--quiet]\n" +
-  "           [--max-session-wall-clock-ms <ms>]\n" +
-  "           [--on-dirty <incorporate|overwrite|abort>]\n" +
-  "                              Run review rounds until a stopping condition fires.\n" +
-  "                              --quiet suppresses per-phase progress + heartbeat\n" +
-  "                              (default: verbose progress on stderr).\n" +
-  "                              --max-session-wall-clock-ms caps the review loop\n" +
-  "                              session wall-clock (positive integer ms). On cap,\n" +
-  "                              exits 4 with reason `session-wall-clock`.\n" +
-  "                              --on-dirty answers the uncommitted-edits prompt\n" +
-  "                              without reading stdin; required when stdin is not\n" +
-  "                              a TTY and `.samo/spec/<slug>/` has dirty edits (#114).\n" +
-  "  status [<slug>]             Print phase, round, cost, wall-clock, and next action.\n" +
-  "  publish [<slug>] [--no-lint] [--remote <name>]\n" +
-  "                              Promote to blueprints/<slug>/SPEC.md, commit, push, open PR.\n" +
-  "  version                     Print the samospec version and exit.\n";
+  "  --max-session-wall-clock-ms <ms>\n" +
+  "      Cap total session wall-clock (positive integer ms). Defaults to\n" +
+  "      budget.max_session_wall_clock_minutes in config.json, or 600000\n" +
+  "      (10 min). On cap: exit 4 with reason `session-wall-clock`.\n" +
+  "  --verbose\n" +
+  "      Emit per-phase and per-file diagnostics on stderr (stdout stays concise).\n" +
+  "  --yes, --accept-persona\n" +
+  "      Skip the persona-proposal readline prompt.\n" +
+  "  --answers-file <path>\n" +
+  "      Load 5-question interview answers from JSON\n" +
+  '      (`{ "answers": [s, s, s, s, s] }`). One of --yes, --accept-persona,\n' +
+  "      or --answers-file is required when stdin is not a TTY (#114).\n" +
+  "\n" +
+  "Options for `iterate`:\n" +
+  "  --rounds <N>\n" +
+  "      Cap the number of review rounds this session.\n" +
+  "  --no-push\n" +
+  "      Don't push round commits to the remote.\n" +
+  "  --remote <name>\n" +
+  "      Git remote name (default: origin).\n" +
+  "  --quiet\n" +
+  "      Suppress per-phase progress + heartbeat (default: verbose on stderr).\n" +
+  "  --max-session-wall-clock-ms <ms>\n" +
+  "      Cap the review-loop session wall-clock (positive integer ms). On cap:\n" +
+  "      exit 4 with reason `session-wall-clock`.\n" +
+  "  --on-dirty <incorporate|overwrite|abort>\n" +
+  "      Answer the uncommitted-edits prompt without reading stdin. Required\n" +
+  "      when stdin is not a TTY and `.samo/spec/<slug>/` has dirty edits (#114).\n" +
+  "\n" +
+  "Options for `publish`:\n" +
+  "  --no-lint\n" +
+  "      Skip the publish-time lint pass.\n" +
+  "  --remote <name>\n" +
+  "      Git remote name (default: origin).\n";
 
 /**
  * Default adapter bindings for `samospec doctor`. Uses the real
