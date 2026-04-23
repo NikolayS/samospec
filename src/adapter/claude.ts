@@ -471,6 +471,17 @@ export class ClaudeAdapter implements Adapter {
 
     const parsedRepair = preParseJson(repair.stdout);
     if (!parsedRepair.ok) {
+      // Issue #138: before falling through to schema_violation, check
+      // whether the raw stdout is an auth-failure signal. We only do
+      // this when JSON parsing has already failed — valid spec JSON
+      // containing the phrase in a field value must not false-positive.
+      if (isInvalidApiKeyStdout(repair.stdout)) {
+        return {
+          ok: false,
+          reason: "other",
+          detail: INVALID_API_KEY_DETAIL,
+        };
+      }
       return {
         ok: false,
         reason: "schema_violation",

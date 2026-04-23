@@ -13,6 +13,11 @@
 //   - have reason "claude_cli_auth_failed"
 //   - have detail containing "unset ANTHROPIC_API_KEY"
 //   - have detail containing "https://console.anthropic.com/settings/keys"
+//
+// Issue #138: the same detection must also apply on the repair-retry
+// path (second spawn). If auth becomes invalid between the first spawn
+// and the repair call, the error should still surface as
+// "claude_cli_auth_failed", not "schema_violation".
 
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
@@ -167,6 +172,122 @@ describe("ClaudeAdapter — Invalid API key stdout detection (issue #127)", () =
       expect(err).toBeInstanceOf(ClaudeAdapterError);
       if (err instanceof ClaudeAdapterError) {
         // Must NOT be misclassified as an auth failure.
+        expect(err.payload.reason).not.toBe("claude_cli_auth_failed");
+      }
+    },
+  );
+});
+
+// ---------- Issue #138: repair-retry path ----------
+
+/**
+ * Spawn spy that returns invalid JSON on the first call (triggers
+ * repair) and "Invalid API key" stdout on the second call (simulates
+ * auth failure during repair).
+ */
+function makeInvalidKeyOnRepairSpawn(): (
+  input: SpawnCliInput,
+) => Promise<SpawnCliResult> {
+  let callCount = 0;
+  return (_input: SpawnCliInput): Promise<SpawnCliResult> => {
+    callCount += 1;
+    if (callCount === 1) {
+      // First spawn: return malformed JSON to trigger repair retry.
+      return Promise.resolve({
+        ok: true,
+        exitCode: 0,
+        stdout: "not valid json {{{",
+        stderr: "",
+      });
+    }
+    // Repair spawn: auth failure.
+    return Promise.resolve({
+      ok: true,
+      exitCode: 0,
+      stdout: "Invalid API key · Fix external API key\n",
+      stderr: "",
+    });
+  };
+}
+
+describe("ClaudeAdapter — Invalid API key on repair-retry path (issue #138)", () => {
+  test(
+    "repair spawn with 'Invalid API key' stdout → " +
+      "reason=claude_cli_auth_failed, not schema_violation",
+    async () => {
+      const host = makeInstalledHost();
+      const adapter = new ClaudeAdapter({
+        host,
+        spawn: makeInvalidKeyOnRepairSpawn(),
+      });
+
+      let err: unknown;
+      try {
+        await adapter.ask({
+          prompt: "ping",
+          context: "",
+          opts: { effort: "max", timeout: 5_000 },
+        });
+      } catch (e) {
+        err = e;
+      }
+
+      expect(err).toBeInstanceOf(ClaudeAdapterError);
+      if (err instanceof ClaudeAdapterError) {
+        expect(err.payload.reason).toBe("claude_cli_auth_failed");
+        expect(err.payload.reason).not.toBe("schema_violation");
+      }
+    },
+  );
+
+  test(
+    "spec-content JSON containing 'Invalid API key' as body text " +
+      "does not false-positive on the repair path",
+    async () => {
+      // Build a valid JSON payload whose body happens to contain the
+      // auth-error phrase — this guards the most plausible false-positive.
+      // ask() expects AskOutputSchema shape.
+      const bodyWithPhrase = JSON.stringify({
+        ready: false,
+        rationale: "Invalid API key is a common auth error message.",
+        spec_md: "# Test\n\nInvalid API key warning section.\n",
+      });
+      const host = makeInstalledHost();
+      let callCount = 0;
+      const safeSpawn = (_input: SpawnCliInput): Promise<SpawnCliResult> => {
+        callCount += 1;
+        if (callCount === 1) {
+          // First spawn: invalid JSON to force repair.
+          return Promise.resolve({
+            ok: true,
+            exitCode: 0,
+            stdout: "not valid json {{{",
+            stderr: "",
+          });
+        }
+        // Repair spawn: valid JSON whose body contains the phrase.
+        return Promise.resolve({
+          ok: true,
+          exitCode: 0,
+          stdout: bodyWithPhrase,
+          stderr: "",
+        });
+      };
+      const adapter = new ClaudeAdapter({ host, spawn: safeSpawn });
+
+      let err: unknown;
+      try {
+        await adapter.ask({
+          prompt: "ping",
+          context: "",
+          opts: { effort: "max", timeout: 5_000 },
+        });
+      } catch (e) {
+        err = e;
+      }
+
+      // Should throw (schema_violation or similar), but NOT auth failure.
+      if (err instanceof ClaudeAdapterError) {
         expect(err.payload.reason).not.toBe("claude_cli_auth_failed");
       }
     },

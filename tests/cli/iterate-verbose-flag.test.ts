@@ -4,6 +4,9 @@
 // "unknown flag '--verbose'" because ITERATE_ALLOWED_FLAGS lacked
 // the entry. `samospec new` has --verbose; iterate is verbose by default
 // but should accept the flag as a no-op alias so muscle-memory works.
+//
+// Issue #137 — the --help block should also document --verbose so
+// users can discover it without reading the source.
 
 import { describe, expect, test } from "bun:test";
 
@@ -29,5 +32,19 @@ describe("iterate parser — --verbose accepted as no-op (#128)", () => {
     expect(res.stderr.toLowerCase()).not.toContain("unknown flag");
     expect(res.stderr.toLowerCase()).toContain("no spec found");
     expect(res.exitCode).toBe(1);
+  });
+});
+
+describe("iterate help — --verbose documented (#137)", () => {
+  test("help text contains '--verbose'", async () => {
+    const res = await runCli([]);
+    expect(res.stderr).toContain("--verbose");
+  });
+
+  test("help text contains alias description for iterate --verbose", async () => {
+    const res = await runCli([]);
+    expect(res.stderr).toContain(
+      "Alias / no-op — iterate is verbose by default",
+    );
   });
 });
