@@ -9,7 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [0.6.1] - 2026-04-21
+## [0.6.1] - 2026-04-23
 
 ### Added
 
@@ -20,6 +20,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `--on-dirty` for symmetry. SPEC §10 v1 surface updated to include
   the three non-TTY automation flags. No behavior change — the flag
   itself landed in #114 / v0.6.0.
+
+### Changed
+
+- **Readable `samospec` help output:** the zero-arg / unknown-command
+  USAGE banner was a dense wall of text — flag lists wrapped across
+  3 lines under each command header, and 30-char-indented paragraphs
+  ran together unreadably on wider terminals. Restructured into two
+  clean sections: a one-line-per-command summary table, followed by
+  per-command `Options for …` groups where each flag sits on its own
+  line with a wrapped, indented description. The baseline-sections
+  enumeration for `--skip` now word-wraps at 78 cols via a small
+  `wrapList` helper rather than emitting a single ~105-char line.
 
 ### Tests
 
