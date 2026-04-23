@@ -41,6 +41,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `choice === "decide for me"`, and the resolver path never reads
   from `process.stdin`. Previous coverage only asserted `exitCode`.
 
+### CI
+
+- **npm publish HTTP trace + sanitized diagnostics (#125):** the
+  `publish` workflow now runs `npm publish --access public --loglevel=http`
+  and prints a filtered `npm config ls -l` plus a `whoami` HTTP status
+  probe before the PUT. Produces the trace issue #121 needs to resolve
+  the CI-only 404-on-new-version behavior. npm 11 redacts credential
+  fields from `config ls -l` output; the grep filter is belt-and-
+  suspenders; Authorization is redacted in npm's own HTTP log and
+  GitHub Actions secret masking is a final backstop. No change to the
+  publish path itself — diagnostics only.
+
 ---
 
 ## [0.6.0] - 2026-04-22
