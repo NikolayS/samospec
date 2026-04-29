@@ -789,11 +789,17 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
  * absolute wall-clock moment the race is ambiguous and the outer
  * wrapper usually wins (registered first → `setTimeout` ordering).
  * That collapses two distinct exit reasons — `revise_timeout` vs.
- * `wall_clock` — into one. Subtracting a small margin biases the race
- * so the inner `ReviseTimeoutError` fires strictly BEFORE the outer
+ * `wall_clock` — into one. Subtracting a margin biases the race so
+ * the inner `ReviseTimeoutError` fires strictly BEFORE the outer
  * `SessionWallClockError`, preserving the diagnostic distinction.
+ *
+ * The margin must exceed CI scheduler jitter, otherwise the post-merge
+ * iterate test for #92 REV flakes (observed ~766ms overrun on
+ * ubuntu-latest in run 25085910538). 500ms gives 5x headroom over the
+ * worst sample we've seen and is still negligible vs typical session
+ * budgets measured in minutes.
  */
-const CLAMP_SAFETY_MARGIN_MS = 100 as const;
+const CLAMP_SAFETY_MARGIN_MS = 500 as const;
 
 function resolveEffectiveReviseTimeout(
   configured: number,
