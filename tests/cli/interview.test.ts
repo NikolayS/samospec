@@ -327,7 +327,16 @@ describe("runInterview — persona + explain wiring (SPEC §7)", () => {
     );
   });
 
-  test("idea with open language -> prompt includes language-first guardrail", async () => {
+  // ---------- project-substance + ≤1 tech-stack guardrail (#NEW-INTERVIEW)
+  //
+  // The interview is for product-owner-shaped questions: target users,
+  // jobs-to-be-done, v0.1 features, success criteria, edge cases,
+  // constraints, out-of-scope. Tech-stack questions (language, DB,
+  // framework, hosting) are capped at ONE total. The previous "language
+  // FIRST question MUST" guardrail biased the entire interview toward
+  // tech and was reported by users as the regression.
+
+  test("idea with open language -> prompt does NOT mandate language-first; caps tech-stack at 1", async () => {
     const qs = [{ id: "q1", text: "something?" }];
     const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
     await runInterview(
@@ -342,12 +351,17 @@ describe("runInterview — persona + explain wiring (SPEC §7)", () => {
       adapter,
     );
     const first = adapter.asks[0];
-    expect(first.prompt).toMatch(
-      /language.*open|open.*language|first question.*language|language.*first question/i,
+    // No "FIRST question MUST be language" mandate.
+    expect(first.prompt).not.toMatch(
+      /first question.*MUST.*language|language.*MUST.*first question/i,
+    );
+    // Tech-stack cap is present.
+    expect(first.prompt.toLowerCase()).toMatch(
+      /at most one tech-stack question|at most 1 tech-stack question/,
     );
   });
 
-  test("idea with no language -> prompt includes language-first guardrail", async () => {
+  test("idea with no explicit language -> prompt caps tech-stack at 1, focuses on substance", async () => {
     const qs = [{ id: "q1", text: "something?" }];
     const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
     await runInterview(
@@ -362,12 +376,18 @@ describe("runInterview — persona + explain wiring (SPEC §7)", () => {
       adapter,
     );
     const first = adapter.asks[0];
-    expect(first.prompt).toMatch(
-      /first question.*language|language.*first question/i,
+    expect(first.prompt).not.toMatch(
+      /first question.*MUST.*language|language.*MUST.*first question/i,
     );
+    expect(first.prompt.toLowerCase()).toMatch(
+      /at most one tech-stack question|at most 1 tech-stack question/,
+    );
+    // Project-substance focus must be explicit.
+    expect(first.prompt.toLowerCase()).toMatch(/project substance/);
+    expect(first.prompt.toLowerCase()).toMatch(/target users|users/);
   });
 
-  test("idea specifying a language -> guardrail anchors on it, no lang-first mandate", async () => {
+  test("idea specifying a language -> tech-stack capped, language not re-opened", async () => {
     const qs = [{ id: "q1", text: "something?" }];
     const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
     await runInterview(
@@ -382,8 +402,31 @@ describe("runInterview — persona + explain wiring (SPEC §7)", () => {
       adapter,
     );
     const first = adapter.asks[0];
-    // Should NOT mandate language as first question; should anchor on Rust
-    expect(first.prompt).toMatch(/anchor|specified/i);
+    // Do not re-open language choice.
+    expect(first.prompt.toLowerCase()).toMatch(/do not re-open|not re-open/);
+    expect(first.prompt.toLowerCase()).toMatch(
+      /at most one tech-stack question|at most 1 tech-stack question/,
+    );
+  });
+
+  test("no idea provided -> still caps tech-stack at 1 and focuses on substance", async () => {
+    const qs = [{ id: "q1", text: "something?" }];
+    const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    const first = adapter.asks[0];
+    expect(first.prompt.toLowerCase()).toMatch(
+      /at most one tech-stack question|at most 1 tech-stack question/,
+    );
+    expect(first.prompt.toLowerCase()).toMatch(/project substance/);
   });
 });
 

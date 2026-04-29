@@ -184,27 +184,49 @@ function buildInterviewPrompt(input: {
       "jargon in prose fields. (Non-technical ICP.)\n\n"
     : "";
 
-  const langGuardrail =
+  // Tech-stack guardrail (#NEW-INTERVIEW): the interview is about
+  // PROJECT SUBSTANCE, not implementation tech. At most ONE question
+  // total may concern the tech stack (language, database, framework,
+  // hosting, etc.). When the brief already names a language, do not
+  // re-open it. When it doesn't, you MAY ask one language question —
+  // but only if it is genuinely strategic for this brief; otherwise
+  // skip it and let the spec/engine choose later.
+  const stackGuardrail =
     input.idea !== undefined
       ? ideaHasOpenLanguage(input.idea)
-        ? "Language guardrail: the brief does not specify a language (or " +
-          "says the language is open/flexible/any). Your FIRST question " +
-          "MUST be about language choice. Downstream questions must not " +
-          "presuppose any specific language.\n\n"
-        : "Language guardrail: the brief has already specified a language. " +
-          "Anchor your questions on that specified language choice; do not " +
-          "re-open it unless the user's brief explicitly invites it.\n\n"
-      : "";
+        ? "Tech-stack guardrail: the brief does not name a language. You " +
+          "MAY include AT MOST ONE tech-stack question total (covering " +
+          "language, database, framework, hosting, or similar) — and only " +
+          "if it is genuinely strategic for this brief. Prefer skipping it " +
+          "entirely; the spec/engine can choose downstream. Downstream " +
+          "questions must not presuppose any specific language.\n\n"
+        : "Tech-stack guardrail: the brief already names a language. Do " +
+          "NOT re-open language choice. Across all questions, include AT " +
+          "MOST ONE tech-stack question (language, database, framework, " +
+          "hosting, or similar) — and only if it is genuinely strategic " +
+          "for this brief.\n\n"
+      : "Tech-stack guardrail: include AT MOST ONE tech-stack question " +
+        "(language, database, framework, hosting, or similar) across all " +
+        "questions, and only if it is genuinely strategic for this " +
+        "brief.\n\n";
 
   return (
     explainPreamble +
-    langGuardrail +
+    stackGuardrail +
     `You are the samospec lead, playing the persona: ${input.persona}. ` +
     "Propose up to FIVE (5) high-signal strategic questions that the " +
     "user must answer to produce a v0.1 spec. Fewer is fine; more than 5 " +
-    "will be truncated by the tool. Each question has an `id` (slug), " +
-    "`text` (one sentence), and `options` (2-6 concrete choices the " +
-    "persona thinks are the most likely answers).\n\n" +
+    "will be truncated by the tool.\n\n" +
+    "Focus on PROJECT SUBSTANCE — questions a product owner cares about, " +
+    "not implementation choices. Cover topics like: who the target users " +
+    "are, what jobs they need done, the most important features for v0.1, " +
+    "what success looks like, key edge cases or failure modes, " +
+    "constraints (budget, timeline, compliance), and what's explicitly " +
+    "out of scope. Avoid tech-stack questions beyond the one allowed by " +
+    "the guardrail above.\n\n" +
+    "Each question has an `id` (slug), `text` (one sentence), and " +
+    "`options` (2-6 concrete choices the persona thinks are the most " +
+    "likely answers).\n\n" +
     "Respond ONLY with a JSON object:\n" +
     '  { "questions": [ { "id": "...", "text": "...", "options": ' +
     '["...", "..."] }, ... ] }\n' +
