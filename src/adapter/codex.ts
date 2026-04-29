@@ -960,12 +960,21 @@ function classifyExit(
       detail: `exit ${String(exitCode)}: ${stderr.trim()}`,
     };
   }
+  // Bug #148: the previous `\b5\d{2}\b` regex matched ANY three-digit
+  // number 500-599 — including token counts ("tokens used\n535")
+  // and 3-digit substrings of session UUIDs. That false-positived
+  // auth/exit failures into "timeout" (retryable), which then chewed
+  // through the capped-retry budget before terminating with a
+  // misleading "Codex adapter timeout" message. The replacement
+  // requires the 5xx digits to be tagged with `HTTP` or `status`,
+  // which is how upstream actually surfaces 5xx.
   const retryable =
     lower.includes("rate limit") ||
     lower.includes("rate-limit") ||
     lower.includes("network error") ||
     lower.includes("timeout") ||
-    /\b5\d{2}\b/.test(stderr);
+    /\bhttp[\s/]?5\d{2}\b/i.test(stderr) ||
+    /\bstatus[:\s]+5\d{2}\b/i.test(stderr);
   return {
     ok: false,
     reason: retryable ? "timeout" : "other",

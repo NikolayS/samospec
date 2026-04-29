@@ -217,3 +217,89 @@ describe("Bug #88-followup: classifyExit recognizes 'not supported' as model_una
     }
   });
 });
+
+// ---------- Bug #148: classifyExit retryable regex must not over-match ----------
+
+describe("Bug #148: classifyExit retryable regex precision", () => {
+  test("token count '2335' must NOT trigger retryable=true reclassification", async () => {
+    // The bare \b5\d{2}\b regex matched ANY three-digit number 500-599.
+    // Codex prints "tokens used\n2335" at the bottom of stderr, but
+    // contained "535" (close call) used to coincidentally match.
+    // Pin the new behavior: a non-HTTP-status numeric must not flip
+    // an auth/exit error into a "timeout".
+    const spy = makeSpy([
+      {
+        ok: true,
+        exitCode: 1,
+        stdout: "",
+        stderr: "ERROR: account inactive\n" + "tokens used\n555\n", // 555 is innocuous, not an HTTP status
+      },
+    ]);
+    const adapter = new CodexAdapter({
+      host: FAKE_HOST,
+      spawn: spy.spawn,
+      binary: "/usr/bin/codex",
+      models: [{ id: "gpt-5.4", family: "codex" }],
+      accountDefaultFallback: false,
+    });
+
+    let err: unknown;
+    try {
+      await adapter.ask(sampleAsk());
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CodexAdapterError);
+    if (err instanceof CodexAdapterError) {
+      // Should be `other` (terminal exit), not `timeout` (retryable).
+      // Pre-#148 the loose `\b5\d{2}\b` matched "555" → reason=timeout
+      // → samospec retried 3 times and exhausted budget.
+      expect(err.payload.reason).not.toBe("timeout");
+    }
+  });
+
+  test("real HTTP 503 status is still classified as retryable timeout", async () => {
+    // Sanity: the precision fix must not lose real upstream HTTP 5xx
+    // signals. Codex stderr containing "HTTP 503" or "status: 503"
+    // should still trip the retryable bucket.
+    const spy = makeSpy([
+      {
+        ok: true,
+        exitCode: 1,
+        stdout: "",
+        stderr: "ERROR: HTTP 503 Service Unavailable from upstream\n",
+      },
+      {
+        ok: true,
+        exitCode: 1,
+        stdout: "",
+        stderr: "ERROR: HTTP 503 Service Unavailable from upstream\n",
+      },
+      {
+        ok: true,
+        exitCode: 1,
+        stdout: "",
+        stderr: "ERROR: HTTP 503 Service Unavailable from upstream\n",
+      },
+    ]);
+    const adapter = new CodexAdapter({
+      host: FAKE_HOST,
+      spawn: spy.spawn,
+      binary: "/usr/bin/codex",
+      models: [{ id: "gpt-5.4", family: "codex" }],
+      accountDefaultFallback: false,
+    });
+
+    let err: unknown;
+    try {
+      await adapter.ask(sampleAsk());
+    } catch (e) {
+      err = e;
+    }
+    expect(err).toBeInstanceOf(CodexAdapterError);
+    if (err instanceof CodexAdapterError) {
+      // Three attempts (capped retry) all see 503 → terminal timeout.
+      expect(err.payload.reason).toBe("timeout");
+    }
+  });
+});
