@@ -5,6 +5,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- **Reviewer A no longer silently dropped on auth/exit failures (#148).**
+  Three diagnostic bugs combined to misclassify codex CLI failures as
+  `schema_violation` and bury the real cause:
+  1. `classifyReviewerError` matched the literal word "schema" in the
+     prompt-echo (the critique prompt itself describes the JSON
+     review-taxonomy schema) before any other keyword. An auth/exit-1
+     failure with a stderr-echoed prompt got stamped
+     `schema_violation`.
+  2. `sanitizeErrorMessage` truncated the error to the FIRST 500
+     chars. Codex emits its banner + prompt-echo first and the
+     actionable diagnostic (e.g. `401 Unauthorized`) last, so the
+     prefix slice discarded exactly what operators needed.
+  3. `classifyExit`'s retryable-stderr regex `\b5\d{2}\b` matched ANY
+     three-digit number 500-599, including token counts and 3-digit
+     substrings of session UUIDs, false-positiving exit failures into
+     "timeout" and chewing through the capped-retry budget.
+
+  The classifier now (a) prefers the adapter's structured
+  `payload.reason` (Codex/Claude both expose one), (b) when falling
+  back to keywords, checks auth/exit/timeout BEFORE schema, (c) keeps
+  the TAIL of the message preserving the adapter prefix, and
+  (d) requires an `HTTP` or `status` tag on 5xx digits. Fixes the
+  silent reviewer-A failure observed in samo.team production where
+  the service user lacked codex auth — auth failures now surface as
+  `auth_failed` with the `401 Unauthorized` line visible in
+  `round.json`. Cross-filed against samo.team#188.
+
 ## [0.7.0] - 2026-04-23
 
 ### Added

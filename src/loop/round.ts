@@ -888,21 +888,95 @@ const ANSI_STRIP_RE = new RegExp(
   "g",
 );
 
+const SEAT_ERROR_MESSAGE_MAX = 500 as const;
+
 /**
- * Strip ANSI escape codes and truncate to 500 chars (Issue #52).
+ * Strip ANSI codes and keep the TAIL of the message (Issue #148).
+ *
+ * Adapter errors are formatted as:
+ *   `Codex adapter <reason>: exit <N>: <CLI stderr>`
+ * The CLI stderr typically starts with a banner + the user-prompt
+ * echo, and the actionable diagnostic (e.g. "401 Unauthorized",
+ * "model not available", "rate-limited") appears at the END.
+ *
+ * Pre-#148 the function did `slice(0, MAX)`, which discarded exactly
+ * the lines operators need (#148). Now we keep the tail, but always
+ * preserve the leading `Codex adapter <reason>:` / `Claude adapter
+ * <reason>:` prefix (when present) so the structured reason is
+ * still visible in the truncated form. With ellipsis this comes out
+ * to <= MAX chars.
  */
 function sanitizeErrorMessage(raw: string): string {
-  return raw.replace(ANSI_STRIP_RE, "").slice(0, 500);
+  const stripped = raw.replace(ANSI_STRIP_RE, "");
+  if (stripped.length <= SEAT_ERROR_MESSAGE_MAX) return stripped;
+
+  // Preserve the adapter prefix so the structured reason remains
+  // visible alongside the tail diagnostic. Match either Codex or
+  // Claude adapter prefixes; bail to plain-tail if neither is found.
+  const prefixMatch = /^(?:Codex|Claude) adapter [a-z_]+:\s*/i.exec(stripped);
+  const ellipsis = " ... ";
+  if (prefixMatch !== null) {
+    const prefix = prefixMatch[0];
+    const tailBudget = SEAT_ERROR_MESSAGE_MAX - prefix.length - ellipsis.length;
+    if (tailBudget > 0) {
+      return prefix + ellipsis + stripped.slice(stripped.length - tailBudget);
+    }
+  }
+  // No adapter prefix — keep the last MAX chars.
+  return stripped.slice(stripped.length - SEAT_ERROR_MESSAGE_MAX);
 }
 
 /**
- * Map error message keywords to a SeatErrorReason (Issue #52).
+ * Map an adapter error to a structured SeatErrorReason
+ * (Issue #52, refined for #148).
+ *
+ * Strategy: prefer the adapter's structured `payload.reason` (Codex/
+ * Claude adapter errors carry one). Only fall back to keyword scanning
+ * when the error is a bare `Error` with no structured payload.
+ *
+ * Keyword scanning order is fixed so that codex stderr containing the
+ * literal word "schema" (the critique prompt itself describes the
+ * review-taxonomy schema) cannot mask an auth/exit/timeout failure.
+ * Auth + exit-code + timeout are checked BEFORE schema (#148).
  */
-function classifyErrorReason(msg: string): SeatErrorReason {
-  const lower = msg.toLowerCase();
-  if (lower.includes("schema")) return "schema_violation";
-  if (lower.includes("timeout")) return "timeout";
-  if (lower.includes("auth") || lower.includes("unauthorized"))
+function classifyErrorReason(err: unknown): SeatErrorReason {
+  // Structured-reason fast path — works for any adapter error whose
+  // payload exposes a `reason` field. Accepts unknown objects to avoid
+  // a circular dep on the adapter modules.
+  if (err !== null && typeof err === "object" && "payload" in err) {
+    const payload = (err as { payload?: unknown }).payload;
+    if (
+      payload !== null &&
+      typeof payload === "object" &&
+      "reason" in payload
+    ) {
+      const reason = (payload as { reason?: unknown }).reason;
+      if (typeof reason === "string") {
+        switch (reason) {
+          case "schema_violation":
+            return "schema_violation";
+          case "timeout":
+            return "timeout";
+          case "codex_cli_auth_failed":
+          case "claude_cli_auth_failed":
+            return "auth_failed";
+          case "model_unavailable":
+          case "other":
+            return "cli_error";
+          default:
+            // fall through to keyword scan
+            break;
+        }
+      }
+    }
+  }
+
+  const raw = err instanceof Error ? err.message : String(err);
+  const lower = raw.toLowerCase();
+  // Order matters (#148): structured-failure markers come BEFORE
+  // schema, so prompt-echo containing the word "schema" cannot
+  // shadow an auth/exit/timeout cause.
+  if (lower.includes("unauthorized") || lower.includes("auth_failed"))
     return "auth_failed";
   if (
     lower.includes("cli_error") ||
@@ -910,26 +984,39 @@ function classifyErrorReason(msg: string): SeatErrorReason {
     lower.includes("exit code")
   )
     return "cli_error";
+  if (lower.includes("timeout")) return "timeout";
+  if (lower.includes("schema")) return "schema_violation";
   return "unknown";
 }
 
+/**
+ * Map a SeatErrorReason to the SeatOutcomeState we record on disk
+ * for backwards compat with the legacy `state` enum.
+ */
+function reasonToState(reason: SeatErrorReason): SeatOutcomeState {
+  switch (reason) {
+    case "schema_violation":
+      return "schema_violation";
+    case "timeout":
+      return "timeout";
+    default:
+      // auth_failed, cli_error, unknown all collapse to the legacy
+      // `failed` state for round.json compatibility.
+      return "failed";
+  }
+}
+
 function classifyReviewerError(err: unknown): SeatOutcomeState {
-  const msg =
-    err instanceof Error
-      ? err.message.toLowerCase()
-      : String(err).toLowerCase();
-  if (msg.includes("schema")) return "schema_violation";
-  if (msg.includes("timeout")) return "timeout";
-  return "failed";
+  return reasonToState(classifyErrorReason(err));
 }
 
 /**
- * Build a SeatErrorDetail from a caught error (Issue #52).
+ * Build a SeatErrorDetail from a caught error (Issue #52, #148).
  */
 function buildSeatErrorDetail(err: unknown): SeatErrorDetail {
   const raw = err instanceof Error ? err.message : String(err);
   const message = sanitizeErrorMessage(raw);
-  const reason = classifyErrorReason(raw);
+  const reason = classifyErrorReason(err);
   return { reason, message };
 }
 

@@ -812,13 +812,19 @@ function classifyExit(exitCode: number, stderr: string): AttemptResult<string> {
   // Stderr-heuristic classification per SPEC §7 failure classes.
   // Non-zero exit is terminal unless stderr matches a known retryable
   // pattern (rate limit, network, 5xx).
+  //
+  // Bug #148: the loose `\b5\d{2}\b` matched ANY three-digit number
+  // 500-599 (token counts, UUID substrings), false-positiving exit
+  // failures into "timeout" + chewing through retries. The 5xx check
+  // now requires an `HTTP` or `status` tag.
   const lower = stderr.toLowerCase();
   const rateLimited = isRateLimitStderr(stderr);
   const retryable =
     rateLimited ||
     lower.includes("network error") ||
     lower.includes("timeout") ||
-    /\b5\d{2}\b/.test(stderr);
+    /\bhttp[\s/]?5\d{2}\b/i.test(stderr) ||
+    /\bstatus[:\s]+5\d{2}\b/i.test(stderr);
   const baseDetail = `exit ${String(exitCode)}: ${stderr.trim()}`;
   const detail = rateLimited
     ? `${RATE_LIMIT_DETAIL_TOKEN} | ${baseDetail}`
