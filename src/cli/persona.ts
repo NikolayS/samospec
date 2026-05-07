@@ -201,7 +201,13 @@ export async function proposePersona(
   });
 
   // First attempt.
-  const rawFirst = await askForPersona(adapter, prompt, effort, timeoutMs, input.idea);
+  const rawFirst = await askForPersona(
+    adapter,
+    prompt,
+    effort,
+    timeoutMs,
+    input.idea,
+  );
   let validated = parsePersonaAnswer(rawFirst);
 
   // One repair retry if the first attempt failed the schema.
