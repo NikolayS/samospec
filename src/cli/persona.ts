@@ -154,11 +154,13 @@ async function askForPersona(
   prompt: string,
   effort: EffortLevel,
   timeoutMs: number,
+  idea?: string,
 ): Promise<string> {
   const askInput: AskInput = {
     prompt,
     context: "",
     opts: { effort, timeout: timeoutMs },
+    ...(typeof idea === "string" && idea.length > 0 ? { idea } : {}),
   };
   let output;
   try {
@@ -199,7 +201,7 @@ export async function proposePersona(
   });
 
   // First attempt.
-  const rawFirst = await askForPersona(adapter, prompt, effort, timeoutMs);
+  const rawFirst = await askForPersona(adapter, prompt, effort, timeoutMs, input.idea);
   let validated = parsePersonaAnswer(rawFirst);
 
   // One repair retry if the first attempt failed the schema.
@@ -210,6 +212,7 @@ export async function proposePersona(
       repairPrompt,
       effort,
       timeoutMs,
+      input.idea,
     );
     validated = parsePersonaAnswer(rawSecond);
   }
