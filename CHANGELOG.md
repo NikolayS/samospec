@@ -7,7 +7,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.7.1] - 2026-05-07
+
 ### Fixed
+
+- **Persona proposal now preserves the original idea in lead ask calls (#150).**
+  The persona phase now forwards `input.idea` into the adapter `AskInput`
+  on both the initial persona proposal and schema-repair retry, so the
+  lead keeps the user's project intent when the adapter builds its
+  authoritative idea prompt context.
 
 - **Reviewer A no longer silently dropped on auth/exit failures (#148).**
   Three diagnostic bugs combined to misclassify codex CLI failures as
@@ -35,6 +45,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   the service user lacked codex auth — auth failures now surface as
   `auth_failed` with the `401 Unauthorized` line visible in
   `round.json`. Cross-filed against samo.team#188.
+
+- **Interview questions focus on project substance instead of repeatedly
+  reopening tech-stack choices (#146).**
+
+- **Reviewer revise timing has a wider CI-safe clamp margin (#147).**
 
 ## [0.7.0] - 2026-04-23
 
