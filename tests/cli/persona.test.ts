@@ -126,6 +126,7 @@ describe("proposePersona — happy path", () => {
   });
 
   test("ask() is invoked with a system prompt mentioning the persona form", async () => {
+    const idea = "some idea";
     const adapter = makeScriptedAskAdapter([
       JSON.stringify({
         persona: 'Veteran "platform engineer" expert',
@@ -134,7 +135,7 @@ describe("proposePersona — happy path", () => {
     ]);
     await proposePersona(
       {
-        idea: "some idea",
+        idea,
         explain: false,
         subscriptionAuth: false,
         choice: { kind: "accept" },
@@ -146,6 +147,7 @@ describe("proposePersona — happy path", () => {
     const first = adapter.asks[0];
     expect(first.prompt).toContain("Veteran");
     expect(first.prompt).toContain("expert");
+    expect(first.idea).toBe(idea);
     expect(first.opts.effort).toBe("max");
   });
 });
@@ -232,6 +234,7 @@ describe("proposePersona — confirm / edit / replace", () => {
 
 describe("proposePersona — schema repair + lead_terminal", () => {
   test("first response malformed, second response valid: accepts second", async () => {
+    const idea = "idea";
     const adapter = makeScriptedAskAdapter([
       // Malformed: missing quotes around skill.
       JSON.stringify({
@@ -246,7 +249,7 @@ describe("proposePersona — schema repair + lead_terminal", () => {
     ]);
     const result = await proposePersona(
       {
-        idea: "idea",
+        idea,
         explain: false,
         subscriptionAuth: false,
         choice: { kind: "accept" },
@@ -256,6 +259,8 @@ describe("proposePersona — schema repair + lead_terminal", () => {
     expect(result.persona).toBe('Veteran "CLI software engineer" expert');
     // Exactly one repair attempt was made (so 2 total ask calls).
     expect(adapter.asks.length).toBe(2);
+    expect(adapter.asks[0].idea).toBe(idea);
+    expect(adapter.asks[1].idea).toBe(idea);
   });
 
   test("two malformed responses in a row => throws PersonaTerminalError", async () => {
