@@ -2,6 +2,8 @@
 
 import { z } from "zod";
 
+import { autonomyPolicySnapshotSchema } from "../policy/autonomy.ts";
+
 // SPEC §5 — eight phases in canonical order.
 export const PHASES = [
   "detect",
@@ -148,6 +150,11 @@ export const stateSchema = z
     /** Absent when neither `gh` nor `glab` was authenticated; set from
      * the tool's stdout URL when the PR was opened successfully. */
     published_pr_url: z.string().min(1).optional(),
+    /**
+     * #153: auditable autonomy-policy snapshot for the implementation
+     * run that turns reviewed specs into issue/PR prompts.
+     */
+    implementation_autonomy: autonomyPolicySnapshotSchema.optional(),
     created_at: isoTimestampSchema,
     updated_at: isoTimestampSchema,
     /**
