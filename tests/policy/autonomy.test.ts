@@ -10,6 +10,7 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_CONFIG } from "../../src/cli/init.ts";
 import {
   DEFAULT_AUTONOMY_POLICY,
+  autonomyPolicySnapshotSchema,
   createAutonomyPolicySnapshot,
   parseAutonomyPolicyChoices,
   readAutonomyPolicyFromConfig,
@@ -102,5 +103,23 @@ describe("autonomy policy — explicit choices (#153)", () => {
     expect(snapshot.rendered_policy).toContain(
       "Follow-up issue authority: may propose follow-up issues for manager/project-owner approval.",
     );
+  });
+
+  test("snapshot rejects rendered policy text that contradicts structured policy", () => {
+    const parsed = autonomyPolicySnapshotSchema.safeParse({
+      schema_version: 1,
+      policy: DEFAULT_AUTONOMY_POLICY,
+      rendered_policy: renderAutonomyPolicyPromptBlock({
+        merge_authority: "can_merge_after_gates",
+        work_scope: "full_dev_sprint",
+        follow_up_issue_authority: "can_create",
+        review_authority: "request_review_only",
+      }),
+      recorded_at: "2026-05-08T12:00:00.000Z",
+      source: "api",
+    });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.issues[0]?.path).toEqual(["rendered_policy"]);
   });
 });

@@ -94,8 +94,8 @@ export const AskInputSchema = z.object({
   slug: z.string().optional(),
   /**
    * #153: implementation-run autonomy policy snapshot. When present,
-   * prompt builders render `rendered_policy` verbatim so issue/PR agent
-   * prompts carry the chosen authority limits.
+   * prompt builders validate the persisted snapshot and render policy text
+   * derived from the structured authority limits.
    */
   autonomy_policy: autonomyPolicySnapshotSchema.optional(),
 });

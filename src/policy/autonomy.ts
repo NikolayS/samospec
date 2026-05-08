@@ -51,7 +51,17 @@ export const autonomyPolicySnapshotSchema = z
     recorded_at: isoTimestampSchema,
     source: z.enum(["config", "cli", "api"]),
   })
-  .strict();
+  .strict()
+  .superRefine((snapshot, ctx) => {
+    const expected = renderAutonomyPolicyPromptBlock(snapshot.policy);
+    if (snapshot.rendered_policy !== expected) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "must match rendered autonomy policy derived from policy",
+        path: ["rendered_policy"],
+      });
+    }
+  });
 export type AutonomyPolicySnapshot = z.infer<
   typeof autonomyPolicySnapshotSchema
 >;
@@ -190,7 +200,7 @@ export function renderAutonomyPolicySnapshotPromptBlock(
 ): string {
   if (snapshot === undefined) return "";
   const parsed = autonomyPolicySnapshotSchema.parse(snapshot);
-  return `\n\n${parsed.rendered_policy}\n`;
+  return `\n\n${renderAutonomyPolicyPromptBlock(parsed.policy)}\n`;
 }
 
 function parseChoice<const T extends string>(
