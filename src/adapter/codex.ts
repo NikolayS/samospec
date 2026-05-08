@@ -49,6 +49,7 @@ import {
   type SpawnCliResult,
 } from "./spawn.ts";
 import { computeAttemptTimeouts } from "./timeout.ts";
+import { renderAutonomyPolicySnapshotPromptBlock } from "../policy/autonomy.ts";
 
 // Internal fail reason covering the Codex fallback sentinel plus the
 // standard failure classes. The adapter-level CodexAdapterError
@@ -639,11 +640,15 @@ export class CodexAdapter implements Adapter {
 
 function buildAskPrompt(input: AskInput): string {
   const ctx = input.context === "" ? "" : `\n\nContext:\n${input.context}\n`;
+  const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
+    input.autonomy_policy,
+  );
   return (
     "You are the samospec Reviewer A (Codex). Respond ONLY with a JSON " +
     'object matching the schema { "answer": string, "usage": null, ' +
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code ` +
     "fences." +
+    autonomyBlock +
     ctx +
     `\n\nQuestion:\n${input.prompt}\n`
   );
@@ -653,6 +658,9 @@ function buildCritiquePrompt(input: CritiqueInput): string {
   // Persona prefix + taxonomy weighting (SPEC §7 Model roles).
   // Advisory, not a hard filter — reviewer may still surface other
   // categories.
+  const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
+    input.autonomy_policy,
+  );
   return (
     `${CODEX_CRITIQUE_PERSONA_PREFIX}\n\n` +
     "You are the samospec reviewer. Return ONLY a JSON object matching " +
@@ -660,6 +668,7 @@ function buildCritiquePrompt(input: CritiqueInput): string {
     'string, "text": string, "severity": "major"|"minor" }>, "summary":' +
     ' string, "suggested_next_version": string, "usage": null, ' +
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code fences.` +
+    autonomyBlock +
     `\n\nGuidelines:\n${input.guidelines}\n\nSpec:\n${input.spec}\n`
   );
 }
@@ -667,13 +676,18 @@ function buildCritiquePrompt(input: CritiqueInput): string {
 function buildRevisePrompt(input: ReviseInput): string {
   // Reviewer seats rarely call revise(); the method is exposed for
   // adapter-contract parity with the lead seat.
+  const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
+    input.autonomy_policy,
+  );
   return (
     "You are the samospec reviewer operating in revise mode. Emit the " +
     "FULL revised SPEC.md text — not a patch. Return ONLY a JSON " +
     'object: { "spec": <full text>, "ready": boolean, "rationale": ' +
     'string, "usage": null, ' +
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code ` +
-    `fences.\n\nCurrent spec:\n${input.spec}\n\nReviews (JSON):\n` +
+    "fences." +
+    autonomyBlock +
+    `\n\nCurrent spec:\n${input.spec}\n\nReviews (JSON):\n` +
     `${JSON.stringify(input.reviews)}\n\nDecisions so far (JSON):\n` +
     `${JSON.stringify(input.decisions_history)}\n`
   );

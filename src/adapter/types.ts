@@ -2,6 +2,8 @@
 
 import { z } from "zod";
 
+import { autonomyPolicySnapshotSchema } from "../policy/autonomy.ts";
+
 // SPEC §7: adapter contract. Effort ladder per SPEC §11.
 export const EffortLevelSchema = z.enum([
   "max",
@@ -90,6 +92,12 @@ export const AskInputSchema = z.object({
    * a non-semantic identifier.
    */
   slug: z.string().optional(),
+  /**
+   * #153: implementation-run autonomy policy snapshot. When present,
+   * prompt builders render `rendered_policy` verbatim so issue/PR agent
+   * prompts carry the chosen authority limits.
+   */
+  autonomy_policy: autonomyPolicySnapshotSchema.optional(),
 });
 export type AskInput = z.infer<typeof AskInputSchema>;
 
@@ -134,6 +142,7 @@ export const CritiqueInputSchema = z.object({
    * contradiction findings when the spec reintroduces a disclaimed class.
    */
   idea: z.string().optional(),
+  autonomy_policy: autonomyPolicySnapshotSchema.optional(),
 });
 export type CritiqueInput = z.infer<typeof CritiqueInputSchema>;
 
@@ -187,6 +196,7 @@ export const ReviseInputSchema = z.object({
    * #85: filesystem-safe slug (non-authoritative identifier only).
    */
   slug: z.string().optional(),
+  autonomy_policy: autonomyPolicySnapshotSchema.optional(),
 });
 export type ReviseInput = z.infer<typeof ReviseInputSchema>;
 

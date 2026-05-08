@@ -22,6 +22,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
+import {
+  DEFAULT_AUTONOMY_POLICY,
+  type AutonomyPolicy,
+} from "../policy/autonomy.ts";
+
 export const CONFIG_SCHEMA_VERSION = 1 as const;
 
 export interface LeadAdapterDefaults {
@@ -95,6 +100,7 @@ export interface DefaultConfig {
   readonly context: ContextDefaults;
   readonly convergence: ConvergenceDefaults;
   readonly publish_lint: PublishLintDefaults;
+  readonly autonomy_policy: AutonomyPolicy;
 }
 
 /**
@@ -149,6 +155,7 @@ export const DEFAULT_CONFIG: DefaultConfig = {
   publish_lint: {
     allowed_commands: [],
   },
+  autonomy_policy: DEFAULT_AUTONOMY_POLICY,
 };
 
 const GITIGNORE_BODY = [

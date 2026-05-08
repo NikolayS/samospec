@@ -36,6 +36,7 @@ import {
   type SpawnCliResult,
 } from "./spawn.ts";
 import { runWithCappedRetry, type AttemptResult } from "./timeout.ts";
+import { renderAutonomyPolicySnapshotPromptBlock } from "../policy/autonomy.ts";
 import {
   type Adapter,
   type AskInput,
@@ -649,23 +650,31 @@ export function buildAskPrompt(input: AskInput): string {
   if (typeof input.slug === "string" && input.slug.length > 0)
     ideaOpts.slug = input.slug;
   const ideaBlock = buildIdeaPrecedenceBlock(ideaOpts);
+  const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
+    input.autonomy_policy,
+  );
   return (
     "You are the samospec lead. Respond ONLY with a JSON object matching " +
     'the schema { "answer": string, "usage": null, "effort_used": ' +
     `"${input.opts.effort}" }. Do not wrap in code fences.` +
     ideaBlock +
+    autonomyBlock +
     ctx +
     `\n\nQuestion:\n${input.prompt}\n`
   );
 }
 
 export function buildCritiquePrompt(input: CritiqueInput): string {
+  const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
+    input.autonomy_policy,
+  );
   return (
     "You are the samospec reviewer. Return ONLY a JSON object matching " +
     'the review-taxonomy schema: { "findings": Array<{ "category": ' +
     'string, "text": string, "severity": "major"|"minor" }>, "summary":' +
     ' string, "suggested_next_version": string, "usage": null, ' +
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code fences.` +
+    autonomyBlock +
     `\n\nGuidelines:\n${input.guidelines}\n\nSpec:\n${input.spec}\n`
   );
 }
@@ -678,6 +687,9 @@ export function buildRevisePrompt(input: ReviseInput): string {
   if (typeof input.slug === "string" && input.slug.length > 0)
     reviseIdeaOpts.slug = input.slug;
   const ideaBlock = buildIdeaPrecedenceBlock(reviseIdeaOpts);
+  const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
+    input.autonomy_policy,
+  );
   return (
     "You are the samospec lead. Emit the FULL revised SPEC.md text — " +
     'not a patch. Return ONLY a JSON object: { "spec": <full text>, ' +
@@ -691,6 +703,7 @@ export function buildRevisePrompt(input: ReviseInput): string {
     "Verdict options: accepted (applied to the spec), rejected " +
     "(did not apply, with reason), deferred (punted to a later version)." +
     ideaBlock +
+    autonomyBlock +
     baselineSections +
     `\n\nCurrent spec:\n${input.spec}\n\nReviews (JSON):\n` +
     `${JSON.stringify(input.reviews)}\n\nDecisions so far (JSON):\n` +
