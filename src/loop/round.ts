@@ -793,13 +793,15 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
  * the inner `ReviseTimeoutError` fires strictly BEFORE the outer
  * `SessionWallClockError`, preserving the diagnostic distinction.
  *
- * The margin must exceed CI scheduler jitter, otherwise the post-merge
- * iterate test for #92 REV flakes (observed ~766ms overrun on
- * ubuntu-latest in run 25085910538). 500ms gives 5x headroom over the
- * worst sample we've seen and is still negligible vs typical session
- * budgets measured in minutes.
+ * The margin must exceed CI scheduler jitter and leave enough room for
+ * the required whole-round retry after a first revise timeout. Smaller
+ * margins let the first timeout consume almost all of a tiny injected
+ * session budget, after which the sibling session-deadline wrapper can
+ * win the race and classify the same hang as `wall_clock`. 2s remains
+ * negligible vs typical user session budgets measured in minutes, while
+ * keeping the regression test stable under Ubuntu coverage jitter.
  */
-const CLAMP_SAFETY_MARGIN_MS = 500 as const;
+const CLAMP_SAFETY_MARGIN_MS = 2_000 as const;
 
 function resolveEffectiveReviseTimeout(
   configured: number,
