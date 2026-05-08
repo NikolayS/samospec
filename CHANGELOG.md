@@ -9,6 +9,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [0.8.0] - 2026-05-08
+
+### Added
+
+- **Implementation-stage first sprint planning (#152).**
+  Added a planner that extracts the accepted spec's team and Sprint 1
+  tasks, builds deterministic GitHub issue titles/bodies, supports
+  dry-run output, and uses duplicate-resistant issue markers through an
+  injectable GitHub issue adapter.
+
+- **Implementation autonomy policy model (#153).**
+  Added conservative defaults, explicit policy parsing, auditable
+  implementation-run snapshots, and prompt rendering for merge
+  authority, work scope, follow-up issue authority, and review
+  authority. Snapshot rendering is validated against the structured
+  policy so prompt authority cannot be silently widened.
+
+- **PR lifecycle gate model (#155).**
+  Added lifecycle evaluation for GitHub CI, REV status, blocking review
+  findings, required testing evidence, and merge/release policy.
+
+### Changed
+
+- Lead and reviewer prompts can now carry the selected implementation
+  autonomy policy so downstream implementation agents receive the
+  manager's operating constraints.
+
 ## [0.7.1] - 2026-05-07
 
 ### Fixed
