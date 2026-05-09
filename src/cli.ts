@@ -173,7 +173,19 @@ const USAGE =
   "  --no-nojekyll\n" +
   "      Skip creating the repo-root `.nojekyll` marker file. By\n" +
   "      default `samospec brief` creates it (idempotently) so committed\n" +
-  "      briefs render on GitHub Pages without a Jekyll round-trip.\n";
+  "      briefs render on GitHub Pages without a Jekyll round-trip.\n" +
+  "  --ai\n" +
+  "      Generate a rich HTML brief via the lead AI adapter (with a\n" +
+  "      cross-vendor verifier pass) instead of the heuristic renderer.\n" +
+  "      Produces SVG architecture diagrams (synthesized from\n" +
+  "      architecture.json), scope tables, decision matrices, mobile-\n" +
+  "      responsive layout. Result is cached in `.samo/cache/brief/`\n" +
+  "      keyed by spec hash; re-runs return cached HTML for free.\n" +
+  "  --no-cache\n" +
+  "      With `--ai`: force fresh generation, ignore the cache.\n" +
+  "  --no-verify\n" +
+  "      With `--ai`: skip the verifier pass. Faster but the brief may\n" +
+  "      contain claims that don't trace back to SPEC.md.\n";
 
 /**
  * Default adapter bindings for `samospec doctor`. Uses the real
@@ -1378,17 +1390,35 @@ interface BriefArgs {
   readonly slug: string;
   readonly out: string | undefined;
   readonly noNojekyll: boolean;
+  readonly ai: boolean;
+  readonly noCache: boolean;
+  readonly noVerify: boolean;
 }
 
 function parseBriefArgs(argv: readonly string[]): BriefArgs | string {
   let slug: string | null = null;
   let out: string | undefined;
   let noNojekyll = false;
+  let ai = false;
+  let noCache = false;
+  let noVerify = false;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) continue;
     if (t === "--no-nojekyll") {
       noNojekyll = true;
+      continue;
+    }
+    if (t === "--ai") {
+      ai = true;
+      continue;
+    }
+    if (t === "--no-cache") {
+      noCache = true;
+      continue;
+    }
+    if (t === "--no-verify") {
+      noVerify = true;
       continue;
     }
     if (t === "--out") {
@@ -1414,20 +1444,31 @@ function parseBriefArgs(argv: readonly string[]): BriefArgs | string {
   if (slug === null || slug.length === 0) {
     return "samospec brief: missing <slug>";
   }
-  return { slug, out, noNojekyll };
+  return { slug, out, noNojekyll, ai, noCache, noVerify };
 }
 
-// eslint-disable-next-line @typescript-eslint/require-await
 async function runBriefCommand(rest: readonly string[]) {
   const parsed = parseBriefArgs(rest);
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
+  // AI mode: instantiate real adapters here so the CLI seam stays
+  // injectable (tests pass fakes via runBrief directly).
+  const aiAdapters = parsed.ai
+    ? {
+        leadAdapter: new ClaudeAdapter(),
+        verifierAdapter: parsed.noVerify ? null : new CodexAdapter(),
+      }
+    : {};
   return runBrief({
     cwd: process.cwd(),
     slug: parsed.slug,
     now: new Date().toISOString(),
     ...(parsed.out !== undefined ? { out: parsed.out } : {}),
     ...(parsed.noNojekyll ? { noNojekyll: true } : {}),
+    ...(parsed.ai ? { ai: true } : {}),
+    ...(parsed.noCache ? { noCache: true } : {}),
+    ...(parsed.noVerify ? { noVerify: true } : {}),
+    ...aiAdapters,
   });
 }

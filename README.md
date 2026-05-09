@@ -148,6 +148,9 @@ Useful flags:
 - `samospec iterate --on-dirty <incorporate|overwrite|abort>` — non-interactive answer for the uncommitted-edits prompt.
 - `samospec brief <slug> --out docs/<slug>/index.html` — write the brief into your static-site host's expected location instead of the default `blueprints/<slug>/BRIEF.html`.
 - `samospec brief <slug> --no-nojekyll` — skip creating the repo-root `.nojekyll` marker (default: created idempotently for GitHub Pages compatibility).
+- `samospec brief <slug> --ai` — generate a **rich** HTML brief via the lead AI adapter with a cross-vendor verifier pass. Produces SVG architecture diagrams (synthesized from `architecture.json`), scope tables, decision matrices, mobile-responsive layout (per [Thariq's "unreasonable effectiveness of HTML"](https://x.com/trq212/status/2052809885763747935)). Cached in `.samo/cache/brief/` keyed by spec hash; re-runs return the cached HTML for free.
+- `samospec brief <slug> --ai --no-cache` — force a fresh AI generation even when a cache hit exists.
+- `samospec brief <slug> --ai --no-verify` — skip the verifier pass. Faster but the brief may contain claims that don't trace back to `SPEC.md`.
 
 ---
 

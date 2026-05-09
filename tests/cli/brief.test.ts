@@ -132,64 +132,64 @@ function seedSpec(
 }
 
 describe("samospec brief — preconditions", () => {
-  test("refuses with exit 1 and a clear message when slug is missing", () => {
-    const r = runBrief({ cwd: tmp, slug: "", now: NOW });
+  test("refuses with exit 1 and a clear message when slug is missing", async () => {
+    const r = await runBrief({ cwd: tmp, slug: "", now: NOW });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("missing <slug>");
   });
 
-  test("refuses when no spec exists for the slug, suggests `samospec new`", () => {
-    const r = runBrief({ cwd: tmp, slug: "ghost", now: NOW });
+  test("refuses when no spec exists for the slug, suggests `samospec new`", async () => {
+    const r = await runBrief({ cwd: tmp, slug: "ghost", now: NOW });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("no spec found for slug 'ghost'");
     expect(r.stderr).toContain("samospec new ghost");
   });
 
-  test("refuses when the spec is not yet published, suggests `samospec publish`", () => {
+  test("refuses when the spec is not yet published, suggests `samospec publish`", async () => {
     seedSpec(tmp, "alpha", { published: false });
-    const r = runBrief({ cwd: tmp, slug: "alpha", now: NOW });
+    const r = await runBrief({ cwd: tmp, slug: "alpha", now: NOW });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("not yet published");
     expect(r.stderr).toContain("samospec publish alpha");
   });
 
-  test("refuses when state.json is malformed JSON", () => {
+  test("refuses when state.json is malformed JSON", async () => {
     const slugDir = path.join(tmp, ".samo", "spec", "broken");
     mkdirSync(slugDir, { recursive: true });
     writeFileSync(path.join(slugDir, "state.json"), "{ not json", "utf8");
-    const r = runBrief({ cwd: tmp, slug: "broken", now: NOW });
+    const r = await runBrief({ cwd: tmp, slug: "broken", now: NOW });
     expect(r.exitCode).toBe(1);
     // Concrete error text — a future regression that returned exit 1
     // with an unrelated message would otherwise pass this test.
     expect(r.stderr).toMatch(/cannot read state\.json|malformed/i);
   });
 
-  test("refuses when slug contains invalid characters", () => {
-    const r = runBrief({ cwd: tmp, slug: "../etc/passwd", now: NOW });
+  test("refuses when slug contains invalid characters", async () => {
+    const r = await runBrief({ cwd: tmp, slug: "../etc/passwd", now: NOW });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("invalid");
     expect(r.stderr).toContain("lowercase letters, digits");
   });
 
-  test("refuses uppercase + space slugs", () => {
-    const r = runBrief({ cwd: tmp, slug: "My Spec", now: NOW });
+  test("refuses uppercase + space slugs", async () => {
+    const r = await runBrief({ cwd: tmp, slug: "My Spec", now: NOW });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("invalid");
   });
 
-  test("refuses when published spec is missing from blueprints dir", () => {
+  test("refuses when published spec is missing from blueprints dir", async () => {
     seedSpec(tmp, "alpha");
     rmSync(path.join(tmp, "blueprints", "alpha", "SPEC.md"));
-    const r = runBrief({ cwd: tmp, slug: "alpha", now: NOW });
+    const r = await runBrief({ cwd: tmp, slug: "alpha", now: NOW });
     expect(r.exitCode).toBe(1);
     expect(r.stderr).toContain("published SPEC.md missing");
   });
 });
 
 describe("samospec brief — happy path", () => {
-  test("writes BRIEF.html next to the published SPEC.md by default", () => {
+  test("writes BRIEF.html next to the published SPEC.md by default", async () => {
     seedSpec(tmp, "alpha");
-    const r = runBrief({ cwd: tmp, slug: "alpha", now: NOW });
+    const r = await runBrief({ cwd: tmp, slug: "alpha", now: NOW });
     expect(r.exitCode).toBe(0);
     const briefPath = path.join(tmp, "blueprints", "alpha", "BRIEF.html");
     expect(existsSync(briefPath)).toBe(true);
@@ -199,9 +199,9 @@ describe("samospec brief — happy path", () => {
     expect(html).toContain("Make alpha customers happier");
   });
 
-  test("stdout reports the relative output path and a commit hint", () => {
+  test("stdout reports the relative output path and a commit hint", async () => {
     seedSpec(tmp, "alpha");
-    const r = runBrief({ cwd: tmp, slug: "alpha", now: NOW });
+    const r = await runBrief({ cwd: tmp, slug: "alpha", now: NOW });
     expect(r.stdout).toContain(
       `wrote ${path.join("blueprints", "alpha", "BRIEF.html")}`,
     );
@@ -209,18 +209,18 @@ describe("samospec brief — happy path", () => {
     expect(r.stdout).toContain("Commit it to publish via Pages");
   });
 
-  test("creates a repo-root `.nojekyll` marker on first run", () => {
+  test("creates a repo-root `.nojekyll` marker on first run", async () => {
     seedSpec(tmp, "alpha");
-    const r = runBrief({ cwd: tmp, slug: "alpha", now: NOW });
+    const r = await runBrief({ cwd: tmp, slug: "alpha", now: NOW });
     expect(r.exitCode).toBe(0);
     expect(existsSync(path.join(tmp, ".nojekyll"))).toBe(true);
     expect(r.stdout).toContain(".nojekyll");
   });
 
-  test(".nojekyll creation is idempotent — pre-existing file preserved, no notice", () => {
+  test(".nojekyll creation is idempotent — pre-existing file preserved, no notice", async () => {
     seedSpec(tmp, "alpha");
     writeFileSync(path.join(tmp, ".nojekyll"), "preserved\n", "utf8");
-    const r = runBrief({ cwd: tmp, slug: "alpha", now: NOW });
+    const r = await runBrief({ cwd: tmp, slug: "alpha", now: NOW });
     expect(r.exitCode).toBe(0);
     // Pre-existing content is not overwritten.
     expect(readFileSync(path.join(tmp, ".nojekyll"), "utf8")).toBe(
@@ -234,9 +234,9 @@ describe("samospec brief — happy path", () => {
     expect(r.stdout).not.toContain(".nojekyll && git commit");
   });
 
-  test("--no-nojekyll skips the marker entirely", () => {
+  test("--no-nojekyll skips the marker entirely", async () => {
     seedSpec(tmp, "alpha");
-    const r = runBrief({
+    const r = await runBrief({
       cwd: tmp,
       slug: "alpha",
       now: NOW,
@@ -246,15 +246,15 @@ describe("samospec brief — happy path", () => {
     expect(existsSync(path.join(tmp, ".nojekyll"))).toBe(false);
   });
 
-  test("re-running overwrites the existing brief deterministically", () => {
+  test("re-running overwrites the existing brief deterministically", async () => {
     seedSpec(tmp, "alpha");
-    const a = runBrief({ cwd: tmp, slug: "alpha", now: NOW });
+    const a = await runBrief({ cwd: tmp, slug: "alpha", now: NOW });
     expect(a.exitCode).toBe(0);
     const first = readFileSync(
       path.join(tmp, "blueprints", "alpha", "BRIEF.html"),
       "utf8",
     );
-    const b = runBrief({ cwd: tmp, slug: "alpha", now: NOW });
+    const b = await runBrief({ cwd: tmp, slug: "alpha", now: NOW });
     expect(b.exitCode).toBe(0);
     const second = readFileSync(
       path.join(tmp, "blueprints", "alpha", "BRIEF.html"),
@@ -265,9 +265,9 @@ describe("samospec brief — happy path", () => {
 });
 
 describe("samospec brief — output path overrides", () => {
-  test("--out with a relative path writes there instead of the default", () => {
+  test("--out with a relative path writes there instead of the default", async () => {
     seedSpec(tmp, "alpha");
-    const r = runBrief({
+    const r = await runBrief({
       cwd: tmp,
       slug: "alpha",
       now: NOW,
@@ -283,10 +283,10 @@ describe("samospec brief — output path overrides", () => {
     ).toBe(false);
   });
 
-  test("--out with an absolute path is honored verbatim", () => {
+  test("--out with an absolute path is honored verbatim", async () => {
     seedSpec(tmp, "alpha");
     const target = path.join(tmp, "absolute-out", "alpha.html");
-    const r = runBrief({
+    const r = await runBrief({
       cwd: tmp,
       slug: "alpha",
       now: NOW,
@@ -296,9 +296,9 @@ describe("samospec brief — output path overrides", () => {
     expect(existsSync(target)).toBe(true);
   });
 
-  test("--out creates intermediate directories", () => {
+  test("--out creates intermediate directories", async () => {
     seedSpec(tmp, "alpha");
-    const r = runBrief({
+    const r = await runBrief({
       cwd: tmp,
       slug: "alpha",
       now: NOW,
@@ -312,7 +312,7 @@ describe("samospec brief — output path overrides", () => {
 });
 
 describe("samospec brief — honors paths.blueprints_dir config", () => {
-  test("reads from and writes to the configured blueprints dir", () => {
+  test("reads from and writes to the configured blueprints dir", async () => {
     // Configure a non-default blueprints dir.
     mkdirSync(path.join(tmp, ".samo"), { recursive: true });
     writeFileSync(
@@ -325,7 +325,7 @@ describe("samospec brief — honors paths.blueprints_dir config", () => {
       "utf8",
     );
     seedSpec(tmp, "alpha", { blueprintsDir: "samospec/blueprints" });
-    const r = runBrief({ cwd: tmp, slug: "alpha", now: NOW });
+    const r = await runBrief({ cwd: tmp, slug: "alpha", now: NOW });
     expect(r.exitCode).toBe(0);
     expect(
       existsSync(

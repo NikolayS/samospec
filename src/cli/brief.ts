@@ -40,7 +40,9 @@ import path from "node:path";
 
 import { briefHtmlPath, specSlugDir, blueprintSpecPath } from "../paths.ts";
 import { renderBrief } from "../render/brief.ts";
+import { generateAiBrief } from "../render/brief-ai.ts";
 import { stateSchema, type State } from "../state/types.ts";
+import type { Adapter } from "../adapter/types.ts";
 
 /**
  * Same shape as `src/git/branch.ts` and `src/git/manual-edit.ts`.
@@ -63,6 +65,28 @@ export interface BriefInput {
   readonly out?: string;
   /** When true, do not create/touch the repo-root `.nojekyll` marker. */
   readonly noNojekyll?: boolean;
+  /**
+   * When true, generate a rich HTML brief via the lead AI adapter
+   * (with a verifier pass) instead of the heuristic renderer. The
+   * heuristic mode is the default — it's deterministic, free, and
+   * needs no model call. AI mode delivers SVG diagrams synthesized
+   * from architecture.json, scope tables, decision matrices, and
+   * mobile-responsive layout (per Thariq's "unreasonable
+   * effectiveness of HTML").
+   */
+  readonly ai?: boolean;
+  /** When true and `ai`, force a fresh generation, bypass cache. */
+  readonly noCache?: boolean;
+  /** When true and `ai`, skip the verifier pass (faster, riskier). */
+  readonly noVerify?: boolean;
+  /**
+   * Adapters for AI mode. Tests inject fakes; the CLI dispatch
+   * passes real ClaudeAdapter / CodexAdapter instances.
+   */
+  readonly leadAdapter?: Adapter;
+  readonly verifierAdapter?: Adapter | null;
+  /** AI-mode per-call timeout. Default 240_000 (4 min). */
+  readonly aiTimeoutMs?: number;
 }
 
 export interface BriefResult {
@@ -71,7 +95,7 @@ export interface BriefResult {
   readonly stderr: string;
 }
 
-export function runBrief(input: BriefInput): BriefResult {
+export async function runBrief(input: BriefInput): Promise<BriefResult> {
   const out: string[] = [];
   const err: string[] = [];
 
@@ -89,10 +113,20 @@ export function runBrief(input: BriefInput): BriefResult {
     return finish(1, out, err);
   }
 
+  if (input.ai === true && input.leadAdapter === undefined) {
+    err.push(
+      `samospec brief --ai: no lead adapter configured. ` +
+        `This is a CLI wiring bug — please report.`,
+    );
+    return finish(1, out, err);
+  }
+
   const slugDir = specSlugDir(input.cwd, input.slug);
   const statePath = path.join(slugDir, "state.json");
   const tldrPath = path.join(slugDir, "TLDR.md");
   const changelogPath = path.join(slugDir, "changelog.md");
+  const architecturePath = path.join(slugDir, "architecture.json");
+  const decisionsPath = path.join(slugDir, "decisions.md");
   const blueprintSpec = blueprintSpecPath(input.cwd, input.slug);
 
   if (!existsSync(statePath)) {
@@ -142,14 +176,74 @@ export function runBrief(input: BriefInput): BriefResult {
     ? readFileSync(changelogPath, "utf8")
     : "";
 
-  const html = renderBrief({
-    slug: input.slug,
-    spec,
-    tldr,
-    changelog,
-    state,
-    now: input.now,
-  });
+  let html: string;
+  if (input.ai === true && input.leadAdapter !== undefined) {
+    const architecture = existsSync(architecturePath)
+      ? readFileSync(architecturePath, "utf8")
+      : "{}";
+    const decisions = existsSync(decisionsPath)
+      ? readFileSync(decisionsPath, "utf8")
+      : "";
+    try {
+      const aiResult = await generateAiBrief({
+        slug: input.slug,
+        cwd: input.cwd,
+        spec,
+        architecture,
+        decisions,
+        tldr,
+        publishedVersion: state.published_version ?? "v0.0",
+        publishedAt: state.published_at ?? input.now,
+        lead: input.leadAdapter,
+        verifier:
+          input.noVerify === true ? null : (input.verifierAdapter ?? null),
+        noCache: input.noCache === true,
+        timeoutMs: input.aiTimeoutMs ?? 240_000,
+      });
+      html = aiResult.html;
+      if (aiResult.cached) {
+        out.push(`brief: cache hit — using previously generated HTML.`);
+      } else {
+        out.push(
+          `brief: generated via lead adapter` +
+            (aiResult.verified
+              ? ` (verified across ${String(aiResult.attempts)} attempt${aiResult.attempts === 1 ? "" : "s"})`
+              : ` (verifier skipped)`) +
+            `.`,
+        );
+      }
+      if (aiResult.inventions.length > 0) {
+        err.push(
+          `samospec brief --ai: verifier flagged ${String(aiResult.inventions.length)} ` +
+            `unverified claim(s) in the generated brief — these did not trace ` +
+            `back to SPEC.md after ${String(aiResult.attempts)} attempts:`,
+        );
+        for (const inv of aiResult.inventions) {
+          err.push(`  - claim: ${inv.claim}`);
+          if (inv.spec_says !== "") err.push(`    spec_says: ${inv.spec_says}`);
+        }
+        err.push(
+          `Brief was still written for review. Either edit SPEC.md to ` +
+            `cover the flagged claims, edit the brief by hand, or re-run ` +
+            `with \`--no-cache\` to try again.`,
+        );
+      }
+    } catch (e) {
+      err.push(
+        `samospec brief --ai: generation failed: ${(e as Error).message}`,
+      );
+      return finish(1, out, err);
+    }
+  } else {
+    html = renderBrief({
+      slug: input.slug,
+      spec,
+      tldr,
+      changelog,
+      state,
+      now: input.now,
+    });
+  }
 
   const outPath = resolveOutPath(input);
   mkdirSync(path.dirname(outPath), { recursive: true });

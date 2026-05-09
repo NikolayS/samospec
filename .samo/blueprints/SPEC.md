@@ -503,10 +503,17 @@ samospec resume [<slug>]             # resume last or named spec
 samospec status [<slug>]             # phase, round state, version, next action, running cost
 samospec iterate                     # one round of review + revise
 samospec publish [<slug>] [--no-lint]
-samospec brief <slug> [--out <path>] [--no-nojekyll]
+samospec brief <slug> [--out <path>] [--no-nojekyll] [--ai] [--no-cache] [--no-verify]
                                      # summarized HTML derivative of the
                                      # published spec; writes BRIEF.html into
-                                     # `<blueprints_dir>/<slug>/` by default
+                                     # `<blueprints_dir>/<slug>/` by default.
+                                     # Default: heuristic renderer (fast,
+                                     # deterministic, no model call). With
+                                     # --ai: lead adapter generates a rich
+                                     # HTML brief (SVG diagrams, scope tables,
+                                     # mobile-responsive) with a cross-vendor
+                                     # verifier pass; cached by spec hash in
+                                     # `.samo/cache/brief/`.
 samospec tldr [<slug>]
 samospec doctor
 samospec experts list                # show resolved adapters and their models
