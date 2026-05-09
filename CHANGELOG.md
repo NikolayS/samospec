@@ -7,6 +7,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`samospec brief <slug>` — summarized HTML brief.**
+  Generates a single self-contained `BRIEF.html` from a published spec
+  — a derivative summary, not a 1:1 conversion of `SPEC.md`. Pure
+  heuristic renderer (no model call, deterministic, regenerable). Pulls
+  the title, goal paragraph, section index with one-sentence summaries,
+  round timeline (parsed from `changelog.md`), and adapter / persona /
+  exit-reason metadata from `state.json`. Embedded CSS, mobile-
+  responsive, dark-mode aware, no external fonts or scripts —
+  Pages-friendly out of the box.
+- **`samospec brief --out <path>`** to write the brief anywhere
+  (`docs/<slug>/index.html`, `public/<slug>/index.html`, etc.).
+- **Idempotent `.nojekyll`** marker at the repo root so committed
+  briefs render on GitHub Pages without a Jekyll round-trip.
+  `--no-nojekyll` opts out.
+- **`paths` section in `.samo/config.json`** with `spec_dir` and
+  `blueprints_dir` keys. Both repo-relative; absolute paths and
+  `..`-escapes are rejected. Defaults preserve current behavior
+  (`.samo/spec`, `blueprints`); a forthcoming release will flip these
+  to `samospec/spec` and `samospec/blueprints` (configuration is the
+  opt-out).
+- New `src/paths.ts` config-aware path resolver underpins the brief
+  command and prepares for the upcoming dir rename.
+
 ---
 
 ## [0.8.0] - 2026-05-08
