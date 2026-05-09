@@ -351,6 +351,17 @@ function formatAdapter(
 
 // ---------- HTML assembly ----------
 
+/** Stable URL fragment from a section heading. */
+function slugifyId(heading: string): string {
+  return (
+    "s-" +
+    heading
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+  );
+}
+
 function renderHead(title: string, version: string): string {
   const titleAttr =
     version === "" ? `Brief — ${title}` : `Brief — ${title} (${version})`;
@@ -382,17 +393,69 @@ interface RenderBodyArgs {
 function renderBody(args: RenderBodyArgs): string {
   return [
     `<body>`,
+    `<div class="progress" aria-hidden="true"><i id="pb"></i></div>`,
+    renderMetabar(args),
     `<main class="brief">`,
     renderHero(args),
     args.coupledFallback ? renderFallbackBanner() : "",
+    renderToc(args.sections),
     renderGoal(args.goal),
-    args.sections.map((s) => renderSection(s)).join("\n"),
+    args.sections.map((s, i) => renderSection(s, i + 2)).join("\n"),
     renderProvenance(args),
     `</main>`,
+    `<script>${BRIEF_JS}</script>`,
     `</body>`,
   ]
     .filter((s) => s !== "")
     .join("\n");
+}
+
+function renderMetabar(args: RenderBodyArgs): string {
+  const dateSlice =
+    args.publishedAt === "—"
+      ? args.now.slice(0, 10)
+      : args.publishedAt.slice(0, 10);
+  return [
+    `<header class="metabar">`,
+    `<div class="metabar-row">`,
+    `<div class="metabar-left">`,
+    `<span class="brand">${escapeHtml(args.slug)}</span>`,
+    `<span class="chip">v<b>${escapeHtml(args.publishedVersion)}</b></span>`,
+    `<span class="chip">${escapeHtml(dateSlice)}</span>`,
+    `</div>`,
+    `<div class="metabar-right">`,
+    `<span class="status">brief</span>`,
+    `<span class="theme-sw" role="group" aria-label="Theme">`,
+    `<button data-v="light" title="Light">&#9728;</button>`,
+    `<button data-v="dark" title="Dark">&#9790;</button>`,
+    `<button data-v="auto" title="System" class="active">&#9680;</button>`,
+    `</span>`,
+    `</div>`,
+    `</div>`,
+    `</header>`,
+  ].join("\n");
+}
+
+function renderToc(sections: readonly SectionBlock[]): string {
+  const entries: string[] = [
+    `<li><a href="#s-goal"><span class="num">01</span><span>Goal</span></a></li>`,
+  ];
+  sections.forEach((s, i) => {
+    const num = String(i + 2).padStart(2, "0");
+    const id = slugifyId(s.heading);
+    entries.push(
+      `<li><a href="#${id}"><span class="num">${num}</span>` +
+        `<span>${escapeHtml(s.heading)}</span></a></li>`,
+    );
+  });
+  return [
+    `<nav class="brief-toc">`,
+    `<div class="brief-toc-title">In this brief</div>`,
+    `<ol>`,
+    entries.join("\n"),
+    `</ol>`,
+    `</nav>`,
+  ].join("\n");
 }
 
 function renderHero(args: RenderBodyArgs): string {
@@ -417,25 +480,27 @@ function renderHero(args: RenderBodyArgs): string {
 
 function renderFallbackBanner(): string {
   return (
-    `<p class="brief-fallback" role="note">⚠️ Coupled fallback recorded — ` +
+    `<p class="brief-fallback" role="note">Coupled fallback recorded — ` +
     `one or more reviewer adapters ran below policy. See SPEC §11.</p>`
   );
 }
 
 function renderGoal(goal: string): string {
   return [
-    `<section class="brief-goal">`,
-    `<h2>Goal</h2>`,
+    `<section class="brief-goal" id="s-goal">`,
+    `<h2><span class="n">01</span><span>Goal</span></h2>`,
     `<p>${escapeAndInline(goal)}</p>`,
     `</section>`,
   ].join("\n");
 }
 
-function renderSection(s: SectionBlock): string {
+function renderSection(s: SectionBlock, num: number): string {
   const kindClass = `brief-section-${s.kind}`;
+  const id = slugifyId(s.heading);
+  const numStr = String(num).padStart(2, "0");
   const parts: string[] = [
-    `<section class="brief-section ${kindClass}">`,
-    `<h2>${escapeHtml(s.heading)}</h2>`,
+    `<section class="brief-section ${kindClass}" id="${id}">`,
+    `<h2><span class="n">${numStr}</span><span>${escapeHtml(s.heading)}</span></h2>`,
   ];
   for (const p of s.paragraphs) parts.push(`<p>${escapeAndInline(p)}</p>`);
   if (s.bullets.length > 0)
@@ -560,95 +625,255 @@ function escapeAndInline(s: string): string {
 
 // Embedded CSS keeps BRIEF.html portable: opening it from a file://
 // URL on a colleague's laptop must produce the same render as a
-// Pages deploy. No external fonts (offline reading), no JS (single
-// static artifact), system font stack.
+// Pages deploy. No external fonts (offline reading), system mono stack.
 const BRIEF_CSS = `
 :root {
-  --bg: #fdfdfc; --fg: #1a1a1a; --muted: #5a5a5a; --accent: #2547a3;
-  --card-bg: #f4f3ef; --rule: #d8d6d1;
-  --warn-bg: #fff4d4; --warn-fg: #4a3500;
-  --risk-bg: #fdecea; --risk-fg: #6a1f15;
-  --open-bg: #ecf0fb; --open-fg: #1d3a82;
-  --scope-out-bg: #f3eef6; --scope-out-fg: #4a2a63;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0; background: var(--bg); color: var(--fg);
-  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-}
-.brief { max-width: 820px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
-.brief-kicker {
-  text-transform: uppercase; letter-spacing: 0.08em;
-  font-size: 0.78rem; color: var(--muted); margin: 0 0 0.4rem;
-}
-.brief-title { font-size: 2.1rem; line-height: 1.15; margin: 0 0 0.6rem; }
-.brief-subtitle { color: var(--muted); margin: 0 0 1.2rem; }
-.brief-subtitle code {
-  background: var(--card-bg); padding: 0.05em 0.35em; border-radius: 3px;
-}
-.brief-warning {
-  background: var(--card-bg); border-left: 3px solid var(--accent);
-  padding: 0.7rem 0.95rem; margin: 0 0 1.5rem; font-size: 0.92rem;
-}
-.brief-fallback {
-  background: var(--warn-bg); color: var(--warn-fg);
-  border: 1px solid #e3c878; border-radius: 4px;
-  padding: 0.7rem 0.95rem; margin: 0 0 1.5rem; font-size: 0.92rem;
-}
-.brief-section, .brief-goal {
-  margin: 2rem 0;
-  padding-top: 1.2rem;
-  border-top: 1px solid var(--rule);
-}
-.brief-section h2, .brief-goal h2 {
-  font-size: 1.35rem; margin: 0 0 0.6rem;
-}
-.brief-section p, .brief-goal p { margin: 0 0 0.7rem; }
-.brief-section ul { margin: 0 0 0.8rem; padding-left: 1.4rem; }
-.brief-section ul li { margin: 0 0 0.25rem; }
-.brief-section .brief-more { color: var(--muted); list-style: none; margin-left: -1.4rem; }
-.brief-section pre {
-  background: #f6f4ee; border: 1px solid var(--rule);
-  border-radius: 4px; padding: 0.75rem 0.9rem;
-  overflow-x: auto; font-size: 0.88rem; line-height: 1.4;
-  margin: 0 0 0.8rem;
-}
-.brief-section pre code { background: none; padding: 0; }
-.brief-subsections { margin: 0.5rem 0 0.8rem; font-size: 0.95rem; }
-.brief-subsections > summary { cursor: pointer; color: var(--muted); }
-.brief-subsections ol { margin: 0.4rem 0 0; padding-left: 1.4rem; }
-.brief-section-scope-out { background: var(--scope-out-bg); color: var(--scope-out-fg); padding: 0.9rem 1rem; border-radius: 4px; border-top: none; }
-.brief-section-risks { background: var(--risk-bg); color: var(--risk-fg); padding: 0.9rem 1rem; border-radius: 4px; border-top: none; }
-.brief-section-open-questions { background: var(--open-bg); color: var(--open-fg); padding: 0.9rem 1rem; border-radius: 4px; border-top: none; }
-.brief-section-scope-out h2::before { content: "Out of scope · "; opacity: 0.7; }
-.brief-section-scope-out h2 { display: none; }
-.brief-section-scope-out::before {
-  content: "Out of scope"; display: block; font-weight: 600; font-size: 1.35rem; margin-bottom: 0.5rem;
-}
-.brief-empty { color: var(--muted); font-style: italic; }
-.brief-provenance {
-  margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--rule);
-  color: var(--muted); font-size: 0.84rem;
-}
-.brief-provenance p { margin: 0 0 0.4rem; }
-a { color: var(--accent); }
-code {
-  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.92em;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs: 15px; --lh: 1.5rem; --measure: 88ch;
+  --paper: #faf7f0; --paper-2: #f3efe4; --paper-3: #ebe6d6;
+  --ink: #1a1714; --ink-2: #4a443c; --ink-3: #847b6a;
+  --rule: #d8d0bc; --rule-2: #c2b89e;
+  --grid: rgba(26,23,20,0.045);
+  --accent: #1f6f3f; --accent-soft: #e6f0e0;
+  --ok: #1f6f3f; --ok-bg: #e6f0e0;
+  --warn: #a85a07; --warn-bg: #f5e8d0;
+  --bad: #9b2226; --bad-bg: #f3dfdc;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #15171c; --fg: #e6e6e6; --muted: #9a9a9a; --accent: #8ab4ff;
-    --card-bg: #21242b; --rule: #2c2f37;
-    --warn-bg: #3a3215; --warn-fg: #ffe49a;
-    --risk-bg: #3a1f1a; --risk-fg: #ffb1a4;
-    --open-bg: #1f2a4a; --open-fg: #b8c8ff;
-    --scope-out-bg: #2c1f3a; --scope-out-fg: #d2b8ee;
+    --paper: #14110d; --paper-2: #1c1814; --paper-3: #25201a;
+    --ink: #ece4d3; --ink-2: #b9b0a0; --ink-3: #7a7263;
+    --rule: #2f2a23; --rule-2: #423c33;
+    --grid: rgba(236,228,211,0.04);
+    --accent: #6fcf8a; --accent-soft: #1d2c20;
+    --ok: #6fcf8a; --ok-bg: #1d2c20;
+    --warn: #e0a14a; --warn-bg: #2c2317;
+    --bad: #e07a7d; --bad-bg: #2a1c1c;
   }
-  .brief-section pre { background: #1c1f25; }
 }
+[data-theme="dark"] {
+  --paper: #14110d; --paper-2: #1c1814; --paper-3: #25201a;
+  --ink: #ece4d3; --ink-2: #b9b0a0; --ink-3: #7a7263;
+  --rule: #2f2a23; --rule-2: #423c33;
+  --grid: rgba(236,228,211,0.04);
+  --accent: #6fcf8a; --accent-soft: #1d2c20;
+  --ok: #6fcf8a; --ok-bg: #1d2c20;
+  --warn: #e0a14a; --warn-bg: #2c2317;
+  --bad: #e07a7d; --bad-bg: #2a1c1c;
+}
+[data-theme="light"] {
+  --paper: #faf7f0; --paper-2: #f3efe4; --paper-3: #ebe6d6;
+  --ink: #1a1714; --ink-2: #4a443c; --ink-3: #847b6a;
+  --rule: #d8d0bc; --rule-2: #c2b89e;
+  --grid: rgba(26,23,20,0.045);
+  --accent: #1f6f3f; --accent-soft: #e6f0e0;
+  --ok: #1f6f3f; --ok-bg: #e6f0e0;
+  --warn: #a85a07; --warn-bg: #f5e8d0;
+  --bad: #9b2226; --bad-bg: #f3dfdc;
+}
+*,*::before,*::after { box-sizing: border-box; }
+html,body { margin: 0; padding: 0; }
+body {
+  font-family: var(--mono);
+  font-size: var(--fs); line-height: var(--lh);
+  color: var(--ink); background: var(--paper);
+  text-rendering: optimizeLegibility;
+  background-image: linear-gradient(
+    to bottom,
+    transparent calc(var(--lh) - 1px),
+    var(--grid) calc(var(--lh) - 1px)
+  );
+  background-size: 100% var(--lh);
+}
+::selection { background: var(--accent); color: var(--paper); }
+a { color: var(--ink); text-decoration: underline; text-underline-offset: 0.18em;
+    text-decoration-thickness: 1px; text-decoration-color: var(--rule-2); }
+a:hover { color: var(--accent); text-decoration-color: var(--accent); }
+p,ul,ol,pre,details { margin: 0 0 var(--lh); }
+ul { padding-left: 3ch; list-style: none; }
+ul > li::before { content: "\2500\00a0"; color: var(--ink-3);
+                  margin-left: -3ch; display: inline-block; width: 3ch; }
+ol { padding-left: 3ch; }
+li { margin: 0; }
+strong,b { font-weight: 700; }
+em,i { font-style: normal; color: var(--accent); }
+code,samp {
+  font-family: var(--mono); font-size: 0.92em;
+  background: var(--paper-2); border: 1px solid var(--rule);
+  padding: 0 0.4ch; border-radius: 2px;
+}
+pre code { background: none; border: 0; padding: 0; font-size: 1em; }
+h1,h2,h3 { font-weight: 700; margin: 0 0 var(--lh); line-height: var(--lh); }
+h1 { font-size: 1.8rem; line-height: calc(var(--lh) * 2); }
+h2 { font-size: 1.1rem; }
+h3 { font-size: 1rem; color: var(--ink-2); font-weight: 600; }
+/* reading progress */
+.progress {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px;
+  z-index: 60; background: transparent; pointer-events: none;
+}
+.progress > i { display: block; height: 100%; width: 0%;
+                background: var(--accent); transition: width 80ms linear; }
+/* sticky metabar */
+.metabar {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--paper); border-bottom: 1px solid var(--rule);
+}
+.metabar-row {
+  max-width: var(--measure); margin: 0 auto; padding: 0 2ch;
+  display: flex; align-items: center;
+  height: calc(var(--lh) * 2); font-size: 0.85rem; gap: 2ch;
+}
+.metabar-left { display: flex; align-items: center; flex: 1 1 auto;
+                min-width: 0; white-space: nowrap; overflow: hidden; }
+.metabar-left .brand { font-weight: 700; color: var(--ink); padding-right: 1.5ch; }
+.metabar-left .chip { color: var(--ink-2); padding: 0 1.5ch;
+                      border-left: 1px solid var(--rule); }
+.metabar-left .chip b { color: var(--ink); font-weight: 600; }
+.metabar-right { display: flex; align-items: center; gap: 1.5ch; flex: 0 0 auto; }
+.metabar .status { color: var(--ink-3); white-space: nowrap; }
+.theme-sw { display: inline-flex; border: 1px solid var(--rule-2);
+            border-radius: 3px; overflow: hidden;
+            height: calc(var(--lh) * 1.1); }
+.theme-sw button {
+  background: transparent; border: 0; border-right: 1px solid var(--rule);
+  cursor: pointer; font-family: var(--mono); font-size: 0.95rem;
+  color: var(--ink-3); padding: 0 1.1ch;
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 3ch;
+}
+.theme-sw button:last-child { border-right: 0; }
+.theme-sw button:hover { background: var(--paper-2); color: var(--ink); }
+.theme-sw button.active { background: var(--ink); color: var(--paper); }
+@media (max-width: 600px) {
+  .metabar .status { display: none; }
+  .metabar-left .chip:nth-of-type(2) { display: none; }
+}
+/* page */
+.brief {
+  max-width: var(--measure); margin: 0 auto;
+  padding: calc(var(--lh) * 2) 2ch calc(var(--lh) * 4);
+}
+/* hero */
+.brief-hero {
+  margin-bottom: calc(var(--lh) * 1.5);
+  border-bottom: 1px solid var(--rule); padding-bottom: var(--lh);
+}
+.brief-kicker {
+  font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3); margin: 0 0 0.5rem;
+}
+.brief-title { font-size: 2rem; line-height: calc(var(--lh) * 2);
+               margin: 0 0 calc(var(--lh) * 0.5); }
+.brief-subtitle { color: var(--ink-2); margin: 0 0 var(--lh); font-size: 0.9rem; }
+.brief-subtitle code { font-size: 0.9em; }
+.brief-warning {
+  color: var(--ink-2); border-left: 2px solid var(--accent);
+  padding-left: 1.5ch; margin: var(--lh) 0 0; font-size: 0.92rem;
+}
+.brief-fallback {
+  background: var(--warn-bg); color: var(--warn);
+  border: 1px solid var(--rule-2); border-radius: 2px;
+  padding: calc(var(--lh) * 0.5) 1.5ch;
+  margin: 0 0 var(--lh); font-size: 0.9rem;
+}
+/* table of contents */
+.brief-toc {
+  margin: 0 0 calc(var(--lh) * 1.5);
+  padding: var(--lh) 2ch; border: 1px solid var(--rule);
+  background: var(--paper-2);
+}
+.brief-toc-title {
+  font-size: 0.8rem; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ink-3); margin-bottom: 0.5rem;
+}
+.brief-toc ol {
+  display: grid; grid-template-columns: repeat(auto-fit,minmax(20ch,1fr));
+  gap: 0 2ch; margin: 0; padding-left: 0; list-style: none;
+}
+.brief-toc li::before { content: ""; }
+.brief-toc a {
+  display: flex; gap: 1ch; padding: 2px 1ch;
+  text-decoration: none; color: var(--ink-2);
+  border-left: 2px solid transparent; margin-left: -1ch;
+}
+.brief-toc a .num { color: var(--ink-3); min-width: 3ch; }
+.brief-toc a:hover { color: var(--ink); background: var(--paper-3);
+                     border-left-color: var(--rule-2); }
+/* sections */
+.brief-goal,
+.brief-section {
+  scroll-margin-top: calc(var(--lh) * 3);
+  margin-bottom: calc(var(--lh) * 1.5);
+  border-top: 1px solid var(--rule); padding-top: var(--lh);
+}
+.brief-goal h2,
+.brief-section h2 {
+  display: flex; gap: 1ch; align-items: baseline; margin: 0 0 var(--lh);
+}
+.brief-goal h2 .n,
+.brief-section h2 .n {
+  color: var(--ink-3); font-weight: 500; font-size: 0.88rem;
+  min-width: 3ch; letter-spacing: 0.05em;
+}
+.brief-empty { color: var(--ink-3); font-style: italic; }
+.brief-more { list-style: none; }
+.brief-more::before { content: "" !important; }
+pre {
+  background: var(--paper-2); border: 1px solid var(--rule);
+  border-radius: 2px; padding: var(--lh) 2ch;
+  overflow-x: auto; font-size: 0.88em;
+  line-height: calc(var(--lh) * 0.9); margin: 0 0 var(--lh);
+}
+.brief-subsections { margin: 0 0 var(--lh); }
+.brief-subsections > summary { cursor: pointer; color: var(--ink-3); padding: 0.25rem 0; }
+.brief-subsections ol { margin: 0.5rem 0 0; padding-left: 3ch; }
+/* section kind variants */
+.brief-section-scope-out {
+  background: var(--paper-2); border-top-color: transparent;
+  border-left: 3px solid var(--rule-2);
+  margin-left: -2ch; padding-left: calc(2ch - 3px); border-radius: 2px;
+}
+.brief-section-risks {
+  background: var(--bad-bg); border-top-color: transparent;
+  border-left: 3px solid var(--bad);
+  margin-left: -2ch; padding-left: calc(2ch - 3px); border-radius: 2px;
+}
+.brief-section-risks h2 .n { color: var(--bad); }
+.brief-section-open-questions {
+  background: var(--paper-2); border-top-color: transparent;
+  border-left: 3px solid var(--accent);
+  margin-left: -2ch; padding-left: calc(2ch - 3px); border-radius: 2px;
+}
+.brief-section-open-questions h2 .n { color: var(--accent); }
+/* provenance */
+.brief-provenance {
+  margin-top: calc(var(--lh) * 2); padding-top: var(--lh);
+  border-top: 1px solid var(--rule);
+  color: var(--ink-3); font-size: 0.85rem;
+}
+.brief-provenance p { margin: 0 0 0.5rem; }
+.brief-provenance a { color: var(--ink-2); }
+.brief-provenance code { font-size: 0.9em; }
 @media print {
+  .progress,.metabar { display: none; }
   .brief { max-width: none; padding: 0; }
-  .brief-warning, .brief-fallback, .brief-section { break-inside: avoid; }
+  .brief-goal,.brief-section { break-inside: avoid; }
 }
 `.trim();
+
+// Minimal JS: theme toggle (light/dark/auto) + reading-progress bar.
+// Kept tiny and inline so BRIEF.html remains a single portable artifact.
+const BRIEF_JS = `(function(){
+var r=document.documentElement,bs=document.querySelectorAll('.theme-sw button');
+var s=localStorage.getItem('brief-theme')||'auto';
+function apply(v){r.dataset.theme=v==='auto'?'':v;
+  bs.forEach(function(b){b.classList.toggle('active',b.dataset.v===v);});}
+apply(s);
+bs.forEach(function(b){b.addEventListener('click',function(){
+  var v=b.dataset.v||'auto';localStorage.setItem('brief-theme',v);apply(v);});});
+var bar=document.getElementById('pb');
+if(bar){var upd=function(){var m=document.body.scrollHeight-window.innerHeight;
+  bar.style.width=(m>0?window.scrollY/m*100:0)+'%';};
+  window.addEventListener('scroll',upd,{passive:true});upd();}
+})();`.trim();

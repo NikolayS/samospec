@@ -378,7 +378,11 @@ describe("renderBrief — security / escaping", () => {
     const spec = '# T\n\n## Goal\n\ng\n\n## Notes\n\n```"><script>\nx\n```\n';
     const out = renderBrief(baseInput({ spec }));
     expect(out).not.toContain('data-lang="\\"><script>"');
-    expect(out).not.toContain("<script>");
+    // The malicious fence-language string must not appear unescaped in
+    // any HTML attribute or text — the legitimate BRIEF_JS <script> tag
+    // is intentional and expected, so we check the injection vector
+    // specifically rather than banning all <script> occurrences.
+    expect(out).not.toContain('"><script>');
   });
 });
 
