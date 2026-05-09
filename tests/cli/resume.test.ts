@@ -7,20 +7,40 @@
 // exits 0.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
-import type { Adapter, AskInput, AskOutput } from "../../src/adapter/types.ts";
+import type {
+  Adapter,
+  AskInput,
+  AskOutput,
+  ReviseInput,
+  ReviseOutput,
+} from "../../src/adapter/types.ts";
 import { runInit } from "../../src/cli/init.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { runResume } from "../../src/cli/resume.ts";
-import { readState } from "../../src/state/store.ts";
-import { readInterview } from "../../src/cli/interview.ts";
+import { newState, readState, writeState } from "../../src/state/store.ts";
+import { readInterview, writeInterview } from "../../src/cli/interview.ts";
 
 function askOut(answer: string): AskOutput {
   return { answer, usage: null, effort_used: "max" };
+}
+
+function reviseOut(overrides: Partial<ReviseOutput> = {}): ReviseOutput {
+  return {
+    spec:
+      "# Demo spec\n\n" +
+      "## Goal\n\nAuthor a draft from the stored brief.\n\n" +
+      "## Scope\n\n- Preserve the authoritative idea.\n",
+    ready: false,
+    rationale: "v0.1 draft",
+    usage: null,
+    effort_used: "max",
+    ...overrides,
+  };
 }
 
 function makeLeadAdapter(answers: readonly string[]): {
@@ -198,6 +218,61 @@ describe("samospec resume — interview already complete", () => {
     expect(result.stdout.toLowerCase()).toMatch(
       /samospec iterate|committed|review loop/,
     );
+  });
+
+  test("passes stored idea as authoritative idea when retrying draft", async () => {
+    const slug = "stored-idea-demo";
+    const storedIdea =
+      "Build a compact task planning CLI for release coordinators.";
+    const slugDir = path.join(tmp, ".samo", "spec", slug);
+    mkdirSync(slugDir, { recursive: true });
+
+    writeState(path.join(slugDir, "state.json"), {
+      ...newState({ slug, now: "2026-04-19T10:00:00Z" }),
+      phase: "draft",
+      persona: { skill: "CLI engineer", accepted: true },
+      input: { idea: storedIdea },
+      updated_at: "2026-04-19T10:00:00Z",
+    });
+    writeInterview(path.join(slugDir, "interview.json"), {
+      slug,
+      persona: 'Veteran "CLI engineer" expert',
+      generated_at: "2026-04-19T10:05:00Z",
+      questions: [
+        {
+          id: "audience",
+          text: "Who uses it first?",
+          options: ["release leads", "engineering managers"],
+        },
+      ],
+      answers: [{ id: "audience", choice: "release leads" }],
+    });
+
+    let captured: ReviseInput | null = null;
+    const base = createFakeAdapter({ revise: reviseOut() });
+    const adapter: Adapter = {
+      ...base,
+      revise: (input: ReviseInput): Promise<ReviseOutput> => {
+        captured = input;
+        return Promise.resolve(reviseOut());
+      },
+    };
+
+    const result = await runResume(
+      {
+        cwd: tmp,
+        slug,
+        now: "2026-04-19T11:00:00Z",
+        resolvers: acceptResolver(),
+      },
+      adapter,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(captured).not.toBeNull();
+    expect(captured!.idea).toBe(storedIdea);
+    expect(captured!.spec).toContain(storedIdea);
+    expect(captured!.spec).not.toContain("(resumed)");
   });
 });
 
