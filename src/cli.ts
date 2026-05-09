@@ -34,7 +34,6 @@ import {
 } from "./cli/non-interactive.ts";
 import { runBrief } from "./cli/brief.ts";
 import { runPublish } from "./cli/publish.ts";
-import { autoMigrateLegacyDirs } from "./migrate.ts";
 import {
   PERSONA_FORM_RE,
   extractSkill,
@@ -56,21 +55,6 @@ const VERSION_FLAGS: ReadonlySet<string> = new Set([
   "version",
   "-v",
   "--version",
-]);
-
-/**
- * Subcommands whose normal operation reads or writes the spec or
- * blueprints dirs. The auto-migration helper runs before these and
- * is skipped for everything else (version, init, doctor, unknowns).
- * This keeps `samospec --version` in unrelated repos a pure no-op.
- */
-const MIGRATE_BEFORE: ReadonlySet<string> = new Set([
-  "new",
-  "resume",
-  "iterate",
-  "status",
-  "publish",
-  "brief",
 ]);
 
 /**
@@ -221,19 +205,6 @@ export async function runCli(argv: readonly string[]): Promise<CliResult> {
 
   if (command === undefined) {
     return { exitCode: 1, stdout: "", stderr: USAGE };
-  }
-
-  // Auto-migrate legacy `.samo/spec/` and top-level `blueprints/`
-  // dirs into the resolver's current defaults. Only run for the
-  // commands that actually touch those dirs — `version`, `init`,
-  // `doctor`, and unknown commands MUST NOT mutate the user's repo
-  // layout (footgun once defaults flip and someone runs
-  // `samospec --version` in an unrelated repo that happens to
-  // contain `blueprints/`). No-op when nothing to migrate, when
-  // defaults still match legacy paths, or when the user has pinned
-  // `paths.*` overrides in `.samo/config.json`.
-  if (MIGRATE_BEFORE.has(command)) {
-    autoMigrateLegacyDirs({ cwd: process.cwd() });
   }
 
   if (command === "init") {
