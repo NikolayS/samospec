@@ -34,6 +34,7 @@ import {
 } from "./cli/non-interactive.ts";
 import { runBrief } from "./cli/brief.ts";
 import { runPublish } from "./cli/publish.ts";
+import { autoMigrateLegacyDirs } from "./migrate.ts";
 import {
   PERSONA_FORM_RE,
   extractSkill,
@@ -206,6 +207,13 @@ export async function runCli(argv: readonly string[]): Promise<CliResult> {
   if (command === undefined) {
     return { exitCode: 1, stdout: "", stderr: USAGE };
   }
+
+  // Auto-migrate legacy `.samo/spec/` and top-level `blueprints/`
+  // dirs into the resolver's current defaults. No-op when nothing to
+  // migrate, when defaults still match legacy paths, or when the user
+  // has pinned `paths.*` overrides in `.samo/config.json`. Runs
+  // BEFORE any subcommand so subsequent file I/O sees the new layout.
+  autoMigrateLegacyDirs({ cwd: process.cwd() });
 
   if (command === "init") {
     const yes = rest.includes("--yes") || rest.includes("--no-interactive");
