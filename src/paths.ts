@@ -100,6 +100,20 @@ export function briefHtmlPath(cwd: string, slug: string): string {
   return path.join(blueprintSlugDir(cwd, slug), "BRIEF.html");
 }
 
+/**
+ * POSIX-relative spec-slug dir (e.g. `.samo/spec/refunds/`). Used for
+ * git operations (`git status --porcelain`, `git show HEAD:<rel>`,
+ * `git add` pathspecs) that need a forward-slash, repo-relative path
+ * regardless of host platform.
+ *
+ * Always trailing `/` so consumers can use it as a directory pathspec
+ * prefix without re-adding the separator.
+ */
+export function specSlugDirRelPosix(cwd: string, slug: string): string {
+  const rel = resolvePaths(cwd).specDirRel;
+  return path.posix.join(rel.split(path.sep).join("/"), slug) + "/";
+}
+
 // ---------- internal ----------
 
 function readPathsConfig(cwd: string): PathsConfig {

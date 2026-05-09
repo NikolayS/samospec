@@ -43,6 +43,7 @@ import { currentBranch } from "./branch.ts";
 import { specCommit } from "./commit.ts";
 import { GitLayerUsageError, ProtectedBranchError } from "./errors.ts";
 import { isProtected, type UserConfig } from "./protected.ts";
+import { specSlugDirRelPosix } from "../paths.ts";
 
 /** The single canonical committed-spec filename we special-case. */
 export const SPEC_FILE_BASENAME = "SPEC.md";
@@ -77,12 +78,8 @@ export interface DetectManualEditsOpts {
   readonly repoPath: string;
 }
 
-function relSpecDir(slug: string): string {
-  return path.posix.join(".samo", "spec", slug) + "/";
-}
-
 /**
- * Inspect `git status --porcelain -- .samo/spec/<slug>/` and classify
+ * Inspect `git status --porcelain -- <spec_dir>/<slug>/` and classify
  * each touched path. Deletions are surfaced as `deleted`; staged adds /
  * modifications are surfaced with `staged` but still classified by target
  * so the caller can still protect user work.
@@ -93,7 +90,7 @@ export function detectManualEdits(
 ): ManualEditReport {
   assertValidSlug(slug);
 
-  const pathspec = relSpecDir(slug);
+  const pathspec = specSlugDirRelPosix(opts.repoPath, slug);
   const result = spawnSync(
     "git",
     ["status", "--porcelain=v1", "--untracked-files=normal", "--", pathspec],
@@ -292,7 +289,7 @@ export function applyManualEdit(
     case "overwrite": {
       // Restore tracked paths; remove untracked ones. Deletes are handled
       // by the same restore (brings the file back).
-      const pathspec = relSpecDir(args.slug);
+      const pathspec = specSlugDirRelPosix(args.repoPath, args.slug);
       // Use `git checkout -- <pathspec>` to reset tracked files under the
       // spec dir to HEAD. Safe: `checkout -- <path>` is not a branch op.
       const checkoutRes = spawnSync("git", ["checkout", "--", pathspec], {
@@ -325,13 +322,9 @@ export function applyManualEdit(
       // Append a `user-edit` changelog note in-place BEFORE committing so
       // it lands inside the same commit. Only touches `changelog.md` if
       // it already exists; a fresh spec might not have one yet.
-      const changelogAbs = path.join(
-        args.repoPath,
-        ".samo",
-        "spec",
-        args.slug,
-        "changelog.md",
-      );
+      const slugRelPosix = specSlugDirRelPosix(args.repoPath, args.slug);
+      const changelogRel = path.posix.join(slugRelPosix, "changelog.md");
+      const changelogAbs = path.join(args.repoPath, changelogRel);
       if (existsSync(changelogAbs)) {
         const note = `\n- user-edit before round ${String(args.roundNumber)}\n`;
         appendFileSync(changelogAbs, note, "utf8");
@@ -339,12 +332,6 @@ export function applyManualEdit(
 
       const paths = args.report.files.map((f) => f.path);
       // The changelog relative path must be in `paths` if it was touched.
-      const changelogRel = path.posix.join(
-        ".samo",
-        "spec",
-        args.slug,
-        "changelog.md",
-      );
       if (existsSync(changelogAbs) && !paths.includes(changelogRel)) {
         paths.push(changelogRel);
       }
@@ -364,9 +351,7 @@ export function applyManualEdit(
       let specAfter: string | null = null;
       if (args.report.specEdited) {
         const specRel = path.posix.join(
-          ".samo",
-          "spec",
-          args.slug,
+          specSlugDirRelPosix(args.repoPath, args.slug),
           SPEC_FILE_BASENAME,
         );
         specBefore = gitShowHead(args.repoPath, specRel);

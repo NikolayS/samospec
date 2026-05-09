@@ -28,6 +28,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { archiveSlugDir } from "./archive.ts";
+import { specSlugDir } from "../paths.ts";
 
 import { CodexAdapter } from "../adapter/codex.ts";
 import type { Adapter } from "../adapter/types.ts";
@@ -1204,7 +1205,7 @@ export interface SpecPaths {
 }
 
 export function specPaths(cwd: string, slug: string): SpecPaths {
-  const slugDir = path.join(cwd, ".samo", "spec", slug);
+  const slugDir = specSlugDir(cwd, slug);
   return {
     slugDir,
     statePath: path.join(slugDir, "state.json"),

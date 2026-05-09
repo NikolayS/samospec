@@ -35,6 +35,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import type { Adapter, Finding } from "../adapter/types.ts";
+import { specSlugDir } from "../paths.ts";
 import { currentBranch } from "../git/branch.ts";
 import { specCommit } from "../git/commit.ts";
 import { ProtectedBranchError } from "../git/errors.ts";
@@ -577,7 +578,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
 
         // Allocate round dir.
         const dirs = roundDirsFor(
-          path.join(input.cwd, ".samo", "spec", input.slug),
+          specSlugDir(input.cwd, input.slug),
           roundIndex,
         );
         mkdirSync(dirs.roundDir, { recursive: true });
