@@ -691,7 +691,7 @@ a { color: var(--ink); text-decoration: underline; text-underline-offset: 0.18em
 a:hover { color: var(--accent); text-decoration-color: var(--accent); }
 p,ul,ol,pre,details { margin: 0 0 var(--lh); }
 ul { padding-left: 3ch; list-style: none; }
-ul > li::before { content: "\2500\00a0"; color: var(--ink-3);
+ul > li::before { content: "\\2500\\00a0"; color: var(--ink-3);
                   margin-left: -3ch; display: inline-block; width: 3ch; }
 ol { padding-left: 3ch; }
 li { margin: 0; }
