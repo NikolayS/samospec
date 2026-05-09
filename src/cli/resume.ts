@@ -322,10 +322,22 @@ export async function runResume(
 
       let draft;
       try {
+        const idea = authoritativeIdeaFromState(nextState);
+        if (idea === null) {
+          errors.push(
+            `samospec: spec '${input.slug}' is missing its stored idea. ` +
+              `Cannot resume draft generation without the authoritative brief.`,
+          );
+          return {
+            exitCode: 1,
+            stdout: lines.join("\n"),
+            stderr: `${errors.join("\n")}\n`,
+          };
+        }
         draft = await authorDraft(
           {
             slug: input.slug,
-            idea: "(resumed)",
+            idea,
             persona: personaStr,
             interview,
             contextChunks: chunks,
@@ -552,6 +564,13 @@ function relative(root: string, absolute: string): string {
 
 function ensureTrailingNewline(s: string): string {
   return s.endsWith("\n") ? s : `${s}\n`;
+}
+
+function authoritativeIdeaFromState(state: State): string | null {
+  const idea = state.input?.idea;
+  if (typeof idea !== "string") return null;
+  const trimmed = idea.trim();
+  return trimmed.length > 0 ? idea : null;
 }
 
 async function isSubscriptionAuth(adapter: Adapter): Promise<boolean> {
