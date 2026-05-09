@@ -126,9 +126,9 @@ describe("autoMigrateLegacyDirs — opt-out via configured paths", () => {
 
     const r = autoMigrateLegacyDirs({ cwd: tmp, log });
     expect(r.migrated).toHaveLength(0);
-    expect(r.skipped.some((s) => s.reason.includes('spec_dir is configured'))).toBe(
-      true,
-    );
+    expect(
+      r.skipped.some((s) => s.reason.includes("spec_dir is configured")),
+    ).toBe(true);
     // Legacy dir is preserved, untouched.
     expect(existsSync(oldSpec)).toBe(true);
   });
@@ -143,7 +143,7 @@ describe("autoMigrateLegacyDirs — opt-out via configured paths", () => {
 
     const r = autoMigrateLegacyDirs({ cwd: tmp, log });
     expect(
-      r.skipped.some((s) => s.reason.includes('blueprints_dir is configured')),
+      r.skipped.some((s) => s.reason.includes("blueprints_dir is configured")),
     ).toBe(true);
     expect(existsSync(oldBp)).toBe(true);
   });
@@ -159,7 +159,7 @@ describe("autoMigrateLegacyDirs — opt-out via configured paths", () => {
     const r = autoMigrateLegacyDirs({ cwd: tmp, log });
     // spec skipped (configured), blueprints touched if defaults differ
     expect(
-      r.skipped.some((s) => s.reason.includes('spec_dir is configured')),
+      r.skipped.some((s) => s.reason.includes("spec_dir is configured")),
     ).toBe(true);
   });
 });
