@@ -159,6 +159,22 @@ describe("samospec brief — preconditions", () => {
     writeFileSync(path.join(slugDir, "state.json"), "{ not json", "utf8");
     const r = runBrief({ cwd: tmp, slug: "broken", now: NOW });
     expect(r.exitCode).toBe(1);
+    // Concrete error text — a future regression that returned exit 1
+    // with an unrelated message would otherwise pass this test.
+    expect(r.stderr).toMatch(/cannot read state\.json|malformed/i);
+  });
+
+  test("refuses when slug contains invalid characters", () => {
+    const r = runBrief({ cwd: tmp, slug: "../etc/passwd", now: NOW });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("invalid");
+    expect(r.stderr).toContain("lowercase letters, digits");
+  });
+
+  test("refuses uppercase + space slugs", () => {
+    const r = runBrief({ cwd: tmp, slug: "My Spec", now: NOW });
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("invalid");
   });
 
   test("refuses when published spec is missing from blueprints dir", () => {
@@ -212,6 +228,10 @@ describe("samospec brief — happy path", () => {
     );
     // No "created .nojekyll" line in stdout (we left it alone).
     expect(r.stdout).not.toContain("created .nojekyll");
+    // Commit hint must NOT include `.nojekyll` either: the user
+    // already has it tracked (or has chosen not to). Suggesting they
+    // re-stage it would misrepresent what this run did.
+    expect(r.stdout).not.toContain(".nojekyll && git commit");
   });
 
   test("--no-nojekyll skips the marker entirely", () => {

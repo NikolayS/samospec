@@ -42,6 +42,15 @@ import { briefHtmlPath, specSlugDir, blueprintSpecPath } from "../paths.ts";
 import { renderBrief } from "../render/brief.ts";
 import { stateSchema, type State } from "../state/types.ts";
 
+/**
+ * Same shape as `src/git/branch.ts` and `src/git/manual-edit.ts`.
+ * Inlined here so the brief command stays free of git-layer imports
+ * (it doesn't shell out to git at all). Defense-in-depth: every
+ * other CLI surface validates slugs before composing paths from
+ * them; brief should match.
+ */
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 export interface BriefInput {
   readonly cwd: string;
   readonly slug: string;
@@ -68,6 +77,15 @@ export function runBrief(input: BriefInput): BriefResult {
 
   if (input.slug.trim() === "") {
     err.push("samospec brief: missing <slug>.");
+    return finish(1, out, err);
+  }
+
+  if (!SLUG_RE.test(input.slug)) {
+    err.push(
+      `samospec brief: slug '${input.slug}' is invalid. ` +
+        `Use lowercase letters, digits, and '-' ` +
+        `(no leading/trailing '-', no slashes, no spaces).`,
+    );
     return finish(1, out, err);
   }
 
@@ -138,11 +156,13 @@ export function runBrief(input: BriefInput): BriefResult {
   writeFileSync(outPath, html, "utf8");
   out.push(`wrote ${path.relative(input.cwd, outPath)}.`);
 
+  let nojekyllCreated = false;
   if (input.noNojekyll !== true) {
     const nojekyll = path.join(input.cwd, ".nojekyll");
     if (!existsSync(nojekyll)) {
       const fd = openSync(nojekyll, "w");
       closeSync(fd);
+      nojekyllCreated = true;
       out.push(
         `created ${path.relative(input.cwd, nojekyll)} ` +
           `(GitHub Pages compatibility).`,
@@ -150,10 +170,14 @@ export function runBrief(input: BriefInput): BriefResult {
     }
   }
 
+  // Only suggest staging `.nojekyll` when the brief actually created
+  // it. If it pre-existed, the user has presumably already committed
+  // it (or chosen not to); appending it to the hint would mis-
+  // represent what this invocation did.
   out.push(
     `brief is a summarized derivative of SPEC.md. Commit it to publish via ` +
       `Pages: \`git add ${path.relative(input.cwd, outPath)}` +
-      (input.noNojekyll === true ? "" : " .nojekyll") +
+      (nojekyllCreated ? " .nojekyll" : "") +
       ` && git commit\`.`,
   );
 

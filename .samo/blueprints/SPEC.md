@@ -440,12 +440,14 @@ Stale removal is logged; the new process writes its own lockfile.
 
 ```text
 .samo/
-  config.json                    # per-repo config (models, budgets, push consent)
+  config.json                    # per-repo config (models, budgets, push
+                                 # consent, paths.spec_dir/blueprints_dir
+                                 # overrides)
   .lock                          # repo-level lockfile; gitignored
   .gitignore                     # ignores transcripts/, full/, cache/, .lock
   cache/
     gists/<blob-sha>.md          # gist cache keyed by git blob hash
-  spec/<slug>/
+  spec/<slug>/                   # default; `paths.spec_dir` config overrides
     SPEC.md                      # working copy, canonical during iteration
     TLDR.md                      # regenerated on every version bump, committed
     state.json                   # phase, round state, version, persona, flags
@@ -463,9 +465,15 @@ Stale removal is logged; the new process writes its own lockfile.
       author.log
       r01-codex.log
       r01-claude.log
-blueprints/
+blueprints/                      # default; `paths.blueprints_dir` config overrides
   <slug>/
     SPEC.md                      # promoted copy, emitted by samospec publish
+    BRIEF.html                   # summarized HTML derivative, emitted by
+                                 # samospec brief; user decides whether to commit
+.nojekyll                        # repo-root marker created by samospec brief
+                                 # so committed briefs serve on GitHub Pages
+                                 # without a Jekyll round-trip; --no-nojekyll
+                                 # opts out
 ```
 
 **Rules:**
@@ -495,6 +503,10 @@ samospec resume [<slug>]             # resume last or named spec
 samospec status [<slug>]             # phase, round state, version, next action, running cost
 samospec iterate                     # one round of review + revise
 samospec publish [<slug>] [--no-lint]
+samospec brief <slug> [--out <path>] [--no-nojekyll]
+                                     # summarized HTML derivative of the
+                                     # published spec; writes BRIEF.html into
+                                     # `<blueprints_dir>/<slug>/` by default
 samospec tldr [<slug>]
 samospec doctor
 samospec experts list                # show resolved adapters and their models

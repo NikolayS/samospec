@@ -15,9 +15,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   heuristic renderer (no model call, deterministic, regenerable). Pulls
   the title, goal paragraph, section index with one-sentence summaries,
   round timeline (parsed from `changelog.md`), and adapter / persona /
-  exit-reason metadata from `state.json`. Embedded CSS, mobile-
-  responsive, dark-mode aware, no external fonts or scripts —
-  Pages-friendly out of the box.
+  exit-reason metadata from `state.json`. Surfaces a coupled-fallback
+  warning banner when the round recorded `coupled_fallback: true`
+  (SPEC §11) so degraded model resolution is visible to readers.
+  Embedded CSS, mobile-responsive, dark-mode aware, no external fonts
+  or scripts — Pages-friendly out of the box.
 - **`samospec brief --out <path>`** to write the brief anywhere
   (`docs/<slug>/index.html`, `public/<slug>/index.html`, etc.).
 - **Idempotent `.nojekyll`** marker at the repo root so committed
