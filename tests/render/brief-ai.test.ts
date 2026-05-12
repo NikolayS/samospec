@@ -208,6 +208,86 @@ describe("generateAiBrief — cache", () => {
     expect(leadLog.count).toBe(2);
   });
 
+  // The cache key must include every input the model sees. samo-agent
+  // found this hole: stale BRIEF.html could be served back even after
+  // a user updated decisions/TLDR/publish-meta. One test per input.
+
+  test("cache miss when decisions.md changes", async () => {
+    const { adapter: lead, log: leadLog } = makeAdapter("claude", [
+      "<!doctype html><html><body>v1</body></html>",
+      "<!doctype html><html><body>v2</body></html>",
+    ]);
+    const { adapter: verifier } = makeAdapter("codex", [
+      '{"ok": true, "inventions": []}',
+      '{"ok": true, "inventions": []}',
+    ]);
+    await generateAiBrief(
+      baseInput({ lead, verifier, decisions: "# decisions\n\n- A\n" }),
+    );
+    expect(leadLog.count).toBe(1);
+    await generateAiBrief(
+      baseInput({ lead, verifier, decisions: "# decisions\n\n- B\n" }),
+    );
+    expect(leadLog.count).toBe(2);
+  });
+
+  test("cache miss when TLDR.md changes", async () => {
+    const { adapter: lead, log: leadLog } = makeAdapter("claude", [
+      "<!doctype html><html><body>v1</body></html>",
+      "<!doctype html><html><body>v2</body></html>",
+    ]);
+    const { adapter: verifier } = makeAdapter("codex", [
+      '{"ok": true, "inventions": []}',
+      '{"ok": true, "inventions": []}',
+    ]);
+    await generateAiBrief(
+      baseInput({ lead, verifier, tldr: "# TL;DR\n\nA\n" }),
+    );
+    expect(leadLog.count).toBe(1);
+    await generateAiBrief(
+      baseInput({ lead, verifier, tldr: "# TL;DR\n\nB\n" }),
+    );
+    expect(leadLog.count).toBe(2);
+  });
+
+  test("cache miss when publishedVersion changes", async () => {
+    const { adapter: lead, log: leadLog } = makeAdapter("claude", [
+      "<!doctype html><html><body>v1</body></html>",
+      "<!doctype html><html><body>v2</body></html>",
+    ]);
+    const { adapter: verifier } = makeAdapter("codex", [
+      '{"ok": true, "inventions": []}',
+      '{"ok": true, "inventions": []}',
+    ]);
+    await generateAiBrief(
+      baseInput({ lead, verifier, publishedVersion: "v0.2" }),
+    );
+    expect(leadLog.count).toBe(1);
+    await generateAiBrief(
+      baseInput({ lead, verifier, publishedVersion: "v0.3" }),
+    );
+    expect(leadLog.count).toBe(2);
+  });
+
+  test("cache miss when publishedAt changes", async () => {
+    const { adapter: lead, log: leadLog } = makeAdapter("claude", [
+      "<!doctype html><html><body>v1</body></html>",
+      "<!doctype html><html><body>v2</body></html>",
+    ]);
+    const { adapter: verifier } = makeAdapter("codex", [
+      '{"ok": true, "inventions": []}',
+      '{"ok": true, "inventions": []}',
+    ]);
+    await generateAiBrief(
+      baseInput({ lead, verifier, publishedAt: "2026-05-09T11:55:00Z" }),
+    );
+    expect(leadLog.count).toBe(1);
+    await generateAiBrief(
+      baseInput({ lead, verifier, publishedAt: "2026-05-10T12:00:00Z" }),
+    );
+    expect(leadLog.count).toBe(2);
+  });
+
   test("--no-cache forces a fresh generation", async () => {
     const { adapter: lead, log: leadLog } = makeAdapter("claude", [
       "<!doctype html><html><body>v1</body></html>",
@@ -401,6 +481,129 @@ describe("sanitizeHtml — XSS scrubbing", () => {
   test("preserves benign content untouched", () => {
     const safe = '<svg><circle cx="5" cy="5" r="3"/></svg><p>fine</p>';
     expect(sanitizeHtml(safe)).toBe(safe);
+  });
+});
+
+describe("sanitizeHtml — remote resources (no-network contract)", () => {
+  // samo-agent flagged: the prompt forbids remote resources but the
+  // sanitizer didn't enforce it. The brief is committed and served
+  // on Pages — any remote load is a privacy/security footgun.
+
+  test("clears remote `src` on <img>", () => {
+    const out = sanitizeHtml('<img src="https://evil.com/track.gif">');
+    expect(out).toContain('src=""');
+    expect(out).not.toContain("https://evil.com");
+  });
+
+  test("clears protocol-relative `src` (`//evil.com/...`)", () => {
+    const out = sanitizeHtml('<img src="//evil.com/track.gif">');
+    expect(out).toContain('src=""');
+    expect(out).not.toContain("evil.com");
+  });
+
+  test("clears http:// `src`", () => {
+    const out = sanitizeHtml('<img src="http://evil.com/x.png">');
+    expect(out).toContain('src=""');
+    expect(out).not.toContain("evil.com");
+  });
+
+  test("clears single-quoted remote `src`", () => {
+    const out = sanitizeHtml("<img src='https://evil.com/x.png'>");
+    expect(out).toContain("src=''");
+    expect(out).not.toContain("evil.com");
+  });
+
+  test("clears unquoted remote `src`", () => {
+    const out = sanitizeHtml("<img src=https://evil.com/x.png>");
+    expect(out).not.toContain("evil.com");
+  });
+
+  test("clears `srcset` containing any remote URL (even mixed with relative)", () => {
+    const out = sanitizeHtml(
+      '<img srcset="./local.png 1x, https://evil.com/x.png 2x">',
+    );
+    expect(out).toContain('srcset=""');
+    expect(out).not.toContain("evil.com");
+  });
+
+  test("clears remote `poster` on <video>", () => {
+    const out = sanitizeHtml(
+      '<video poster="https://evil.com/poster.jpg" controls></video>',
+    );
+    expect(out).toContain('poster=""');
+    expect(out).not.toContain("evil.com");
+  });
+
+  test("clears remote `formaction` on <button>", () => {
+    const out = sanitizeHtml(
+      '<button formaction="https://evil.com/submit">x</button>',
+    );
+    expect(out).toContain('formaction=""');
+    expect(out).not.toContain("evil.com");
+  });
+
+  test("preserves relative `src` (`./foo.png`, `/foo.png`, `foo.png`)", () => {
+    const a = sanitizeHtml('<img src="./local.png">');
+    expect(a).toContain('src="./local.png"');
+    const b = sanitizeHtml('<img src="/static/local.png">');
+    expect(b).toContain('src="/static/local.png"');
+    const c = sanitizeHtml('<img src="local.png">');
+    expect(c).toContain('src="local.png"');
+  });
+
+  test("preserves inline `data:` URLs (used for inline SVG/PNG images)", () => {
+    const out = sanitizeHtml(
+      '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEU">',
+    );
+    expect(out).toContain('src="data:image/png;base64,iVBORw0KGgoAAAANSUhEU"');
+  });
+
+  test("strips CSS `@import` statements inside <style>", () => {
+    const out = sanitizeHtml(
+      '<style>@import url("https://fonts.googleapis.com/css?family=Inter");\nbody { color: red; }</style>',
+    );
+    expect(out).not.toContain("@import");
+    expect(out).not.toContain("fonts.googleapis.com");
+    // The rest of the CSS survives.
+    expect(out).toContain("body { color: red; }");
+  });
+
+  test("strips CSS `@import` without `url(...)` (bare-string form)", () => {
+    const out = sanitizeHtml(
+      '<style>@import "https://evil.com/x.css";\nbody { color: red; }</style>',
+    );
+    expect(out).not.toContain("@import");
+    expect(out).not.toContain("evil.com");
+  });
+
+  test("neutralizes `url(https://...)` inside <style> background/image rules", () => {
+    const out = sanitizeHtml(
+      '<style>.bg { background-image: url("https://evil.com/bg.png"); }</style>',
+    );
+    expect(out).not.toContain("evil.com");
+    expect(out).toContain("url()");
+    // The surrounding rule must remain syntactically valid.
+    expect(out).toMatch(/\.bg\s*\{[^}]*background-image:[^}]*url\(\)/);
+  });
+
+  test("neutralizes `url(//cdn.example.com/...)` protocol-relative inside <style>", () => {
+    const out = sanitizeHtml(
+      "<style>.bg { background: url(//evil.com/x.png); }</style>",
+    );
+    expect(out).not.toContain("evil.com");
+    expect(out).toContain("url()");
+  });
+
+  test("preserves local CSS `url(./assets/...)` inside <style>", () => {
+    const css = '<style>.bg { background: url("./assets/local.png"); }</style>';
+    expect(sanitizeHtml(css)).toContain('url("./assets/local.png")');
+  });
+
+  test("does NOT touch `<a href>` (external links are allowed in briefs)", () => {
+    const out = sanitizeHtml(
+      '<a href="https://github.com/example/repo/issues/1">issue #1</a>',
+    );
+    expect(out).toContain("github.com/example/repo");
   });
 });
 

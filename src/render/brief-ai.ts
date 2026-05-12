@@ -19,16 +19,20 @@
  *      2 retries with the verifier's findings appended to the
  *      generation prompt).
  *
- * Caching: by `sha256(GEN_PROMPT_VERSION || SPEC.md || architecture.json)`
- * — re-running for the same published spec returns the cached HTML
- * without re-spending model calls. Cache lives in `.samo/cache/brief/`
- * (gitignored).
+ * Caching: by `sha256(GEN_PROMPT_VERSION || SPEC.md || architecture.json
+ * || decisions.md || TLDR.md || publishedVersion || publishedAt)`. Every
+ * input that the model sees must be in the key, otherwise the user can
+ * edit decisions/TLDR/publish-meta and still get stale committed HTML
+ * back. Cache lives in `.samo/cache/brief/` (gitignored).
  *
- * Safety: model output is sanitized — `<script>`, `<iframe>`,
- * `on*=` event handlers, `javascript:` URLs are stripped. The model
- * is prompted to inline all CSS and avoid remote resources, but we
- * scrub anyway; brief HTML is committed and served on Pages, where
- * a malicious model output could become a stored XSS vector.
+ * Safety: model output is sanitized — `<script>`, `<iframe>`, `<object>`,
+ * `<embed>`, `<link>`, `<base>`, `<meta http-equiv>`, `on*=` event
+ * handlers, `javascript:` URLs are stripped; remote `src` / `srcset` /
+ * `poster` / `data` / `formaction` attributes are cleared; CSS
+ * `@import` statements and `url(http(s)://...)` references inside
+ * `<style>` blocks are neutralized. Brief HTML is committed and served
+ * on Pages, where a malicious model output could become a stored XSS
+ * vector or a remote-resource privacy/supply-chain leak.
  */
 
 import { createHash } from "node:crypto";
@@ -81,7 +85,7 @@ export interface Invention {
 export async function generateAiBrief(
   input: AiBriefInput,
 ): Promise<AiBriefResult> {
-  const cacheKey = computeCacheKey(input.spec, input.architecture);
+  const cacheKey = computeCacheKey(input);
   const cachePath = path.join(
     input.cwd,
     ".samo",
@@ -302,10 +306,30 @@ function extractHtml(answer: string): string {
 }
 
 /**
- * Strip dangerous markup. Brief HTML is committed and served on
- * Pages; a malicious model could become stored XSS otherwise. The
- * generation prompt also forbids these, but we scrub independently
- * — defense in depth.
+ * Strip dangerous markup AND enforce the prompt's "no remote
+ * resources" contract — the brief must be self-contained because
+ * it's committed and served on Pages, where remote loads leak the
+ * reader's IP (privacy) and create supply-chain vectors (a remote
+ * CSS or image source can change after the brief is committed).
+ *
+ * The generation prompt forbids all of these; sanitization is
+ * defense in depth.
+ *
+ * Stripped or neutralized:
+ *   - `<script>` (any form), `<iframe>`, `<object>`, `<embed>`,
+ *     `<link>`, `<base>`, `<meta http-equiv>`
+ *   - `on*=` event handlers (double-quoted, single-quoted, unquoted)
+ *   - `javascript:` URLs in href/src
+ *   - Remote `src` / `srcset` / `poster` / `data` / `formaction` on
+ *     any element (cleared to empty when the value contains an
+ *     http(s) / protocol-relative / ftp URL)
+ *   - CSS `@import` statements anywhere
+ *   - CSS `url(http(s)://...)` and `url(//...)` references — cleared
+ *     to `url()` so the rule remains syntactically valid
+ *   - `<a href>` is intentionally NOT stripped: spec briefs routinely
+ *     link to RFCs, GitHub issues, etc., and the prompt asks for a
+ *     link to `./SPEC.md`. Reviewers should still treat external
+ *     links as user-supplied content.
  */
 export function sanitizeHtml(html: string): string {
   let s = html;
@@ -318,16 +342,92 @@ export function sanitizeHtml(html: string): string {
   s = s.replace(/\son[a-z]+\s*=\s*'[^']*'/gi, "");
   s = s.replace(/\son[a-z]+\s*=\s*[^\s>]+/gi, "");
   s = s.replace(/(?<==["'])\s*javascript:/gi, "blocked:");
+  s = stripRemoteResourceAttrs(s);
+  s = stripRemoteCssRefs(s);
   return s;
 }
 
-function computeCacheKey(spec: string, architecture: string): string {
+const REMOTE_LOADING_ATTRS = ["src", "srcset", "poster", "data", "formaction"];
+
+/**
+ * Clear `src` / `srcset` / `poster` / `data` / `formaction` attribute
+ * values that contain remote URLs. Relative paths and `data:` URLs
+ * (inline images) are preserved.
+ */
+function stripRemoteResourceAttrs(html: string): string {
+  let s = html;
+  for (const attr of REMOTE_LOADING_ATTRS) {
+    const dq = new RegExp(`\\s${attr}\\s*=\\s*"([^"]*)"`, "gi");
+    s = s.replace(dq, (_m, value: string) =>
+      containsRemoteUrl(value) ? ` ${attr}=""` : _m,
+    );
+    const sq = new RegExp(`\\s${attr}\\s*=\\s*'([^']*)'`, "gi");
+    s = s.replace(sq, (_m, value: string) =>
+      containsRemoteUrl(value) ? ` ${attr}=''` : _m,
+    );
+    const unq = new RegExp(`\\s${attr}\\s*=\\s*([^\\s>'"]+)`, "gi");
+    s = s.replace(unq, (_m, value: string) =>
+      containsRemoteUrl(value) ? ` ${attr}=""` : _m,
+    );
+  }
+  return s;
+}
+
+/**
+ * Inside `<style>` blocks: strip `@import` statements entirely, and
+ * neutralize `url(http(s)://...)` / `url(//...)` references by
+ * emptying the URL while leaving the surrounding declaration valid.
+ */
+function stripRemoteCssRefs(html: string): string {
+  return html.replace(
+    /<style\b([^>]*)>([\s\S]*?)<\/style>/gi,
+    (_m, attrs: string, body: string) => {
+      let cleaned = body.replace(/@import[^;]*;/gi, "");
+      cleaned = cleaned.replace(
+        /url\(\s*['"]?\s*(https?:|\/\/|ftp:)[^)'"]*['"]?\s*\)/gi,
+        "url()",
+      );
+      return `<style${attrs}>${cleaned}</style>`;
+    },
+  );
+}
+
+/**
+ * True if `s` contains an http(s), protocol-relative, or ftp URL.
+ * `srcset` values are a comma-separated list, so we don't anchor —
+ * any occurrence anywhere flags the value as remote.
+ */
+function containsRemoteUrl(s: string): boolean {
+  return (
+    /(?:^|[,\s])(?:https?:\/\/|\/\/|ftp:\/\/)/i.test(s) ||
+    /^\s*(?:https?:\/\/|\/\/|ftp:\/\/)/i.test(s)
+  );
+}
+
+/**
+ * Cache key derived from every source input that can affect the
+ * generated brief — `SPEC.md`, `architecture.json`, `decisions.md`,
+ * `TLDR.md`, plus the publish metadata embedded in the prompt
+ * (`publishedVersion`, `publishedAt`). Bumping `GEN_PROMPT_VERSION`
+ * also invalidates the cache, so prompt-engineering iterations don't
+ * silently serve stale HTML. Sentinel bytes between fields prevent
+ * concatenation collisions (`"a" + "bc"` vs `"ab" + "c"`).
+ */
+function computeCacheKey(input: AiBriefInput): string {
   return createHash("sha256")
     .update(GEN_PROMPT_VERSION)
     .update("\0")
-    .update(spec)
+    .update(input.spec)
     .update("\0")
-    .update(architecture)
+    .update(input.architecture)
+    .update("\0")
+    .update(input.decisions)
+    .update("\0")
+    .update(input.tldr)
+    .update("\0")
+    .update(input.publishedVersion)
+    .update("\0")
+    .update(input.publishedAt)
     .digest("hex")
     .slice(0, 16);
 }
