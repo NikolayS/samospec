@@ -1,21 +1,22 @@
 id: readme-demo
-title: README demo GIF
+title: README real-output demo GIF
 owner: "@samospec"
-tags: ["docs", "demo", "gif"]
+tags: ["docs", "demo", "gif", "real-output"]
 priority: required
 target:
-  url: "http://127.0.0.1:41731/docs/demo.html"
+  url: "http://127.0.0.1:42731/docs/demo.html"
 recording:
   mode: browser
   duration_ms: 3500
+  output_path: docs/demo.gif
   preferred_formats: ["gif"]
 steps:
-  - id: capture-readme-demo
-    instruction: "Record the SamoSpec README demo page."
-    expected: "The GIF shows the new, iterate, and publish-ready flow."
+  - id: capture-real-output-demo
+    instruction: "Record the README demo page rendered from real command output."
+    expected: "The GIF shows actual command output, not scripted product copy."
     evidence:
       - type: gif
         name: readme-demo
 result:
   required_observations:
-    - "The demo names the product and shows the CLI workflow."
+    - "The demo is generated from real command output captured for this repository."
