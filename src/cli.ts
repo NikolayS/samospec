@@ -32,6 +32,7 @@ import {
   emitProtocolComplete,
   loadAnswersFile,
 } from "./cli/non-interactive.ts";
+import { runBrief } from "./cli/brief.ts";
 import { runPublish } from "./cli/publish.ts";
 import {
   PERSONA_FORM_RE,
@@ -98,6 +99,8 @@ const USAGE =
   "  iterate [<slug>]  Run review rounds until a stopping condition fires.\n" +
   "  status [<slug>]   Print phase, round, cost, wall-clock, and next action.\n" +
   "  publish [<slug>]  Promote to blueprints/<slug>/SPEC.md; commit, push, open PR.\n" +
+  "  brief <slug>      Generate a summarized HTML brief — a derivative\n" +
+  "                    summary of the published spec, NOT the spec itself.\n" +
   "  version           Print the samospec version and exit.\n" +
   "\n" +
   "Options for `new`:\n" +
@@ -158,7 +161,31 @@ const USAGE =
   "  --no-lint\n" +
   "      Skip the publish-time lint pass.\n" +
   "  --remote <name>\n" +
-  "      Git remote name (default: origin).\n";
+  "      Git remote name (default: origin).\n" +
+  "\n" +
+  "Options for `brief`:\n" +
+  "  --out <path>\n" +
+  "      Override the output path. Repo-relative or absolute.\n" +
+  "      Default: <blueprints_dir>/<slug>/BRIEF.html. Use this to write\n" +
+  "      directly into your static-site host's expected location\n" +
+  "      (e.g. docs/<slug>/index.html for GitHub Pages /docs source,\n" +
+  "      public/<slug>/index.html for GitLab Pages).\n" +
+  "  --no-nojekyll\n" +
+  "      Skip creating the repo-root `.nojekyll` marker file. By\n" +
+  "      default `samospec brief` creates it (idempotently) so committed\n" +
+  "      briefs render on GitHub Pages without a Jekyll round-trip.\n" +
+  "  --ai\n" +
+  "      Generate a rich HTML brief via the lead AI adapter (with a\n" +
+  "      cross-vendor verifier pass) instead of the heuristic renderer.\n" +
+  "      Produces SVG architecture diagrams (synthesized from\n" +
+  "      architecture.json), scope tables, decision matrices, mobile-\n" +
+  "      responsive layout. Result is cached in `.samo/cache/brief/`\n" +
+  "      keyed by spec hash; re-runs return cached HTML for free.\n" +
+  "  --no-cache\n" +
+  "      With `--ai`: force fresh generation, ignore the cache.\n" +
+  "  --no-verify\n" +
+  "      With `--ai`: skip the verifier pass. Faster but the brief may\n" +
+  "      contain claims that don't trace back to SPEC.md.\n";
 
 /**
  * Default adapter bindings for `samospec doctor`. Uses the real
@@ -224,6 +251,10 @@ export async function runCli(argv: readonly string[]): Promise<CliResult> {
 
   if (command === "publish") {
     return runPublishCommand(rest);
+  }
+
+  if (command === "brief") {
+    return runBriefCommand(rest);
   }
 
   return {
@@ -1350,5 +1381,94 @@ async function runPublishCommand(rest: readonly string[]) {
     now: new Date().toISOString(),
     remote: parsed.remote,
     noLint: parsed.noLint,
+  });
+}
+
+// ---------- brief ----------
+
+interface BriefArgs {
+  readonly slug: string;
+  readonly out: string | undefined;
+  readonly noNojekyll: boolean;
+  readonly ai: boolean;
+  readonly noCache: boolean;
+  readonly noVerify: boolean;
+}
+
+function parseBriefArgs(argv: readonly string[]): BriefArgs | string {
+  let slug: string | null = null;
+  let out: string | undefined;
+  let noNojekyll = false;
+  let ai = false;
+  let noCache = false;
+  let noVerify = false;
+  for (let i = 0; i < argv.length; i += 1) {
+    const t = argv[i];
+    if (t === undefined) continue;
+    if (t === "--no-nojekyll") {
+      noNojekyll = true;
+      continue;
+    }
+    if (t === "--ai") {
+      ai = true;
+      continue;
+    }
+    if (t === "--no-cache") {
+      noCache = true;
+      continue;
+    }
+    if (t === "--no-verify") {
+      noVerify = true;
+      continue;
+    }
+    if (t === "--out") {
+      const v = argv[i + 1];
+      i += 1;
+      if (v === undefined || v.length === 0) {
+        return "samospec brief: --out requires a path";
+      }
+      out = v;
+      continue;
+    }
+    if (t.startsWith("--out=")) {
+      const v = t.slice("--out=".length);
+      if (v.length === 0) {
+        return "samospec brief: --out requires a path";
+      }
+      out = v;
+      continue;
+    }
+    if (t.startsWith("--")) continue;
+    slug ??= t;
+  }
+  if (slug === null || slug.length === 0) {
+    return "samospec brief: missing <slug>";
+  }
+  return { slug, out, noNojekyll, ai, noCache, noVerify };
+}
+
+async function runBriefCommand(rest: readonly string[]) {
+  const parsed = parseBriefArgs(rest);
+  if (typeof parsed === "string") {
+    return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
+  }
+  // AI mode: instantiate real adapters here so the CLI seam stays
+  // injectable (tests pass fakes via runBrief directly).
+  const aiAdapters = parsed.ai
+    ? {
+        leadAdapter: new ClaudeAdapter(),
+        verifierAdapter: parsed.noVerify ? null : new CodexAdapter(),
+      }
+    : {};
+  return runBrief({
+    cwd: process.cwd(),
+    slug: parsed.slug,
+    now: new Date().toISOString(),
+    ...(parsed.out !== undefined ? { out: parsed.out } : {}),
+    ...(parsed.noNojekyll ? { noNojekyll: true } : {}),
+    ...(parsed.ai ? { ai: true } : {}),
+    ...(parsed.noCache ? { noCache: true } : {}),
+    ...(parsed.noVerify ? { noVerify: true } : {}),
+    ...aiAdapters,
   });
 }

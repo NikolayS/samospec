@@ -7,6 +7,51 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **`samospec brief <slug>` — summarized HTML brief (heuristic mode).**
+  Generates a single self-contained `BRIEF.html` from a published spec
+  — a derivative summary, not a 1:1 conversion of `SPEC.md`. Pure
+  heuristic renderer (no model call, deterministic, regenerable).
+  Walks H2 sections in spec order; each section captures up to three
+  leading paragraphs, the first bullet list (with a "(N more)"
+  indicator), `###` subsection names, and fenced code blocks
+  preserved verbatim (so ASCII diagrams, mermaid, SQL, schemas
+  survive). Inline `**bold**`, `*italic*`, `` `code` `` are
+  rendered as `<strong>`/`<em>`/`<code>`. Sections classify by
+  heading name into `scope-out`, `risks`, `open-questions`,
+  `decisions`, `architecture`, `thesis`, or `generic` so layout
+  adapts. Provenance (rounds, lead/reviewer adapters) is one
+  compact footer line; coupled-fallback warning surfaces near the
+  top when recorded.
+- **`samospec brief --ai` — AI-generated rich HTML brief.**
+  Routes through the lead adapter (`claude-opus-4-7`, effort `max`)
+  to produce the rich visual artifact Thariq's "unreasonable
+  effectiveness of HTML" post describes: SVG architecture diagrams
+  synthesized from `architecture.json`, side-by-side scope tables,
+  decision matrices, callouts for risks/open questions,
+  mobile-responsive layout. A cross-vendor verifier pass
+  (`codex/gpt-5.4`) compares the generated brief against `SPEC.md`
+  and flags any claims that don't trace back; up to two
+  regeneration retries with the verifier's findings as guidance.
+  Output is sanitized (`<script>`, `<iframe>`, `on*=` event
+  handlers, `javascript:` URLs scrubbed). Cached at
+  `.samo/cache/brief/<slug>-<spec-hash>.html` so re-runs return
+  cached HTML without spending more model calls.
+- **`samospec brief --out <path>`** to write the brief anywhere
+  (`docs/<slug>/index.html`, `public/<slug>/index.html`, etc.).
+- **Idempotent `.nojekyll`** marker at the repo root so committed
+  briefs render on GitHub Pages without a Jekyll round-trip.
+  `--no-nojekyll` opts out.
+- **`paths` section in `.samo/config.json`** with `spec_dir` and
+  `blueprints_dir` keys. Both repo-relative; absolute paths and
+  `..`-escapes are rejected. Defaults preserve current behavior
+  (`.samo/spec`, `blueprints`); a forthcoming release will flip these
+  to `samospec/spec` and `samospec/blueprints` (configuration is the
+  opt-out).
+- New `src/paths.ts` config-aware path resolver underpins the brief
+  command and prepares for the upcoming dir rename.
+
 ---
 
 ## [0.8.0] - 2026-05-08

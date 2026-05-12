@@ -20,28 +20,31 @@
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
+import { blueprintSlugDir, specSlugDir } from "../paths.ts";
+
 export interface PromoteOpts {
   readonly cwd: string;
   readonly slug: string;
 }
 
 /**
- * Copy the working SPEC.md into `blueprints/<slug>/`. Returns the
- * absolute destination path so callers can stage it before committing.
+ * Copy the working SPEC.md into `<blueprints_dir>/<slug>/`. Returns
+ * the absolute destination path so callers can stage it before
+ * committing.
  *
  * Throws if the source SPEC.md is missing — the caller is expected to
  * have validated the phase is `committed` before invoking this; a
  * missing source means the preconditions check above was bypassed.
  */
 export function promoteSpecToBlueprint(opts: PromoteOpts): string {
-  const src = path.join(opts.cwd, ".samo", "spec", opts.slug, "SPEC.md");
+  const src = path.join(specSlugDir(opts.cwd, opts.slug), "SPEC.md");
   if (!existsSync(src)) {
     throw new Error(
       `SPEC.md not found at ${src}. ` +
         `Run \`samospec resume ${opts.slug}\` to produce a draft before publishing.`,
     );
   }
-  const dir = path.join(opts.cwd, "blueprints", opts.slug);
+  const dir = blueprintSlugDir(opts.cwd, opts.slug);
   mkdirSync(dir, { recursive: true });
   const dest = path.join(dir, "SPEC.md");
   copyFileSync(src, dest);

@@ -132,7 +132,8 @@ samospec doctor   # verifies CLI availability, auth, git, lockfile, config, entr
 | `samospec iterate <slug>`        | Runs review rounds (lead + two reviewers in parallel) until a stopping condition fires.                                                      |
 | `samospec resume <slug>`         | Idempotent resume from any crash/kill. Works at every round state boundary.                                                                  |
 | `samospec status <slug>`         | Phase, version, round index, last-round summary, next-step hint.                                                                             |
-| `samospec publish <slug>`        | Promotes spec to `.samo/blueprints/`, commits, pushes, opens PR via `gh` / `glab`.                                                           |
+| `samospec publish <slug>`        | Promotes the spec to `blueprints/<slug>/SPEC.md`, commits, pushes, opens PR via `gh` / `glab`.                                               |
+| `samospec brief <slug>`          | Generates a summarized HTML brief — a derivative of the published spec, NOT the spec itself. Pages-friendly, single self-contained file.     |
 
 Useful flags:
 
@@ -145,6 +146,48 @@ Useful flags:
 - `samospec iterate --no-push` — stay local this run.
 - `samospec iterate --quiet` — suppress the per-round progress + heartbeat stream on stderr (final summary still prints on stdout).
 - `samospec iterate --on-dirty <incorporate|overwrite|abort>` — non-interactive answer for the uncommitted-edits prompt.
+- `samospec brief <slug> --out docs/<slug>/index.html` — write the brief into your static-site host's expected location instead of the default `blueprints/<slug>/BRIEF.html`.
+- `samospec brief <slug> --no-nojekyll` — skip creating the repo-root `.nojekyll` marker (default: created idempotently for GitHub Pages compatibility).
+- `samospec brief <slug> --ai` — generate a **rich** HTML brief via the lead AI adapter with a cross-vendor verifier pass. Produces SVG architecture diagrams (synthesized from `architecture.json`), scope tables, decision matrices, mobile-responsive layout (per [Thariq's "unreasonable effectiveness of HTML"](https://x.com/trq212/status/2052809885763747935)). Cached in `.samo/cache/brief/` keyed by spec hash; re-runs return the cached HTML for free.
+- `samospec brief <slug> --ai --no-cache` — force a fresh AI generation even when a cache hit exists.
+- `samospec brief <slug> --ai --no-verify` — skip the verifier pass. Faster but the brief may contain claims that don't trace back to `SPEC.md`.
+
+---
+
+## Where files live
+
+samospec keeps two kinds of artifacts in your repo:
+
+- **Working drafts** — read/written every round. Default: `.samo/spec/<slug>/`.
+  - `SPEC.md` (canonical during iteration), `TLDR.md`, `state.json`, `interview.json`, `context.json`, `decisions.md`, `changelog.md`, `architecture.json`, `reviews/r01/`, `transcripts/` (gitignored).
+- **Published snapshots** — promoted by `samospec publish`. Default: `blueprints/<slug>/`.
+  - `SPEC.md` (immutable promoted copy), and after `samospec brief <slug>`, `BRIEF.html` (summarized derivative).
+
+Hidden runtime / config:
+
+- `.samo/config.json` — per-repo config (push consent, calibration, lint allowlist, paths overrides). Committed.
+- `.samo/.lock`, `.samo/cache/`, `.samo/transcripts/` — runtime, gitignored.
+
+### Configuring paths
+
+Both root-level paths are configurable via `.samo/config.json` so you can host briefs and blueprints wherever your static-site setup expects them (GitHub Pages root, GitHub Pages `/docs`, GitLab Pages `public/`, etc.):
+
+```json
+{
+  "schema_version": 1,
+  "paths": {
+    "spec_dir": "samospec/spec",
+    "blueprints_dir": "samospec/blueprints"
+  }
+}
+```
+
+- `paths.spec_dir` — where working drafts live. Default: `.samo/spec`.
+- `paths.blueprints_dir` — where published snapshots and briefs live. Default: `blueprints`.
+
+Both must be **repo-relative** (absolute paths and `..`-escapes are rejected). Paths under `.samo/` work but GitHub Pages defaults to Jekyll, which excludes dotfile-prefixed paths — `samospec brief` writes a `.nojekyll` marker at the repo root for that reason.
+
+> **Heads-up:** the next minor release flips the defaults to `samospec/spec` and `samospec/blueprints` (visible, Pages-friendly out of the box). Set the keys above to keep the legacy layout when that lands. `.samo/config.json` itself stays put — the `.samo/` directory remains the home for runtime/config files.
 
 ---
 

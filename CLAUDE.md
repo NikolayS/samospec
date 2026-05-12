@@ -80,13 +80,15 @@ Lead and reviewers run on the **strongest, latest model from each vendor at `eff
 
 ## PR workflow
 
+A PR moves through this lifecycle. **Loop back to step 1 on any failure** — fix the blocking issue, then re-run all subsequent steps.
+
 1. **CI green** — all GitHub Actions checks pass.
-2. **REV review** — https://gitlab.com/postgres-ai/rev/ ; fetch diff with `gh pr diff <n>`, run review agents (security, bugs, tests, guidelines, docs), post report as a PR comment. Only NON-BLOCKING / POTENTIAL / INFO findings = **pass**.
-3. **Merge** — squash merge: `gh pr merge <n> --squash`.
+2. **REV review** — https://gitlab.com/postgres-ai/rev/ ; fetch diff with `gh pr diff <n>`, run review agents (security, bugs, tests, guidelines, docs), post report as a PR comment. Only NON-BLOCKING / POTENTIAL / INFO findings = **pass**. SOC2 findings (missing reviewer / linked issue) are not blocking for this project — ignore them.
+3. **Manual testing** — exercise the change end-to-end where it makes sense (any user-visible feature, any new CLI command, any change touching real I/O). Capture evidence (commands run, stdout/stderr excerpts, screenshots for visual output, file diffs for written artifacts) and post it as a PR comment. The brief feature, new commands, doctor checks, lifecycle gates etc. always need manual evidence; pure refactors and internal helpers may be exempted with a one-line "no manual surface — covered by tests" note.
+4. **Approval** — when steps 1–3 all pass, the PR is "ready for owner review". Post a "ready for owner approval" comment summarizing the result. **Never merge without explicit approval from the project owner**, even when steps 1–3 are green.
+5. **Merge** — only after explicit owner approval. Squash merge: `gh pr merge <n> --squash`.
 
-Fix BLOCKING findings before merge, then re-run CI and REV. SOC2 findings (missing reviewer / linked issue) are not blocking for this project.
-
-Never merge without explicit approval from the project owner.
+If REV finds BLOCKING issues, or manual testing surfaces a regression, fix them and loop back to step 1 (CI re-runs on the new commit, REV re-reviews the new diff, manual evidence is re-captured).
 
 ## Release checklist
 

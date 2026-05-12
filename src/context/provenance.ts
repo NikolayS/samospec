@@ -29,6 +29,8 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { specSlugDir } from "../paths.ts";
+
 /** Canonical risk-flag vocabulary (SPEC §7). */
 export const RISK_FLAGS = [
   "injection_pattern_detected",
@@ -163,7 +165,7 @@ export function readContextJson(file: string): ContextJson | null {
   return result.data;
 }
 
-/** Compute the absolute path for `.samo/spec/<slug>/context.json`. */
+/** Compute the absolute path for `<spec_dir>/<slug>/context.json`. */
 export function contextJsonPath(repoPath: string, slug: string): string {
-  return path.join(repoPath, ".samo", "spec", slug, "context.json");
+  return path.join(specSlugDir(repoPath, slug), "context.json");
 }
