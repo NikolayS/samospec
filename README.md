@@ -37,7 +37,7 @@ bunx samospec doctor
 bunx samospec --version   # 0.8.0
 ```
 
-`npx` is not supported — use `bunx`.
+`npx` won't work — the CLI ships as TypeScript and depends on the Bun runtime (`Bun.spawn`, etc.). Use `bunx`.
 
 For brevity, the rest of this README writes `samospec` — read it as `bunx samospec`.
 
