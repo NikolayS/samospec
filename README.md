@@ -9,6 +9,8 @@
 
 `samospec` is a git-native CLI that runs a small panel of top AI models against your idea: a **lead** drafts, two **reviewers** critique with different personas, the lead revises, and the loop repeats until convergence. The result is `SPEC.md` with real commit history — `v0.1 → v0.2 → … → v1.0` — that you can diff, blame, and publish.
 
+![SamoSpec demo](docs/demo.gif)
+
 **Live demo** — a real spec produced end-to-end over ChatGPT-account OAuth:
 → https://github.com/NikolayS/todo-stream/tree/samospec/todo-stream
 (browse the `.samo/spec/todo-stream/` tree; 7 review rounds, both reviewers writing real critiques)
