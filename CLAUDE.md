@@ -13,7 +13,7 @@ This project is mirrored between GitHub (`NikolayS/samospec`) and GitLab (`postg
 - `main` — mirrored **GitLab → GitHub**. GitLab is the source of truth; do not push directly to `main` on GitHub (it will be overwritten on the next sync).
 - Dev branches (`claude/*`, feature branches, etc.) — mirrored **GitHub → GitLab**. Push dev work to GitHub from a Claude Code session, then continue review and merge on GitLab.
 
-Workflow implication: a typical change is *started* on GitHub (Claude Code drafts and pushes the dev branch, opens a draft PR for visibility), then *continued and merged* on GitLab (final review, MR merge into `main`). After the GitLab merge, `main` syncs back down to GitHub on the next mirror tick.
+Workflow implication: a typical change is _started_ on GitHub (Claude Code drafts and pushes the dev branch, opens a draft PR for visibility), then _continued and merged_ on GitLab (final review, MR merge into `main`). After the GitLab merge, `main` syncs back down to GitHub on the next mirror tick.
 
 Do not rebase or force-push `main` from either side — the mirror will fight it.
 
