@@ -6,6 +6,17 @@ samospec — git-native CLI (`samospec`) that turns a rough idea into a reviewed
 
 See `.samo/blueprints/SPEC.md` for the full specification.
 
+## Repo mirroring (GitHub ↔ GitLab)
+
+This project is mirrored between GitHub (`NikolayS/samospec`) and GitLab (`postgres-ai/samospec`). The mirror is **asymmetric by branch**:
+
+- `main` — mirrored **GitLab → GitHub**. GitLab is the source of truth; do not push directly to `main` on GitHub (it will be overwritten on the next sync).
+- Dev branches (`claude/*`, feature branches, etc.) — mirrored **GitHub → GitLab**. Push dev work to GitHub from a Claude Code session, then continue review and merge on GitLab.
+
+Workflow implication: a typical change is *started* on GitHub (Claude Code drafts and pushes the dev branch, opens a draft PR for visibility), then *continued and merged* on GitLab (final review, MR merge into `main`). After the GitLab merge, `main` syncs back down to GitHub on the next mirror tick.
+
+Do not rebase or force-push `main` from either side — the mirror will fight it.
+
 ## Naming
 
 - `samospec` — always lowercase (binary name, repo/package name, config keys, prose)
