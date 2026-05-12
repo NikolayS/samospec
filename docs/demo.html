@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SamoSpec real demo</title>
+    <title>SamoSpec demo</title>
     <style>
       body {
         margin: 0;
@@ -17,27 +17,29 @@
         place-items: center;
         padding: 28px;
       }
-      .demo {
-        width: min(960px, 100%);
+      .wrap {
+        width: min(1000px, 100%);
         display: grid;
         gap: 16px;
       }
       h1 {
-        margin: 0;
         font-size: 38px;
-        letter-spacing: 0;
+        margin: 0;
       }
-      p {
+      .sub {
         margin: 0;
         color: #cbd5e1;
-        font-size: 16px;
       }
-      .terminal {
-        height: 540px;
-        overflow: hidden;
+      .grid {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 16px;
+      }
+      .panel {
+        background: #020617;
         border: 1px solid #334155;
         border-radius: 16px;
-        background: #020617;
+        overflow: hidden;
         box-shadow: 0 24px 70px #0008;
       }
       .bar {
@@ -45,8 +47,8 @@
         background: #111827;
         border-bottom: 1px solid #334155;
         display: flex;
-        align-items: center;
         gap: 7px;
+        align-items: center;
         padding-left: 14px;
       }
       .bar i {
@@ -63,126 +65,141 @@
       }
       pre {
         margin: 0;
-        padding: 20px;
+        padding: 18px;
         font:
-          14px/1.5 ui-monospace,
+          13px/1.45 ui-monospace,
           SFMono-Regular,
           Menlo,
           Consolas,
           monospace;
         white-space: pre-wrap;
-        color: #dbeafe;
-        animation: scroll 8s linear infinite;
       }
-      .caption {
-        color: #94a3b8;
+      .term pre {
+        height: 390px;
+        animation: scroll 9s linear infinite;
+      }
+      .spec {
+        background: #f8fafc;
+        color: #111827;
+      }
+      .spec pre {
+        height: 390px;
+        color: #1f2937;
+      }
+      .chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .chip {
+        background: #1e293b;
+        border: 1px solid #475569;
+        border-radius: 999px;
+        padding: 7px 10px;
+        color: #dbeafe;
         font-size: 13px;
       }
       @keyframes scroll {
         0%,
-        15% {
+        18% {
           transform: translateY(0);
         }
         85%,
         100% {
-          transform: translateY(-42%);
+          transform: translateY(-34%);
         }
       }
     </style>
   </head>
   <body>
     <main>
-      <section class="demo">
-        <h1>SamoSpec</h1>
-        <p>Actual CLI help/version/doctor output.</p>
-        <div class="terminal">
-          <div class="bar"><i></i><i></i><i></i></div>
-          <pre>
-$ bun src/main.ts --help
-samospec: unknown command '--help'
-
-Usage: samospec &lt;command&gt; [options]
-
-Commands:
-  init              Create or refresh .samo/ in the current repo.
-  doctor            Diagnose CLI availability, auth, git, lock, and config.
-  new &lt;slug&gt;        Start a new spec (persona + 5-question interview).
-  resume [&lt;slug&gt;]   Resume an in-progress spec from state.json.
-  iterate [&lt;slug&gt;]  Run review rounds until a stopping condition fires.
-  status [&lt;slug&gt;]   Print phase, round, cost, wall-clock, and next action.
-  publish [&lt;slug&gt;]  Promote to blueprints/&lt;slug&gt;/SPEC.md; commit, push, open PR.
-  brief &lt;slug&gt;      Generate a summarized HTML brief — a derivative
-                    summary of the published spec, NOT the spec itself.
-  version           Print the samospec version and exit.
-
-Options for `new`:
-  --idea &lt;text&gt;
-      Initial idea text (default: the &lt;slug&gt;).
-  --force
-      Archive any existing run, then start fresh.
-  --skip &lt;sections&gt;
-      Omit baseline sections from the mandatory template
-      (comma-separated, case-insensitive). Valid sections:
-      version header, goal, user stories, architecture,
-      implementation details, tests, team, sprints, changelog.
-  --max-session-wall-clock-ms &lt;ms&gt;
-      Cap total session wall-clock (positive integer ms). Defaults to
-      budget.max_session_wall_clock_minutes in config.json, or 600000
-      (10 min). On cap: exit 4 with reason `session-wall-clock`.
-  --verbose
-      Emit per-phase and per-file diagnostics on stderr (stdout stays concise).
-  --yes, --accept-persona
-      Skip the persona-proposal readline prompt.
-  --answers-file &lt;path&gt;
-      Load 5-question interview answers from JSON
-      (`{ "answers": [s, s, s, s, s] }`). One of --yes, --accept-persona,
-      or --answers-file is required when stdin is not a TTY (#114).
-  --interview-protocol jsonl
-      Drive the interview over stdin/stdout using line-delimited JSON
-      events. Stdout emits one JSON object per line:
-      `{"type":"persona-proposal"…}`, `{"type":"question","id","text","options"}`, `{"type":"complete"}`.
-      Stdin consumes `{"type":"persona-answer","kind":"accept"|"edit"|"replace"}`
-      and `{"type":"answer","id","choice","custom"?}`. Human-facing
-      status messages route to stderr. Bypasses the non-TTY refusal
-      (the protocol IS the non-TTY driver). For UI wrappers / CI.
-
-Options for `iterate`:
-  --rounds &lt;N&gt;
-      Cap the number of review rounds this session.
-  --no-push
-      Don't push round commits to the remote.
-  --remote &lt;name&gt;
-      Git remote name (default: origin).
-  --quiet
-      Suppress per-phase progress + heartbeat (default: verbose on stderr).
-  --verbose
-      Alias / no-op — iterate is verbose by default (see --quiet).
-  --max-session-wall-clock-ms &lt;ms&gt;
-      Cap the review-loop session wall-clock (positive integer ms). On cap:
-      exit 4 with reason `session-wall-clock`.
-  --on-dirty &lt;incorporate|overwrite|abort&gt;
-      Answer the uncommitted-edits prompt without reading stdin. Required
-      when stdin is not a TTY and `.samo/spec/&lt;slug&gt;/` has dirty edits (#114).
-  --push-consent &lt;yes|no&gt;
-      Answer the first-push consent prompt without reading stdin. Required
-      when stdin is not a TTY and the remote has no persisted consent (#136).
-  --yes
-      Accept everything non-interactively; implies --push-consent yes.
-
-Options for `publish`:
-  --no-lint
-      Skip the publish-time lint pass.
-  --remote &lt;name&gt;
-      Git remote name (default: origin).
-
-Options for `brief`:
-  --out &lt;path&gt;
-      Override the output path. Repo-relative or absolute.</pre
-          >
+      <section class="wrap">
+        <h1>SamoSpec creates a spec</h1>
+        <p class="sub">
+          A concise fixture run of the real spec-creation engine: init, persona,
+          interview, draft commit, and generated files.
+        </p>
+        <div class="chips">
+          <span class="chip">persona accepted</span
+          ><span class="chip">5 interview answers</span
+          ><span class="chip">SPEC.md written</span
+          ><span class="chip">draft v0.1 committed</span>
         </div>
-        <div class="caption">
-          Recorded by samotest from real command output captured in this
-          repository.
+        <div class="grid">
+          <div class="panel term">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <pre>
+$ samospec init
+samospec: initialized .samo/ in /tmp/samospec-real-demo-1778557296037
+created .samo/.gitignore
+created .samo/config.json
+
+$ samospec new linkrot --idea "Detect dead links in Markdown files" --yes
+estimated range: $0.00–$0.00, likely $0.00 (first runs; estimate is approximate)
+per-adapter:
+  lead: ~185K tokens, unknown — OAuth (no per-token cost visibility)
+  reviewer_a: ~75K tokens, unknown — OAuth (no per-token cost visibility)
+  reviewer_b: ~75K tokens, unknown — OAuth (no per-token cost visibility)
+warnings:
+  3 adapter(s) under OAuth; wall-clock + iteration caps substitute for token/cost budget
+branch created: samospec/linkrot
+Claude adapter is in subscription-auth mode. Token cost is not visible; wall-clock/iteration caps enforced instead.
+proposed persona: Veteran "documentation tooling engineer" expert
+rationale: best match for link checking
+persona accepted: Veteran "documentation tooling engineer" expert
+context: 3 file(s) included (479 tokens); context.json -&gt; .samo/spec/linkrot/context.json
+interview complete: 5 answer(s) recorded.
+committed spec(linkrot): draft v0.1 on samospec/linkrot
+
+TL;DR
+# TL;DR
+
+## Goal
+
+Detect dead links in Markdown files before documentation changes are merged.
+
+## Scope summary
+
+- User Stories
+- Architecture
+- Tests
+
+## Next action
+
+`samospec resume linkrot`
+
+next: `samospec iterate linkrot` to start the review loop, or `samospec resume linkrot` to pick up later.</pre
+            >
+          </div>
+          <div class="panel spec">
+            <div class="bar"><i></i><i></i><i></i></div>
+            <pre>
+# Linkrot Checker
+
+## Goal
+
+Detect dead links in Markdown files before documentation changes are merged.
+
+## User Stories
+
+- As a maintainer, I want a fast local check so broken links do not reach review.
+- As a reviewer, I want a concise report that points to the exact file and URL.
+
+## Architecture
+
+&lt;!-- architecture:begin --&gt;
+
+```text
+(architecture not yet specified)
+```
+
+&lt;!-- architecture:end --&gt;
+
+A CLI scans Markdown files, extracts links, classifies local/private URLs as skipped, and checks public URLs with timeouts.
+
+## Tests</pre
+            >
+          </div>
         </div>
       </section>
     </main>
