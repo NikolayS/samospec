@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SamoSpec Demo</title>
+    <title>SamoSpec real demo</title>
     <style>
       body {
         margin: 0;
@@ -15,80 +15,77 @@
         min-height: 100vh;
         display: grid;
         place-items: center;
-        padding: 32px;
+        padding: 28px;
       }
       .demo {
-        width: min(900px, 100%);
+        width: min(960px, 100%);
         display: grid;
-        gap: 18px;
+        gap: 16px;
       }
       h1 {
         margin: 0;
-        font-size: 44px;
+        font-size: 38px;
         letter-spacing: 0;
       }
       p {
         margin: 0;
         color: #cbd5e1;
-        font-size: 18px;
+        font-size: 16px;
       }
       .terminal {
+        height: 540px;
+        overflow: hidden;
         border: 1px solid #334155;
         border-radius: 16px;
-        overflow: hidden;
         background: #020617;
         box-shadow: 0 24px 70px #0008;
       }
       .bar {
-        height: 36px;
+        height: 34px;
         background: #111827;
         border-bottom: 1px solid #334155;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding-left: 14px;
       }
-      .content {
-        padding: 24px;
+      .bar i {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #ef4444;
+      }
+      .bar i:nth-child(2) {
+        background: #f59e0b;
+      }
+      .bar i:nth-child(3) {
+        background: #22c55e;
+      }
+      pre {
+        margin: 0;
+        padding: 20px;
         font:
-          18px/1.6 ui-monospace,
+          14px/1.5 ui-monospace,
           SFMono-Regular,
           Menlo,
           Consolas,
           monospace;
+        white-space: pre-wrap;
+        color: #dbeafe;
+        animation: scroll 8s linear infinite;
       }
-      .line {
-        opacity: 0;
-        transform: translateY(8px);
-        animation: reveal 8s infinite;
+      .caption {
+        color: #94a3b8;
+        font-size: 13px;
       }
-      .line:nth-child(2) {
-        animation-delay: 1.1s;
-      }
-      .line:nth-child(3) {
-        animation-delay: 2.2s;
-      }
-      .line:nth-child(4) {
-        animation-delay: 3.3s;
-      }
-      .line:nth-child(5) {
-        animation-delay: 4.4s;
-      }
-      .prompt {
-        color: #93c5fd;
-      }
-      .ok {
-        color: #86efac;
-      }
-      @keyframes reveal {
+      @keyframes scroll {
         0%,
-        10% {
-          opacity: 0;
-          transform: translateY(8px);
+        15% {
+          transform: translateY(0);
         }
-        18%,
-        82% {
-          opacity: 1;
-          transform: none;
-        }
+        85%,
         100% {
-          opacity: 0;
+          transform: translateY(-42%);
         }
       }
     </style>
@@ -97,27 +94,95 @@
     <main>
       <section class="demo">
         <h1>SamoSpec</h1>
-        <p>
-          Turn a rough idea into a reviewed, versioned spec with model review
-          rounds captured in git.
-        </p>
+        <p>Actual CLI help/version/doctor output.</p>
         <div class="terminal">
-          <div class="bar"></div>
-          <div class="content">
-            <div class="line prompt">
-              $ bunx samospec new linkrot --idea "Detect dead links"
-            </div>
-            <div class="line ok">
-              ✓ persona proposed and interview questions generated
-            </div>
-            <div class="line prompt">$ bunx samospec iterate linkrot</div>
-            <div class="line ok">
-              ✓ lead revised after two reviewer critiques
-            </div>
-            <div class="line ok">
-              ✓ SPEC.md, decisions.md, and BRIEF.html ready for PR
-            </div>
-          </div>
+          <div class="bar"><i></i><i></i><i></i></div>
+          <pre>
+$ bun src/main.ts --help
+samospec: unknown command '--help'
+
+Usage: samospec &lt;command&gt; [options]
+
+Commands:
+  init              Create or refresh .samo/ in the current repo.
+  doctor            Diagnose CLI availability, auth, git, lock, and config.
+  new &lt;slug&gt;        Start a new spec (persona + 5-question interview).
+  resume [&lt;slug&gt;]   Resume an in-progress spec from state.json.
+  iterate [&lt;slug&gt;]  Run review rounds until a stopping condition fires.
+  status [&lt;slug&gt;]   Print phase, round, cost, wall-clock, and next action.
+  publish [&lt;slug&gt;]  Promote to blueprints/&lt;slug&gt;/SPEC.md; commit, push, open PR.
+  brief &lt;slug&gt;      Generate a summarized HTML brief — a derivative
+                    summary of the published spec, NOT the spec itself.
+  version           Print the samospec version and exit.
+
+Options for `new`:
+  --idea &lt;text&gt;
+      Initial idea text (default: the &lt;slug&gt;).
+  --force
+      Archive any existing run, then start fresh.
+  --skip &lt;sections&gt;
+      Omit baseline sections from the mandatory template
+      (comma-separated, case-insensitive). Valid sections:
+      version header, goal, user stories, architecture,
+      implementation details, tests, team, sprints, changelog.
+  --max-session-wall-clock-ms &lt;ms&gt;
+      Cap total session wall-clock (positive integer ms). Defaults to
+      budget.max_session_wall_clock_minutes in config.json, or 600000
+      (10 min). On cap: exit 4 with reason `session-wall-clock`.
+  --verbose
+      Emit per-phase and per-file diagnostics on stderr (stdout stays concise).
+  --yes, --accept-persona
+      Skip the persona-proposal readline prompt.
+  --answers-file &lt;path&gt;
+      Load 5-question interview answers from JSON
+      (`{ "answers": [s, s, s, s, s] }`). One of --yes, --accept-persona,
+      or --answers-file is required when stdin is not a TTY (#114).
+  --interview-protocol jsonl
+      Drive the interview over stdin/stdout using line-delimited JSON
+      events. Stdout emits one JSON object per line:
+      `{"type":"persona-proposal"…}`, `{"type":"question","id","text","options"}`, `{"type":"complete"}`.
+      Stdin consumes `{"type":"persona-answer","kind":"accept"|"edit"|"replace"}`
+      and `{"type":"answer","id","choice","custom"?}`. Human-facing
+      status messages route to stderr. Bypasses the non-TTY refusal
+      (the protocol IS the non-TTY driver). For UI wrappers / CI.
+
+Options for `iterate`:
+  --rounds &lt;N&gt;
+      Cap the number of review rounds this session.
+  --no-push
+      Don't push round commits to the remote.
+  --remote &lt;name&gt;
+      Git remote name (default: origin).
+  --quiet
+      Suppress per-phase progress + heartbeat (default: verbose on stderr).
+  --verbose
+      Alias / no-op — iterate is verbose by default (see --quiet).
+  --max-session-wall-clock-ms &lt;ms&gt;
+      Cap the review-loop session wall-clock (positive integer ms). On cap:
+      exit 4 with reason `session-wall-clock`.
+  --on-dirty &lt;incorporate|overwrite|abort&gt;
+      Answer the uncommitted-edits prompt without reading stdin. Required
+      when stdin is not a TTY and `.samo/spec/&lt;slug&gt;/` has dirty edits (#114).
+  --push-consent &lt;yes|no&gt;
+      Answer the first-push consent prompt without reading stdin. Required
+      when stdin is not a TTY and the remote has no persisted consent (#136).
+  --yes
+      Accept everything non-interactively; implies --push-consent yes.
+
+Options for `publish`:
+  --no-lint
+      Skip the publish-time lint pass.
+  --remote &lt;name&gt;
+      Git remote name (default: origin).
+
+Options for `brief`:
+  --out &lt;path&gt;
+      Override the output path. Repo-relative or absolute.</pre
+          >
+        </div>
+        <div class="caption">
+          Recorded by samotest from real command output captured in this
+          repository.
         </div>
       </section>
     </main>
