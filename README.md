@@ -154,11 +154,16 @@ Useful flags:
 
 ## Where files live
 
+samospec follows the shared Samo repository layout:
+
+- `samo/` contains visible, reviewable project artifacts: specs, blueprints, briefs, tool descriptions, and scenario/policy documents.
+- `.samo/` contains machine config, cache, locks, runtime state, and local/generated artifacts that should not be treated as the product source of truth.
+
 samospec keeps two kinds of artifacts in your repo:
 
-- **Working drafts** — read/written every round. Default: `.samo/spec/<slug>/`.
+- **Working drafts** — read/written every round. Target default: `samo/spec/<slug>/`.
   - `SPEC.md` (canonical during iteration), `TLDR.md`, `state.json`, `interview.json`, `context.json`, `decisions.md`, `changelog.md`, `architecture.json`, `reviews/r01/`, `transcripts/` (gitignored).
-- **Published snapshots** — promoted by `samospec publish`. Default: `blueprints/<slug>/`.
+- **Published snapshots** — promoted by `samospec publish`. Target default: `samo/blueprints/<slug>/`.
   - `SPEC.md` (immutable promoted copy), and after `samospec brief <slug>`, `BRIEF.html` (summarized derivative).
 
 Hidden runtime / config:
@@ -174,18 +179,18 @@ Both root-level paths are configurable via `.samo/config.json` so you can host b
 {
   "schema_version": 1,
   "paths": {
-    "spec_dir": "samospec/spec",
-    "blueprints_dir": "samospec/blueprints"
+    "spec_dir": "samo/spec",
+    "blueprints_dir": "samo/blueprints"
   }
 }
 ```
 
-- `paths.spec_dir` — where working drafts live. Default: `.samo/spec`.
-- `paths.blueprints_dir` — where published snapshots and briefs live. Default: `blueprints`.
+- `paths.spec_dir` — where working drafts live. Current default: `.samo/spec`; target default: `samo/spec`.
+- `paths.blueprints_dir` — where published snapshots and briefs live. Current default: `blueprints`; target default: `samo/blueprints`.
 
 Both must be **repo-relative** (absolute paths and `..`-escapes are rejected). Paths under `.samo/` work but GitHub Pages defaults to Jekyll, which excludes dotfile-prefixed paths — `samospec brief` writes a `.nojekyll` marker at the repo root for that reason.
 
-> **Heads-up:** the next minor release flips the defaults to `samospec/spec` and `samospec/blueprints` (visible, Pages-friendly out of the box). Set the keys above to keep the legacy layout when that lands. `.samo/config.json` itself stays put — the `.samo/` directory remains the home for runtime/config files.
+> **Heads-up:** the next minor release flips the defaults to `samo/spec` and `samo/blueprints` (visible, Pages-friendly out of the box). Set the keys above to keep the legacy layout when that lands. `.samo/config.json` itself stays put — the `.samo/` directory remains the home for runtime/config files.
 
 ---
 
