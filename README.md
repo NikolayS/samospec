@@ -28,22 +28,18 @@ SamoSpec treats spec authoring like code review:
 
 ---
 
-## Install
+## Run
 
-Requires [Bun](https://bun.sh) ≥ 1.2.0.
-
-```bash
-bun install -g samospec
-samospec --version   # 0.8.0
-```
-
-Or one-shot:
+No install step. Requires [Bun](https://bun.sh) ≥ 1.2.0; `bunx` fetches and caches `samospec` on first use.
 
 ```bash
 bunx samospec doctor
+bunx samospec --version   # 0.8.0
 ```
 
-`npx` is not supported — use `bunx` or a global Bun install.
+`npx` won't work — the CLI ships as TypeScript and depends on the Bun runtime (`Bun.spawn`, etc.). Use `bunx`.
+
+For brevity, the rest of this README writes `samospec` — read it as `bunx samospec`.
 
 ---
 
@@ -52,13 +48,13 @@ bunx samospec doctor
 Three commands, from idea to reviewed spec:
 
 ```bash
-samospec init                                       # scaffolds .samo/ in the current git repo
-samospec new linkrot --idea "Detect dead links in Markdown files"
-samospec iterate linkrot                            # lead drafts → 2 reviewers critique → lead revises → repeat
-samospec publish linkrot                            # promote, commit, push, open PR via gh
+bunx samospec init                                       # scaffolds .samo/ in the current git repo
+bunx samospec new linkrot --idea "Detect dead links in Markdown files"
+bunx samospec iterate linkrot                            # lead drafts → 2 reviewers critique → lead revises → repeat
+bunx samospec publish linkrot                            # promote, commit, push, open PR via gh
 ```
 
-At every step: `samospec status <slug>` prints phase, current version, next-step hint, and last-round summary.
+At every step: `bunx samospec status <slug>` prints phase, current version, next-step hint, and last-round summary.
 
 ---
 
