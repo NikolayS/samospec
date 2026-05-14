@@ -405,6 +405,130 @@ describe("proposePersona — --explain flag (SPEC §4 secondary ICP)", () => {
   });
 });
 
+// ---------- job-title shape guidance (#367) ----------
+
+describe("proposePersona — job-title shape guidance (#367)", () => {
+  test("prompt asks for a 2-4 word job-title-shaped role", async () => {
+    const adapter = makeScriptedAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "Recipe Developer" expert',
+        rationale: "r",
+      }),
+    ]);
+    await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+    const prompt = adapter.asks[0].prompt;
+    // Must mention the 2-4 word constraint.
+    expect(prompt).toMatch(/2[–—-]4\s+words/i);
+    // Must instruct Title Case.
+    expect(prompt.toLowerCase()).toContain("title case");
+    // Must explicitly name "job title" / "role" framing.
+    expect(prompt.toLowerCase()).toMatch(/job title|role label|business card/);
+  });
+
+  test("prompt names person-noun endings (Developer, Designer, etc.)", async () => {
+    const adapter = makeScriptedAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "Recipe Developer" expert',
+        rationale: "r",
+      }),
+    ]);
+    await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+    const prompt = adapter.asks[0].prompt;
+    // At least three of these person-nouns should be enumerated as
+    // accepted endings.
+    const personNouns = [
+      "Developer",
+      "Designer",
+      "Manager",
+      "Advisor",
+      "Counselor",
+      "Strategist",
+      "Analyst",
+      "Architect",
+      "Engineer",
+      "Consultant",
+    ];
+    const hits = personNouns.filter((n) => prompt.includes(n));
+    expect(hits.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("prompt forbids descriptive task / domain phrases", async () => {
+    const adapter = makeScriptedAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "Recipe Developer" expert',
+        rationale: "r",
+      }),
+    ]);
+    await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+    const prompt = adapter.asks[0].prompt;
+    const lower = prompt.toLowerCase();
+    // Must call out the forbidden -ing / -ment / -ence task-shaped
+    // suffixes by listing some of them verbatim.
+    const badEndings = [
+      "planning",
+      "development",
+      "analysis",
+      "science",
+      "engineering",
+    ];
+    const flagged = badEndings.filter((s) => lower.includes(s));
+    expect(flagged.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test("prompt includes few-shot good/bad examples for shape", async () => {
+    const adapter = makeScriptedAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "Recipe Developer" expert',
+        rationale: "r",
+      }),
+    ]);
+    await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+    const prompt = adapter.asks[0].prompt;
+    // Good examples: short job-title-shaped roles (canonically wrapped
+    // in the Veteran "<skill>" expert form).
+    expect(prompt).toContain('Veteran "Recipe Developer" expert');
+    expect(prompt).toContain('Veteran "Food Scientist" expert');
+    // Bad examples: descriptive task/domain phrases that the user
+    // explicitly does NOT want.
+    expect(prompt).toContain("Culinary recipe development and food science");
+    expect(prompt.toLowerCase()).toContain(
+      "higher-education academic planning",
+    );
+  });
+});
+
 // ---------- effort max policy ----------
 
 describe("proposePersona — lead effort policy (SPEC §11)", () => {
