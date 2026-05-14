@@ -108,13 +108,44 @@ function buildPersonaPrompt(input: { idea: string; explain: boolean }): string {
     ? "Use plain English for any user-facing copy. Avoid engineer-terse " +
       "jargon in prose fields. (Non-technical ICP.)\n\n"
     : "";
+  // Issue #367: the `<skill>` slot must read like a person's job title
+  // on a business card (e.g. "Recipe Developer"), not a descriptive
+  // expertise / task / domain phrase (e.g. "Culinary recipe
+  // development and food science"). Tight shape constraints + a few
+  // good/bad few-shot examples keep the lead from emitting prose that
+  // later has to be cosmetically truncated by the consumer.
   return (
     explainPreamble +
     "You are the samospec lead. Given a rough idea, propose a single " +
-    'expert persona in the EXACT form `Veteran "<skill>" expert`. ' +
-    "Examples:\n" +
-    '  - Veteran "CLI software engineer" expert\n' +
-    '  - Veteran "distributed systems / SRE specialist" expert\n\n' +
+    'expert persona in the EXACT form `Veteran "<skill>" expert`.\n\n' +
+    "SHAPE OF `<skill>` (strict):\n" +
+    "  - 2–4 words, Title Case.\n" +
+    "  - A job title / role label — what would be printed on this " +
+    "person's business card. Answer the question 'What is this " +
+    "person's title?', NOT 'What is their area of expertise?'.\n" +
+    "  - Noun phrase ending in a person-noun such as: Developer, " +
+    "Designer, Manager, Advisor, Counselor, Strategist, Analyst, " +
+    "Architect, Engineer, Consultant, Scientist, Specialist, Editor, " +
+    "Coach, Lead.\n" +
+    "  - NEVER a descriptive expertise / task / domain phrase. Forbid " +
+    "anything ending in -planning, -development, -analysis, -science " +
+    "(when used as a field name, e.g. 'food science' is OK ONLY if " +
+    "preceded by a person-noun like 'Food Scientist'), -engineering " +
+    "(same caveat), or generic gerunds describing what the person " +
+    "does rather than who they are.\n\n" +
+    "GOOD examples (right shape):\n" +
+    '  - Veteran "Recipe Developer" expert\n' +
+    '  - Veteran "Food Scientist" expert\n' +
+    '  - Veteran "Academic Advisor" expert\n' +
+    '  - Veteran "College Counselor" expert\n' +
+    '  - Veteran "CLI Software Engineer" expert\n\n' +
+    "BAD examples (wrong shape — do NOT emit these):\n" +
+    '  - Veteran "Culinary recipe development and food science" ' +
+    "expert (too long, describes a task not a person)\n" +
+    '  - Veteran "Higher-education academic planning" expert ' +
+    "(reads as a domain/task, not a title)\n" +
+    '  - Veteran "Distributed systems and reliability" expert ' +
+    "(missing person-noun)\n\n" +
     "Respond ONLY with a JSON object:\n" +
     '  { "persona": "Veteran \\"<skill>\\" expert", "rationale": "..." }\n' +
     "Do not wrap in code fences. The skill must be non-empty and must " +
