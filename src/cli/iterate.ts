@@ -119,11 +119,17 @@ import {
 const DEFAULT_MAX_ROUNDS = 10 as const;
 const DEFAULT_WALL_CLOCK_MS = 240 * 60 * 1000; // 240 minutes
 const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
-// Issue #91: session wall-clock cap default for `samospec iterate`,
-// mirroring `samospec new`. Configurable via
-// `budget.max_session_wall_clock_minutes` in `.samo/config.json` or
-// overridden per-call via `IterateInput.maxSessionWallClockMs`.
-const DEFAULT_SESSION_WALL_CLOCK_MS = 10 * 60 * 1_000;
+// NOTE: the session wall-clock cap (#91 /
+// DEFAULT_SESSION_WALL_CLOCK_MS) was removed per Rule 10 ("nothing
+// kills a dev LLM run on the wall clock"). It produced exit code 4 +
+// a `session-wall-clock` reason which the samo.team UI rendered as an
+// alarming "Run ended / timed out" banner even while the underlying
+// LLM was still making progress (samo.team #415, #424). The
+// `maxSessionWallClockMs` field on `IterateInput` and the
+// `--max-session-wall-clock-ms` CLI flag are retained as ignored
+// no-ops for backward compatibility. The SPEC §11 "one more round
+// fits" gate (`maxWallClockMs`) is unaffected — that's a
+// between-round boundary check, not a mid-call kill.
 
 // ---------- types ----------
 
@@ -223,15 +229,15 @@ export interface IterateInput {
    */
   readonly progress?: ProgressOptions;
   /**
-   * Issue #91: session wall-clock cap in milliseconds. Mirrors the
-   * `--max-session-wall-clock-ms` semantics in `samospec new`: when the
-   * total elapsed time since `runIterate()` entry exceeds this value,
-   * the current round / seat call is preempted and `runIterate` returns
-   * exit 4 with a `session-wall-clock` message in stderr. Falls back to
-   * `budget.max_session_wall_clock_minutes` in `.samo/config.json`, then
-   * to `DEFAULT_SESSION_WALL_CLOCK_MS` (10 min). Independent of the
-   * SPEC §11 "one more round fits" guard (`maxWallClockMs`) — the two
-   * caps compose: whichever is tighter fires first.
+   * Deprecated no-op (#91 / samo.team #415, #424). The session
+   * wall-clock cap was removed per Rule 10 ("nothing kills a dev LLM
+   * run on the wall clock"). The field is retained on the input type
+   * so existing callers keep type-checking, but the value is ignored
+   * — the CLI no longer kills a run on its own wall clock. Allowed
+   * stop signals from here on: inactivity heartbeat + parent SIGTERM
+   * (user cancel). The SPEC §11 "one more round fits" gate
+   * (`maxWallClockMs`) remains: it's a between-round boundary check,
+   * not a mid-call kill.
    */
   readonly maxSessionWallClockMs?: number;
 }
@@ -373,14 +379,14 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
     const sessionStartedMs = input.sessionStartedAtMs ?? Date.parse(input.now);
     const nowMsFn = (): number => input.nowMs ?? Date.now();
 
-    // Issue #91: session wall-clock guard. The live-repro showed a
-    // stuck revise at round 7 running 1h 41m under a 40-min cap; this
-    // deadline preempts any round (or seat call) that runs past the
-    // cap. Uses a real wall clock (`Date.now()`) — cannot be silenced
-    // by tests that freeze `input.nowMs`, so the hanging-adapter tests
-    // in `tests/cli/iterate-wall-clock.test.ts` actually preempt.
-    const sessionWallClockStartMs = Date.now();
-    const sessionWallClockLimitMs = resolveSessionWallClockMs(input);
+    // Wall-clock kill removed (Rule 10 / samo.team #415, #424). The
+    // previous #91 guard (`sessionWallClockStartMs` /
+    // `sessionWallClockLimitMs` + `withSessionDeadline` wrapper) killed
+    // mid-round on a real wall clock and produced exit 4 with a
+    // `session-wall-clock` reason. The CLI no longer enforces that
+    // cap — adapter calls run to completion; the only legitimate stop
+    // signals are inactivity heartbeat (handled by the progress
+    // reporter, non-killing) and parent SIGTERM (user cancel).
 
     // Initial state tracking.
     let currentState: State = state;
@@ -452,47 +458,14 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
           });
         }
 
-        // Issue #91: session wall-clock guard BEFORE each round starts.
-        // Independent from the SPEC §11 "one more round fits" gate above
-        // — this cap is the user-facing `--max-session-wall-clock-ms`
-        // (or config-derived) budget, and must fire even if per-call
-        // timeouts would also let another round fit.
-        const sessionElapsedMs = Date.now() - sessionWallClockStartMs;
-        if (sessionElapsedMs >= sessionWallClockLimitMs) {
-          const leadTerm: State = {
-            ...currentState,
-            round_state: "lead_terminal",
-            updated_at: nowIso(),
-            exit: {
-              code: 4,
-              reason: "lead-terminal:wall_clock",
-              round_index: currentState.round_index,
-            },
-          };
-          writeState(paths.statePath, leadTerm);
-          error(
-            `samospec: session-wall-clock exceeded before round ` +
-              `${String(roundIndex)} (${String(sessionElapsedMs)}ms ` +
-              `elapsed, limit ${String(sessionWallClockLimitMs)}ms). ` +
-              `Restart with a larger --max-session-wall-clock-ms or ` +
-              `increase budget.max_session_wall_clock_minutes.`,
-          );
-          finalizeBookkeeping({
-            cwd: input.cwd,
-            slug: input.slug,
-            statePath: paths.statePath,
-            tldrPath: paths.tldrPath,
-            roundIndex: leadTerm.round_index,
-          });
-          return {
-            exitCode: 4,
-            stdout: lines.join("\n"),
-            stderr: `${errLines.join("\n")}\n`,
-            roundsRun: Math.max(0, roundsRun - 1),
-            finalVersion: currentState.version,
-            stopReason: "lead-terminal",
-          };
-        }
+        // Pre-round session-wall-clock kill removed (Rule 10 /
+        // samo.team #415, #424). Was a hard `Date.now()` deadline
+        // check that wrote `lead-terminal:wall_clock` and exited 4 —
+        // now intentionally absent. The SPEC §11
+        // `shouldStartNextRound` gate above (between-round budget
+        // boundary check) is preserved; this section only removes the
+        // separate user-facing session cap that hard-killed runs in
+        // progress.
 
         // Manual-edit detection BEFORE each round.
         const report = detectManualEdits(input.slug, {
@@ -616,81 +589,34 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         // the outer `SessionWallClockError`, collapsing the two into
         // the same `wall_clock` exit reason and losing the specific
         // `revise_timeout` diagnostic.
-        let roundOutcome: Awaited<ReturnType<typeof runRound>>;
-        try {
-          roundOutcome = await withSessionDeadline(
-            runRound({
-              now: input.now,
-              nowFn: (): string => new Date(nowMsFn()).toISOString(),
-              roundNumber: roundIndex,
-              dirs,
-              specText: currentSpec,
-              decisionsHistory,
-              adapters: wrappedAdapters,
-              critiqueTimeoutMs: callTimeouts.criticA_ms,
-              reviseTimeoutMs: callTimeouts.revise_ms,
-              remainingSessionMsFn: (): number =>
-                sessionWallClockLimitMs -
-                (Date.now() - sessionWallClockStartMs),
-              ...(manualEditDirective !== undefined
-                ? { manualEditDirective }
-                : {}),
-              ...(ideaForRound !== undefined
-                ? { idea: ideaForRound, slug: input.slug }
-                : {}),
-            }),
-            `round_${String(roundIndex)}`,
-            sessionWallClockStartMs,
-            sessionWallClockLimitMs,
-          );
-        } catch (err) {
-          if (err instanceof SessionWallClockError) {
-            // #91: the cap fired mid-round. Persist a lead_terminal
-            // state with a wall-clock sub-reason, scoop any untracked
-            // round artefacts into a finalize commit, and surface the
-            // `session-wall-clock` token in stderr so scripts can
-            // pattern-match on it (matches src/cli/new.ts verbiage).
-            const leadTerm: State = {
-              ...currentState,
-              round_state: "lead_terminal",
-              round_index: roundIndex - 1,
-              updated_at: nowIso(),
-              exit: {
-                code: 4,
-                reason: "lead-terminal:wall_clock",
-                round_index: roundIndex,
-              },
-            };
-            writeState(paths.statePath, leadTerm);
-            error(
-              `samospec: session-wall-clock exceeded during round ` +
-                `${String(roundIndex)} (${String(err.elapsedMs)}ms ` +
-                `elapsed, limit ${String(err.limitMs)}ms). Restart with ` +
-                `a larger --max-session-wall-clock-ms or increase ` +
-                `budget.max_session_wall_clock_minutes.`,
-            );
-            finalizeBookkeeping({
-              cwd: input.cwd,
-              slug: input.slug,
-              statePath: paths.statePath,
-              tldrPath: paths.tldrPath,
-              roundIndex: leadTerm.round_index,
-              // Scoop any round-N artefacts (reviews/rNN/) created
-              // before the cap tripped so the tree is clean on exit.
-              // Same pattern as the existing lead_terminal branch.
-              extraPaths: [dirs.roundDir],
-            });
-            return {
-              exitCode: 4,
-              stdout: lines.join("\n"),
-              stderr: `${errLines.join("\n")}\n`,
-              roundsRun,
-              finalVersion: currentState.version,
-              stopReason: "lead-terminal",
-            };
-          }
-          throw err;
-        }
+        // Wall-clock kill removed (Rule 10 / samo.team #415, #424).
+        // The previous `withSessionDeadline(runRound(...), …)` wrapper
+        // would throw `SessionWallClockError` mid-round and exit 4 with
+        // a `session-wall-clock` reason; that path is gone. `runRound`
+        // now executes to completion (or until the per-call timeouts
+        // inside it, which are SPEC §7 retries — not a wall-clock
+        // kill of the session). `remainingSessionMsFn` is no longer
+        // threaded because there is no session budget to clamp
+        // against; `resolveEffectiveReviseTimeout` in
+        // `src/loop/round.ts` falls back to the configured value.
+        const roundOutcome: Awaited<ReturnType<typeof runRound>> =
+          await runRound({
+            now: input.now,
+            nowFn: (): string => new Date(nowMsFn()).toISOString(),
+            roundNumber: roundIndex,
+            dirs,
+            specText: currentSpec,
+            decisionsHistory,
+            adapters: wrappedAdapters,
+            critiqueTimeoutMs: callTimeouts.criticA_ms,
+            reviseTimeoutMs: callTimeouts.revise_ms,
+            ...(manualEditDirective !== undefined
+              ? { manualEditDirective }
+              : {}),
+            ...(ideaForRound !== undefined
+              ? { idea: ideaForRound, slug: input.slug }
+              : {}),
+          });
 
         // Persist state at round boundary (round_state tracking).
         // The round started in "planned" then advanced to "running" inside
@@ -1144,102 +1070,10 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
 
 // ---------- helpers ----------
 
-// ---------- session wall-clock guard (#91) ----------
-
-/**
- * Thrown by `withSessionDeadline()` when the iterate session wall-clock
- * cap is exceeded. Mirrors `SessionWallClockError` in `src/cli/new.ts`
- * so both subcommands surface the same `session-wall-clock` token in
- * stderr and exit with code 4.
- */
-class SessionWallClockError extends Error {
-  readonly phase: string;
-  readonly elapsedMs: number;
-  readonly limitMs: number;
-  constructor(phase: string, elapsedMs: number, limitMs: number) {
-    super(
-      `session-wall-clock: ${phase} exceeded ${String(limitMs)}ms limit ` +
-        `(elapsed ${String(elapsedMs)}ms)`,
-    );
-    this.name = "SessionWallClockError";
-    this.phase = phase;
-    this.elapsedMs = elapsedMs;
-    this.limitMs = limitMs;
-  }
-}
-
-/**
- * Race `promise` against a deadline derived from `startMs + limitMs`.
- * If the deadline fires first, throws `SessionWallClockError`. Used at
- * every seat call and between rounds so a hanging reviewer cannot run
- * past the cap (see #91 live-repro: 40 min cap, 1h 41m runtime).
- */
-async function withSessionDeadline<T>(
-  promise: Promise<T>,
-  phase: string,
-  startMs: number,
-  limitMs: number,
-): Promise<T> {
-  const remaining = limitMs - (Date.now() - startMs);
-  if (remaining <= 0) {
-    throw new SessionWallClockError(phase, Date.now() - startMs, limitMs);
-  }
-  return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      reject(new SessionWallClockError(phase, Date.now() - startMs, limitMs));
-    }, remaining);
-    promise.then(
-      (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      },
-      (e: unknown) => {
-        clearTimeout(timer);
-        reject(e instanceof Error ? e : new Error(String(e)));
-      },
-    );
-  });
-}
-
-/**
- * Resolve the session wall-clock limit (ms) for `runIterate`:
- *   1. `input.maxSessionWallClockMs` (explicit override, e.g. from
- *      `--max-session-wall-clock-ms <ms>` on the CLI).
- *   2. `budget.max_session_wall_clock_minutes` in `.samo/config.json`.
- *   3. `DEFAULT_SESSION_WALL_CLOCK_MS` (10 min).
- *
- * Kept local to `iterate.ts` so changes to `new.ts`'s config layout
- * cannot silently mutate iterate's cap; the two subcommands share the
- * same schema but resolve it independently.
- */
-function resolveSessionWallClockMs(input: IterateInput): number {
-  if (typeof input.maxSessionWallClockMs === "number") {
-    return input.maxSessionWallClockMs;
-  }
-  try {
-    const configPath = path.join(input.cwd, ".samo", "config.json");
-    if (existsSync(configPath)) {
-      const raw = readFileSync(configPath, "utf8");
-      const cfg = JSON.parse(raw) as Record<string, unknown>;
-      const budget = cfg["budget"];
-      if (
-        typeof budget === "object" &&
-        budget !== null &&
-        !Array.isArray(budget)
-      ) {
-        const minutes = (budget as Record<string, unknown>)[
-          "max_session_wall_clock_minutes"
-        ];
-        if (typeof minutes === "number" && minutes > 0) {
-          return Math.round(minutes * 60 * 1_000);
-        }
-      }
-    }
-  } catch {
-    // config unreadable — fall through to default.
-  }
-  return DEFAULT_SESSION_WALL_CLOCK_MS;
-}
+// NOTE: The session wall-clock guard (#91 — `SessionWallClockError`,
+// `withSessionDeadline`, `resolveSessionWallClockMs`) was removed per
+// Rule 10 / samo.team #415, #424. See header constants comment for
+// rationale.
 
 function ensureTrailingNewline(s: string): string {
   return s.endsWith("\n") ? s : `${s}\n`;

@@ -203,7 +203,11 @@ describe("iterate parser — unknown --flag rejected (#91)", () => {
   });
 });
 
-// ---------- 3. Runtime: hanging reviewer honors the cap ----------
+// ---------- 3. Runtime: hanging reviewer is NOT preempted ----------
+
+// Pre-#415 this section asserted that `runIterate` killed a hanging
+// reviewer on the session wall-clock cap. That kill was removed per
+// Rule 10 and samo.team #415 + #424; the assertion shape is inverted.
 
 function makeHangingCritiqueAdapter(): Adapter {
   const base = createFakeAdapter({});
@@ -216,8 +220,30 @@ function makeHangingCritiqueAdapter(): Adapter {
   };
 }
 
-describe("runIterate — maxSessionWallClockMs caps a hanging round (#91)", () => {
-  test("hanging critique is preempted; exit 4 within ~2x cap; stderr contains session-wall-clock", async () => {
+/** Race a promise against a real-time deadline. */
+async function raceDeadline<T>(
+  p: Promise<T>,
+  deadlineMs: number,
+): Promise<{ resolved: true; value: T } | { resolved: false }> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve({ resolved: false });
+    }, deadlineMs);
+    p.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve({ resolved: true, value });
+      },
+      () => {
+        clearTimeout(timer);
+        resolve({ resolved: false });
+      },
+    );
+  });
+}
+
+describe("runIterate — maxSessionWallClockMs is a deprecated no-op (#91 / samo.team #415, #424)", () => {
+  test("hanging critique is NOT preempted by maxSessionWallClockMs", async () => {
     const slug = "wc-slug";
     seedSpec(tmp, slug);
 
@@ -233,35 +259,25 @@ describe("runIterate — maxSessionWallClockMs caps a hanging round (#91)", () =
     const reviewerA = makeHangingCritiqueAdapter();
     const reviewerB = makeHangingCritiqueAdapter();
 
-    const capMs = 2_000;
-    const startMs = Date.now();
-    const res = await runIterate({
+    const capMs = 1_500;
+    const runPromise = runIterate({
       cwd: tmp,
       slug,
       now: "2026-04-19T12:00:00Z",
       resolvers: ACCEPT_RESOLVERS,
       adapters: { lead, reviewerA, reviewerB },
       maxRounds: 1,
-      // The hanging reviewer must be preempted by the session
-      // wall-clock guard, not by the per-call CRITIQUE_TIMEOUT_MS
-      // (which defaults to 300s — way past test timeout).
+      // Pre-fix this would have preempted at ~capMs and produced exit
+      // 4 + session-wall-clock. Post-fix the flag is a no-op.
       maxSessionWallClockMs: capMs,
-      // Pin SPEC §11's "one more round fits" gate to a neutral state
-      // so the new session-wall-clock cap (not the §11 gate) is what
-      // preempts. Without these, `now_ms - session_started_at_ms` runs
-      // off the `now` string vs real wall-clock and can trip §11 first.
       sessionStartedAtMs: 0,
       nowMs: 0,
       maxWallClockMs: 60 * 60 * 1000,
     });
-    const elapsedMs = Date.now() - startMs;
 
-    // Must terminate within ~2x the cap (generous allowance for
-    // cleanup + finalize commit + subprocess overhead).
-    expect(elapsedMs).toBeLessThan(capMs * 2 + 4_000);
-    expect(res.exitCode).toBe(4);
-    expect(res.stderr.toLowerCase()).toContain("session-wall-clock");
-  }, 15_000);
+    const outcome = await raceDeadline(runPromise, capMs * 3);
+    expect(outcome.resolved).toBe(false);
+  }, 10_000);
 
   test("runIterate accepts maxSessionWallClockMs without throwing when all calls complete fast", async () => {
     const slug = "wc-slug";

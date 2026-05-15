@@ -1,12 +1,15 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
-// RED test for #81: `samospec new <slug>` with a mock adapter that hangs
-// on the first `ask` call must exit within configurable timeout (5s in
-// this test) with `lead_terminal` reason and a specific `timeout` message.
+// Historically (#81) this test asserted that `samospec new <slug>` with
+// a hanging adapter exited within ~5s with `lead_terminal` exit 4 and a
+// `session-wall-clock` reason. That kill was removed per Rule 10 and
+// samo.team #415 + #424. The test below now fences the NEW behavior:
+// the CLI must NOT exit on a wall-clock timer; the run keeps going
+// until the parent sends SIGTERM or the inactivity heartbeat decides
+// to surface a warning (non-killing).
 //
-// The adapter hangs forever on ask(). With the session wall-clock guard
-// in place, runNew must kill the hanging phase and return exit 4 with
-// a message containing "timeout" and "session-wall-clock".
+// See `tests/cli/no-wall-clock-kill.test.ts` for the primary behavior
+// fence.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -29,7 +32,6 @@ import type {
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { runInit } from "../../src/cli/init.ts";
 
-// Adapter that hangs on ask() indefinitely.
 function makeHangingAdapter(): Adapter {
   const auth: AuthStatus = { authenticated: true, subscription_auth: false };
   return {
@@ -41,22 +43,18 @@ function makeHangingAdapter(): Adapter {
     supports_effort: (_level: EffortLevel) => true,
     models: (): Promise<readonly ModelInfo[]> =>
       Promise.resolve([{ id: "fake", family: "fake" }]),
-    ask: (_input: AskInput): Promise<AskOutput> => {
-      // Hangs forever — the session wall-clock guard must preempt this.
-      return new Promise(() => {
+    ask: (_input: AskInput): Promise<AskOutput> =>
+      new Promise(() => {
         /* never resolves */
-      });
-    },
-    critique: (_input: CritiqueInput): Promise<CritiqueOutput> => {
-      return new Promise(() => {
+      }),
+    critique: (_input: CritiqueInput): Promise<CritiqueOutput> =>
+      new Promise(() => {
         /* never resolves */
-      });
-    },
-    revise: (_input: ReviseInput): Promise<ReviseOutput> => {
-      return new Promise(() => {
+      }),
+    revise: (_input: ReviseInput): Promise<ReviseOutput> =>
+      new Promise(() => {
         /* never resolves */
-      });
-    },
+      }),
   };
 }
 
@@ -65,6 +63,28 @@ function acceptResolvers(): ChoiceResolvers {
     persona: () => Promise.resolve({ kind: "accept" }),
     question: (_q) => Promise.resolve({ choice: "decide for me" }),
   };
+}
+
+/** Race a promise against a real-time deadline. */
+async function raceDeadline<T>(
+  p: Promise<T>,
+  deadlineMs: number,
+): Promise<{ resolved: true; value: T } | { resolved: false }> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve({ resolved: false });
+    }, deadlineMs);
+    p.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve({ resolved: true, value });
+      },
+      () => {
+        clearTimeout(timer);
+        resolve({ resolved: false });
+      },
+    );
+  });
 }
 
 let tmp: string;
@@ -76,14 +96,12 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("samospec new hang recovery (#81)", () => {
-  test("runNew with hanging adapter exits within 10s with exit 4 + session-wall-clock reason", async () => {
+describe("samospec new hang behavior (#81 / samo.team #415, #424)", () => {
+  test("runNew with hanging adapter does NOT exit on the wall clock", async () => {
     const adapter = makeHangingAdapter();
-    const startMs = Date.now();
+    const capMs = 1_500;
 
-    // maxWallClockMinutes: use a config-file based cap.
-    // The test sets max_session_wall_clock_minutes=0.08 (≈5s) via RunNewInput.
-    const result = await runNew(
+    const runPromise = runNew(
       {
         cwd: tmp,
         slug: "demo",
@@ -91,20 +109,14 @@ describe("samospec new hang recovery (#81)", () => {
         explain: false,
         resolvers: acceptResolvers(),
         now: "2026-04-19T10:00:00Z",
-        // 5-second session wall-clock cap via new field.
-        maxSessionWallClockMs: 5_000,
+        // Old kill would have triggered exit 4 within capMs.
+        maxSessionWallClockMs: capMs,
       },
       adapter,
     );
-    const elapsedMs = Date.now() - startMs;
 
-    // Must terminate within 10s.
-    expect(elapsedMs).toBeLessThan(10_000);
-
-    // Must exit with exit code 4 (lead_terminal).
-    expect(result.exitCode).toBe(4);
-
-    // stderr must contain "session-wall-clock" reason (not a generic "adapter error").
-    expect(result.stderr.toLowerCase()).toContain("session-wall-clock");
-  }, 12_000); // Bun test timeout: 12s
+    // Run must still be in-flight past 3x the cap.
+    const outcome = await raceDeadline(runPromise, capMs * 3);
+    expect(outcome.resolved).toBe(false);
+  }, 8_000);
 });

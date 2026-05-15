@@ -114,9 +114,11 @@ const USAGE =
   wrapList(BASELINE_SECTION_NAMES, "      ", 78) +
   ".\n" +
   "  --max-session-wall-clock-ms <ms>\n" +
-  "      Cap total session wall-clock (positive integer ms). Defaults to\n" +
-  "      budget.max_session_wall_clock_minutes in config.json, or 600000\n" +
-  "      (10 min). On cap: exit 4 with reason `session-wall-clock`.\n" +
+  "      Deprecated no-op. The session wall-clock kill was removed per\n" +
+  "      Rule 10 (no wall-clock kill of dev LLM runs) and samo.team\n" +
+  "      #415 + #424. The flag is still accepted (positive integer ms)\n" +
+  "      for backward compatibility with existing scripts; the value is\n" +
+  "      ignored. Allowed stop signals: inactivity heartbeat + SIGTERM.\n" +
   "  --verbose\n" +
   "      Emit per-phase and per-file diagnostics on stderr (stdout stays concise).\n" +
   "  --yes, --accept-persona\n" +
@@ -146,8 +148,10 @@ const USAGE =
   "  --verbose\n" +
   "      Alias / no-op — iterate is verbose by default (see --quiet).\n" +
   "  --max-session-wall-clock-ms <ms>\n" +
-  "      Cap the review-loop session wall-clock (positive integer ms). On cap:\n" +
-  "      exit 4 with reason `session-wall-clock`.\n" +
+  "      Deprecated no-op. The session wall-clock kill was removed per\n" +
+  "      Rule 10 (no wall-clock kill of dev LLM runs) and samo.team\n" +
+  "      #415 + #424. The flag is still accepted (positive integer ms)\n" +
+  "      for backward compatibility; the value is ignored.\n" +
   "  --on-dirty <incorporate|overwrite|abort>\n" +
   "      Answer the uncommitted-edits prompt without reading stdin. Required\n" +
   "      when stdin is not a TTY and `.samo/spec/<slug>/` has dirty edits (#114).\n" +

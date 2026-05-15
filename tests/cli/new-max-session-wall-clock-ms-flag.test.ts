@@ -1,20 +1,23 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
-// CLI-level e2e for `--max-session-wall-clock-ms` (#81, PR #83 review).
+// Historically (#81) this test asserted that
+// `samospec new --max-session-wall-clock-ms <ms>` capped a hanging
+// session and exited within ~ms with `session-wall-clock` in stderr.
+// That kill was removed per Rule 10 and samo.team #415 + #424. The
+// flag remains parseable for backward compatibility but is a no-op.
 //
-// The runtime plumbing in src/cli/new.ts already honors
-// `RunNewInput.maxSessionWallClockMs`, but the CLI parser in src/cli.ts
-// must also accept `--max-session-wall-clock-ms <ms>` (or `=ms`) and
-// thread the value into `runNew`. Without the parser change users
-// running `samospec new demo --max-session-wall-clock-ms 5000` would
-// fall back to the 10-minute default — the exact "unit tests pass, CLI
-// never invokes" pattern that bit #79/#80.
-//
-// Strategy: spawn a real `bun run src/main.ts new <slug>` in a tmpdir
-// with a stub `claude` binary on PATH that hangs forever. With a 5s
-// cap, the command MUST terminate within ~7s and stderr MUST contain
-// `session-wall-clock`. The pre-fix CLI ignores the flag; the hang
-// would fall back to the 10-min default → test times out.
+// Tests below assert:
+//   1. USAGE still documents the flag (so existing scripts that grep
+//      for it on `--help` don't break).
+//   2. With the flag set and a hanging stub `claude` binary on PATH,
+//      the CLI does NOT exit cleanly within the cap — it only exits
+//      because the spawnSync subprocess timeout kills it (status null
+//      or the spawned bun runtime got SIGTERM). stderr does NOT
+//      contain `session-wall-clock`.
+//   3. The equals form `--max-session-wall-clock-ms=<ms>` parses the
+//      same way (same behavior assertion).
+//   4. Non-integer value still rejected with exit 1 (the parser
+//      validation didn't change).
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -59,7 +62,12 @@ afterEach(() => {
 function runSamospec(
   args: readonly string[],
   opts: { cwd: string; timeoutMs?: number } = { cwd: tmp },
-): { stdout: string; stderr: string; status: number; elapsedMs: number } {
+): {
+  stdout: string;
+  stderr: string;
+  status: number | null;
+  elapsedMs: number;
+} {
   const env: Record<string, string> = {
     PATH: `${fakeBin}:/bin:/usr/bin:/usr/local/bin`,
     HOME: fakeHome,
@@ -78,18 +86,18 @@ function runSamospec(
   return {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
-    status: result.status ?? 1,
+    status: result.status,
     elapsedMs,
   };
 }
 
-describe("samospec new --max-session-wall-clock-ms (CLI flag, #81)", () => {
-  test("USAGE string documents --max-session-wall-clock-ms", () => {
+describe("samospec new --max-session-wall-clock-ms (CLI flag, #81 / samo.team #415, #424)", () => {
+  test("USAGE string still documents --max-session-wall-clock-ms", () => {
     const res = runSamospec([], { cwd: tmp, timeoutMs: 8_000 });
     expect(res.stderr.toLowerCase()).toContain("--max-session-wall-clock-ms");
   });
 
-  test("--max-session-wall-clock-ms 5000 caps a hanging session to ~5s", () => {
+  test("--max-session-wall-clock-ms 1500 does NOT preempt a hanging session", () => {
     // Init the repo (git + .samo/).
     spawnSync("git", ["init", "--initial-branch", "feature/wc-e2e", tmp], {
       cwd: tmpdir(),
@@ -98,32 +106,44 @@ describe("samospec new --max-session-wall-clock-ms (CLI flag, #81)", () => {
     const initRes = runSamospec(["init"], { cwd: tmp, timeoutMs: 8_000 });
     expect(initRes.status).toBe(0);
 
-    // Now run `samospec new demo --max-session-wall-clock-ms 5000`
-    // with the hanging `claude` stub on PATH. Must exit within ~7s.
-    const startMs = Date.now();
+    // Run `samospec new demo --max-session-wall-clock-ms 1500` with
+    // the hanging `claude` stub on PATH and `--yes` so we pass the
+    // non-TTY gate. Pre-fix this would exit ~1.5s with a
+    // `session-wall-clock exceeded` error in stderr. Post-fix the CLI
+    // keeps running until the spawnSync subprocess timeout kills the
+    // whole bun process tree (status === null, the
+    // subprocess-timeout signal).
     const res = runSamospec(
       [
         "new",
         "demo",
         "--idea",
         "cli flag test",
+        "--yes",
         "--max-session-wall-clock-ms",
-        "5000",
+        "1500",
       ],
-      { cwd: tmp, timeoutMs: 12_000 },
+      { cwd: tmp, timeoutMs: 5_000 },
     );
-    const elapsedMs = Date.now() - startMs;
 
-    // Must terminate within 10s (gives ~5s cap + overhead).
-    expect(elapsedMs).toBeLessThan(10_000);
-
-    // Must exit with non-zero (4 from runNew, or 1 from parser) and
-    // stderr must mention session-wall-clock.
-    expect(res.status).not.toBe(0);
-    expect(res.stderr.toLowerCase()).toContain("session-wall-clock");
+    // The CLI must NOT have produced the kill-error message. The USAGE
+    // text DOES mention `--max-session-wall-clock-ms` as a deprecated
+    // flag, so we look for the distinctive runtime kill phrase
+    // ("session-wall-clock exceeded") rather than a substring of the
+    // flag name.
+    expect(res.stderr.toLowerCase()).not.toContain(
+      "session-wall-clock exceeded",
+    );
+    // Subprocess was killed by spawnSync timeout (status === null) or
+    // exited with a non-zero non-4 status — either way, NOT a
+    // wall-clock self-kill.
+    expect(res.status).not.toBe(4);
+    // It must have run for at least the subprocess timeout (the cap
+    // is a no-op, so the run does not self-terminate).
+    expect(res.elapsedMs).toBeGreaterThanOrEqual(4_500);
   }, 20_000);
 
-  test("--max-session-wall-clock-ms=5000 (equals form) also caps a hanging session", () => {
+  test("--max-session-wall-clock-ms=1500 (equals form) is also a no-op", () => {
     spawnSync("git", ["init", "--initial-branch", "feature/wc-eq", tmp], {
       cwd: tmpdir(),
       encoding: "utf8",
@@ -131,22 +151,23 @@ describe("samospec new --max-session-wall-clock-ms (CLI flag, #81)", () => {
     const initRes = runSamospec(["init"], { cwd: tmp, timeoutMs: 8_000 });
     expect(initRes.status).toBe(0);
 
-    const startMs = Date.now();
     const res = runSamospec(
       [
         "new",
         "demo-eq",
         "--idea",
         "eq form test",
-        "--max-session-wall-clock-ms=5000",
+        "--yes",
+        "--max-session-wall-clock-ms=1500",
       ],
-      { cwd: tmp, timeoutMs: 12_000 },
+      { cwd: tmp, timeoutMs: 5_000 },
     );
-    const elapsedMs = Date.now() - startMs;
 
-    expect(elapsedMs).toBeLessThan(10_000);
-    expect(res.status).not.toBe(0);
-    expect(res.stderr.toLowerCase()).toContain("session-wall-clock");
+    expect(res.stderr.toLowerCase()).not.toContain(
+      "session-wall-clock exceeded",
+    );
+    expect(res.status).not.toBe(4);
+    expect(res.elapsedMs).toBeGreaterThanOrEqual(4_500);
   }, 20_000);
 
   test("--max-session-wall-clock-ms with non-integer value rejects with exit 1", () => {

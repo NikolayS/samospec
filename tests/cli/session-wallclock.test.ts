@@ -1,16 +1,24 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
-// RED test for #81: session wall-clock cap.
+// Historically (#81) this file asserted that `runNew` killed a hanging
+// adapter on the session wall-clock cap, returning exit 4 with a
+// `session-wall-clock` reason in stderr. That kill was removed per
+// Rule 10 ("nothing kills a dev LLM run on the wall clock") and
+// samo.team #415 + #424. The tests below have been rewritten to fence
+// the NEW behavior:
 //
-// SPEC §7 default: 10 minutes session wall-clock cap, configurable via
-// `.samo/config.json` `budget.max_session_wall_clock_minutes`.
+//   1. With an explicit `maxSessionWallClockMs` set and a hanging
+//      adapter, `runNew` does NOT exit 4 + session-wall-clock within
+//      a window longer than the cap. The flag is a deprecated no-op.
+//   2. Same when the cap is read from `.samo/config.json`
+//      `budget.max_session_wall_clock_minutes`.
+//   3. A session that would normally complete still completes (the
+//      removal didn't break the happy path).
 //
-// Tests:
-// 1. A session that exceeds the wall-clock cap terminates with reason
-//    `session-wall-clock` and exit code 4.
-// 2. The cap is read from config.json `budget.max_session_wall_clock_minutes`
-//    when present.
-// 3. A session that completes within the cap succeeds normally.
+// The primary behavior fence lives in
+// `tests/cli/no-wall-clock-kill.test.ts`; this file preserves the
+// historical entry points so that anyone landing here from #81 / git
+// blame sees why the assertion shape inverted.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
@@ -66,6 +74,28 @@ function acceptResolvers(): ChoiceResolvers {
   };
 }
 
+/** Race a promise against a real-time deadline. */
+async function raceDeadline<T>(
+  p: Promise<T>,
+  deadlineMs: number,
+): Promise<{ resolved: true; value: T } | { resolved: false }> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve({ resolved: false });
+    }, deadlineMs);
+    p.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve({ resolved: true, value });
+      },
+      () => {
+        clearTimeout(timer);
+        resolve({ resolved: false });
+      },
+    );
+  });
+}
+
 let tmp: string;
 beforeEach(() => {
   tmp = mkdtempSync(path.join(tmpdir(), "samospec-wallclock-"));
@@ -75,12 +105,12 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-describe("session wall-clock cap (#81)", () => {
-  test("exceeding wall-clock cap terminates with exit 4 + session-wall-clock reason", async () => {
+describe("session wall-clock cap is a deprecated no-op (#81 / samo.team #415, #424)", () => {
+  test("hanging adapter is NOT preempted by maxSessionWallClockMs", async () => {
     const adapter = makeHangingAdapter();
-    const startMs = Date.now();
+    const capMs = 2_000;
 
-    const result = await runNew(
+    const runPromise = runNew(
       {
         cwd: tmp,
         slug: "wc-test",
@@ -88,19 +118,17 @@ describe("session wall-clock cap (#81)", () => {
         explain: false,
         resolvers: acceptResolvers(),
         now: "2026-04-19T10:00:00Z",
-        // 3-second session wall-clock cap.
-        maxSessionWallClockMs: 3_000,
+        maxSessionWallClockMs: capMs,
       },
       adapter,
     );
-    const elapsedMs = Date.now() - startMs;
 
-    expect(elapsedMs).toBeLessThan(8_000);
-    expect(result.exitCode).toBe(4);
-    expect(result.stderr.toLowerCase()).toContain("session-wall-clock");
+    // The CLI must still be running past the (now-ignored) cap.
+    const outcome = await raceDeadline(runPromise, capMs * 2 + 500);
+    expect(outcome.resolved).toBe(false);
   }, 10_000);
 
-  test("wall-clock cap is read from config.json budget.max_session_wall_clock_minutes", async () => {
+  test("hanging adapter is NOT preempted by config.json budget.max_session_wall_clock_minutes", async () => {
     // Patch the config to set max_session_wall_clock_minutes = 0.05 (3s).
     const configPath = path.join(tmp, ".samo", "config.json");
     const raw = readFileSync(configPath, "utf8");
@@ -111,10 +139,8 @@ describe("session wall-clock cap (#81)", () => {
     writeFileSync(configPath, JSON.stringify(cfg, null, 2));
 
     const adapter = makeHangingAdapter();
-    const startMs = Date.now();
 
-    // Do NOT pass maxSessionWallClockMs — must read from config.
-    const result = await runNew(
+    const runPromise = runNew(
       {
         cwd: tmp,
         slug: "cfg-wc",
@@ -125,12 +151,11 @@ describe("session wall-clock cap (#81)", () => {
       },
       adapter,
     );
-    const elapsedMs = Date.now() - startMs;
 
-    expect(elapsedMs).toBeLessThan(10_000);
-    expect(result.exitCode).toBe(4);
-    expect(result.stderr.toLowerCase()).toContain("session-wall-clock");
-  }, 12_000);
+    // Configured cap is ~3s; the CLI must still be running past 6s.
+    const outcome = await raceDeadline(runPromise, 6_000);
+    expect(outcome.resolved).toBe(false);
+  }, 10_000);
 
   test("session that completes within wall-clock cap exits 0", async () => {
     // Fast-responding adapter that completes immediately.
@@ -184,7 +209,7 @@ describe("session wall-clock cap (#81)", () => {
         explain: false,
         resolvers: acceptResolvers(),
         now: "2026-04-19T10:00:00Z",
-        // 10-minute cap — should be more than enough.
+        // Generous cap value — ignored, but legal input.
         maxSessionWallClockMs: 600_000,
       },
       fastAdapter,
