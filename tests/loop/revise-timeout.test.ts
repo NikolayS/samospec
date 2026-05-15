@@ -378,7 +378,19 @@ describe("loop/round — session wall-clock clamps per-call revise (#92 REV)", (
   });
 });
 
-describe("iterate — threads remainingSessionMsFn into runRound (#92 REV)", () => {
+// NOTE (samo.team #415, #424): the
+// `iterate — threads remainingSessionMsFn into runRound` describe block
+// was removed alongside the wall-clock kill. That test asserted exit 4
+// + `lead-terminal:revise_timeout` proving the round-level clamp won
+// the race against the outer `withSessionDeadline` wrapper. Both
+// mechanisms (`withSessionDeadline` AND `remainingSessionMsFn`) are
+// gone now — there is no session cap to race against. The
+// `loop/round — session wall-clock clamps per-call revise` describe
+// above still exercises `remainingSessionMsFn` directly on `runRound`
+// as a unit; that function still exists as a defensive timeout knob
+// for callers who explicitly pass one.
+
+describe.skip("iterate — threads remainingSessionMsFn into runRound (#92 REV) [removed: wall-clock kill gone]", () => {
   test("session cap smaller than configured revise → round-level clamp fires first (revise_timeout, not wall_clock)", async () => {
     // This test distinguishes the round-level clamp from #91's outer
     // `withSessionDeadline` wrapper. Both race against roughly the same
