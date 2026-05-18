@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# cont-init.d/10-config — load configuration from the mounted config dir.
+#
+# Reads /etc/samospec/samospec.env (if present) and exports each KEY=VAL
+# line into the s6 container environment so service `run` scripts inherit
+# it. Generates a random POSTGRES_PASSWORD on first boot when one isn't
+# supplied, and persists it back to the config dir.
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+CONFIG_DIR="${SAMOSPEC_CONFIG_DIR:-/etc/samospec}"
+ENV_FILE="${CONFIG_DIR}/samospec.env"
+
+mkdir -p "${CONFIG_DIR}"
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  echo "[init] no ${ENV_FILE}, creating with generated POSTGRES_PASSWORD" >&2
+  pw=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 32)
+  cat > "${ENV_FILE}" <<EOF
+# samospec.dev — generated on first boot. Edit as needed; the password
+# below MUST match the one written to the postgres data dir (changing it
+# here without re-initialising PGDATA will break startup).
+POSTGRES_PASSWORD=${pw}
+POSTGRES_DB=postgres
+PUBLIC_BASE_URL=https://samospec.dev
+EOF
+  chmod 600 "${ENV_FILE}"
+fi
+
+# Export all KEY=VAL pairs from the env file into the s6 environment.
+set -a
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
+set +a
+
+mkdir -p /run/s6/container_environment
+for key in POSTGRES_PASSWORD POSTGRES_DB PUBLIC_BASE_URL; do
+  val="${!key:-}"
+  if [[ -n "${val}" ]]; then
+    printf '%s' "${val}" > "/run/s6/container_environment/${key}"
+  fi
+done
+
+# DATABASE_URL is derived from POSTGRES_PASSWORD; the web service reads it.
+printf 'postgres://postgres:%s@127.0.0.1:5432/%s' \
+  "${POSTGRES_PASSWORD}" "${POSTGRES_DB:-postgres}" \
+  > /run/s6/container_environment/DATABASE_URL

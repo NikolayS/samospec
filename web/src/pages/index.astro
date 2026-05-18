@@ -1,0 +1,109 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+
+<Layout title="SamoSpec — git-native AI spec authoring">
+  <section class="hero">
+    <h1>Turn a rough idea into a reviewed, versioned spec.</h1>
+    <p class="tagline">
+      <code>samospec</code> runs a panel of top AI models against your idea: a
+      <strong>lead</strong> drafts, two <strong>reviewers</strong> critique with
+      different personas, the lead revises, and the loop repeats until convergence.
+      The result is <code>SPEC.md</code> with real commit history you can diff and
+      blame.
+    </p>
+    <a class="cta" href="#install">bunx samospec doctor →</a>
+  </section>
+
+  <section id="install">
+    <h2>Install</h2>
+    <p>
+      Requires <a href="https://bun.sh">Bun</a> ≥ 1.2. <code>bunx</code> fetches
+      and caches the CLI on first use — no install step.
+    </p>
+    <pre><code>bunx samospec doctor
+bunx samospec --version</code></pre>
+  </section>
+
+  <section id="quickstart">
+    <h2>Quickstart</h2>
+    <p>Three commands, from idea to reviewed spec:</p>
+    <pre><code>bunx samospec init
+bunx samospec new linkrot --idea "Detect dead links in Markdown files"
+bunx samospec iterate linkrot
+bunx samospec publish linkrot</code></pre>
+  </section>
+
+  <section id="how">
+    <h2>How it works</h2>
+    <pre><code>                 ┌────────────────────┐
+   idea  ──►     │  LEAD  (Claude)    │  ──►   SPEC.md v0.N
+                 │  draft / revise    │
+                 └────┬───────────────┘
+                      │  (parallel)
+       ┌──────────────┴──────────────┐
+       ▼                             ▼
+ ┌──────────────┐             ┌──────────────┐
+ │ Reviewer A   │             │ Reviewer B   │
+ │ (Codex)      │             │ (Claude #2)  │
+ │ security/ops │             │ QA/pedant    │
+ └──────┬───────┘             └───────┬──────┘
+        │                             │
+        └───────┐             ┌───────┘
+                ▼             ▼
+             ┌──────────────────────┐
+             │  round.json          │  ─► commit ─► repeat
+             │  claude.md, codex.md │
+             │  decisions.md update │
+             └──────────────────────┘</code></pre>
+    <ul>
+      <li>
+        <strong>Lead</strong> = <code>claude</code> CLI, pinned <code
+          >claude-opus-4-7</code
+        >, effort <code>max</code>.
+      </li>
+      <li>
+        <strong>Reviewer A</strong> = <code>codex</code> CLI, security/ops
+        persona.
+      </li>
+      <li>
+        <strong>Reviewer B</strong> = a second Claude session, QA/testability
+        persona.
+      </li>
+      <li>
+        Every round is a commit on the <code>samospec/&lt;slug&gt;</code> branch.
+        <code>git log</code> tells the story.
+      </li>
+    </ul>
+  </section>
+
+  <section id="demo">
+    <h2>Live demo</h2>
+    <p>
+      A real spec produced end-to-end over ChatGPT-account OAuth — 7 review
+      rounds, both reviewers writing real critiques:
+    </p>
+    <p>
+      → <a
+        href="https://github.com/NikolayS/todo-stream/tree/samospec/todo-stream"
+        >NikolayS/todo-stream <code>samospec/todo-stream</code> branch</a
+      >
+    </p>
+  </section>
+
+  <section id="publish">
+    <h2>Publish to the web</h2>
+    <p>
+      Push a finished <code>SPEC.md</code> to samospec.dev to share a tidy,
+      read-only URL — optionally gated by a 6-character access code:
+    </p>
+    <pre><code>bunx samospec publish linkrot --web
+# → https://samospec.dev/s/k8m3qr2x
+# → access code: 7K2P9M</code></pre>
+    <p style="color: var(--muted); font-size: 0.92rem">
+      Publishing-to-web is opt-in per spec; nothing leaves your machine without <code
+        >--web</code
+      >. Specs without a code are publicly viewable at the URL.
+    </p>
+  </section>
+</Layout>
