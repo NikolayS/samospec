@@ -52,6 +52,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - New `src/paths.ts` config-aware path resolver underpins the brief
   command and prepares for the upcoming dir rename.
 
+### Fixed
+
+- **Dedupe interview questions (samo.team #435, blocks #433).** The lead
+  was observed emitting two interview questions with identical text
+  (Q5 = Q6), which then hung the downstream persona/spec pipeline
+  forever on the duplicate. Fix layers: (a) prompt now explicitly
+  forbids duplicates and paraphrases ("Every question must be
+  DISTINCT"), (b) `runInterview` normalizes question text (trim +
+  collapse whitespace + lowercase) and re-prompts the lead once with a
+  stricter instruction that names the offending text when a duplicate
+  is detected, (c) if the retry still contains duplicates,
+  `runInterview` throws `InterviewTerminalError` rather than handing a
+  malformed question set downstream — the caller surfaces it as the
+  existing `lead_terminal` exit-code-4 path instead of silently
+  hanging. Hard cap of 1 retry; covered by 4 new test cases.
+
 ---
 
 ## [0.8.0] - 2026-05-08

@@ -224,6 +224,14 @@ function buildInterviewPrompt(input: {
     "constraints (budget, timeline, compliance), and what's explicitly " +
     "out of scope. Avoid tech-stack questions beyond the one allowed by " +
     "the guardrail above.\n\n" +
+    // samo.team #435: the lead was caught producing two questions with
+    // identical text. Downstream the persona/spec pipeline hangs on the
+    // duplicate. Distinctness must be explicit in the prompt; the
+    // runInterview code-side dedupe is the second layer.
+    "Every question must be DISTINCT. No question may be a duplicate or " +
+    "paraphrase of any other question in this same set — each must " +
+    "explore a different aspect of the user's idea (different topic, " +
+    "different decision, different axis). Repeats are unacceptable.\n\n" +
     "Each question has an `id` (slug), `text` (one sentence), and " +
     "`options` (2-6 concrete choices the persona thinks are the most " +
     "likely answers).\n\n" +
@@ -232,6 +240,61 @@ function buildInterviewPrompt(input: {
     '["...", "..."] }, ... ] }\n' +
     "Do not wrap in code fences.\n"
   );
+}
+
+/**
+ * Stricter prompt issued as a retry when the first lead response
+ * contained duplicate question text (samo.team #435). Names the offender
+ * explicitly so the lead doesn't repeat the mistake.
+ */
+function buildDedupeRetryPrompt(input: {
+  basePrompt: string;
+  duplicateTexts: readonly string[];
+}): string {
+  const dups = input.duplicateTexts.map((t) => `  - "${t}"`).join("\n");
+  return (
+    "Your previous response contained DUPLICATE question text. The " +
+    "following question text appeared more than once (case- and " +
+    "whitespace-insensitive):\n" +
+    `${dups}\n\n` +
+    "Regenerate the full question set. Every question's text MUST be " +
+    "distinct — no duplicates, no paraphrases, no whitespace- or " +
+    "case-only variations. Each question explores a different aspect of " +
+    "the idea. If you cannot produce N distinct questions, return fewer " +
+    "questions rather than repeating.\n\n" +
+    "Original instructions follow below, unchanged:\n\n" +
+    input.basePrompt
+  );
+}
+
+/**
+ * Normalize question text for duplicate detection: trim, collapse
+ * internal whitespace, lowercase. Catches whitespace-only and case-only
+ * paraphrases that would otherwise hang the downstream persona.
+ */
+function normalizeQuestionText(text: string): string {
+  return text.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * Returns the duplicate normalized texts (one entry per offender, no
+ * order guarantees) in the question list. Empty array means all
+ * distinct.
+ */
+function findDuplicateTexts(
+  questions: readonly { readonly text: string }[],
+): string[] {
+  const seen = new Set<string>();
+  const dups = new Set<string>();
+  for (const q of questions) {
+    const norm = normalizeQuestionText(q.text);
+    if (seen.has(norm)) {
+      dups.add(norm);
+    } else {
+      seen.add(norm);
+    }
+  }
+  return [...dups];
 }
 
 // ---------- runInterview ----------
@@ -263,39 +326,74 @@ export async function runInterview(
     ...(input.idea !== undefined ? { idea: input.idea } : {}),
   });
 
-  const askInput: AskInput = {
-    prompt,
-    context: "",
-    opts: { effort, timeout: timeoutMs },
-  };
+  // samo.team #435: ask the lead, dedupe-check the response, re-prompt
+  // once with a stricter instruction if duplicates are detected. After
+  // the retry we bail with InterviewTerminalError rather than handing a
+  // malformed question set downstream (which previously hung the
+  // persona/spec pipeline forever).
+  const MAX_DEDUPE_RETRIES = 1;
+  let leadQuestions: readonly z.infer<typeof LeadQuestionSchema>[] = [];
+  let currentPrompt = prompt;
+  let lastDuplicates: string[] = [];
+  for (let attempt = 0; attempt <= MAX_DEDUPE_RETRIES; attempt += 1) {
+    const askInput: AskInput = {
+      prompt: currentPrompt,
+      context: "",
+      opts: { effort, timeout: timeoutMs },
+    };
+    let askOut;
+    try {
+      askOut = await adapter.ask(askInput);
+    } catch (err) {
+      throw new InterviewTerminalError(
+        err instanceof Error ? err.message : String(err),
+      );
+    }
 
-  let askOut;
-  try {
-    askOut = await adapter.ask(askInput);
-  } catch (err) {
-    throw new InterviewTerminalError(
-      err instanceof Error ? err.message : String(err),
-    );
-  }
+    const parsed = preParseJson(askOut.answer);
+    if (!parsed.ok) {
+      throw new InterviewTerminalError(
+        `lead response was not valid JSON: ${parsed.error.message}`,
+      );
+    }
+    const validated = LeadResponseSchema.safeParse(parsed.value);
+    if (!validated.success) {
+      throw new InterviewTerminalError(
+        `lead response did not match schema: ${validated.error.message}`,
+      );
+    }
 
-  const parsed = preParseJson(askOut.answer);
-  if (!parsed.ok) {
-    throw new InterviewTerminalError(
-      `lead response was not valid JSON: ${parsed.error.message}`,
-    );
-  }
-  const validated = LeadResponseSchema.safeParse(parsed.value);
-  if (!validated.success) {
-    throw new InterviewTerminalError(
-      `lead response did not match schema: ${validated.error.message}`,
-    );
-  }
+    // Hard cap at 5. Truncate extras silently; caller may log the drop.
+    const capped = validated.data.questions.slice(0, INTERVIEW_MAX_QUESTIONS);
+    const dups = findDuplicateTexts(capped);
+    if (dups.length === 0) {
+      leadQuestions = capped;
+      break;
+    }
 
-  // Hard cap at 5. Truncate extras silently; caller may log the drop.
-  const leadQuestions = validated.data.questions.slice(
-    0,
-    INTERVIEW_MAX_QUESTIONS,
-  );
+    lastDuplicates = dups;
+    if (attempt >= MAX_DEDUPE_RETRIES) {
+      // Out of retries — fail fast rather than hand a duplicate-laden
+      // question set to the downstream persona (where it would hang).
+      throw new InterviewTerminalError(
+        `lead returned duplicate question text after ${String(
+          attempt + 1,
+        )} attempt(s); refusing to proceed (would hang downstream). ` +
+          `Duplicates (normalized): ${dups.map((d) => JSON.stringify(d)).join(", ")}`,
+      );
+    }
+
+    if (input.onNotice) {
+      input.onNotice(
+        `interview: lead returned duplicate question text; re-prompting once.`,
+      );
+    }
+    currentPrompt = buildDedupeRetryPrompt({
+      basePrompt: prompt,
+      duplicateTexts: dups,
+    });
+  }
+  void lastDuplicates;
 
   // Compose each question with guaranteed escape hatches, preserving
   // whatever the lead returned first.
