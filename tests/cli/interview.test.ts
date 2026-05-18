@@ -541,3 +541,192 @@ describe("runInterview — interview.json write", () => {
     expect(reloaded!.answers[0].custom).toBe("Bun");
   });
 });
+
+// ---------- dedupe interview questions (samo.team #435) ----------
+//
+// Background: the interview LLM was observed to emit a duplicate question
+// pair (Q5 = Q6 same text). The downstream persona/spec pipeline then
+// hung forever on the duplicate. The fix has two layers:
+//
+//   1. Prompt-side: instruct the lead to produce DISTINCT questions.
+//   2. Code-side: after parsing, detect duplicate question text and
+//      re-prompt once with a stricter instruction. If the retry still
+//      contains duplicates, fail with InterviewTerminalError (which the
+//      caller surfaces as exit code 4 / lead_terminal — never a silent
+//      hang).
+//
+// See samo.team #435 (blocks Sprint 4 goal #433).
+
+describe("runInterview — dedupe interview questions (samo.team #435)", () => {
+  test("prompt explicitly forbids duplicate / paraphrased questions", async () => {
+    const qs = [{ id: "q1", text: "something?" }];
+    const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    const first = adapter.asks[0];
+    // Must call out distinctness explicitly.
+    expect(first.prompt.toLowerCase()).toMatch(/distinct/);
+    // Must forbid duplicates or paraphrases.
+    expect(first.prompt.toLowerCase()).toMatch(/duplicate|paraphrase/);
+  });
+
+  test("duplicate-text in first response triggers a single re-prompt; final set is distinct", async () => {
+    // First lead response: Q5 == Q6 same text (the exact #435 symptom).
+    const dupQs = [
+      { id: "q1", text: "Who are the target users?" },
+      { id: "q2", text: "What is success?" },
+      { id: "q3", text: "What is out of scope?" },
+      { id: "q4", text: "What is the must-have feature?" },
+      // Lead returned 6 (over cap) AND q4 == q5 same text.
+      { id: "q5", text: "What is the must-have feature?" },
+      { id: "q6", text: "What is the budget?" },
+    ];
+    // Second (retry) response: distinct.
+    const distinctQs = [
+      { id: "q1", text: "Who are the target users?" },
+      { id: "q2", text: "What is success?" },
+      { id: "q3", text: "What is out of scope?" },
+      { id: "q4", text: "What is the must-have feature?" },
+      { id: "q5", text: "What is the budget?" },
+    ];
+    const adapter = makeScriptedAskAdapter([
+      makeQuestionsJsonExact(dupQs),
+      makeQuestionsJsonExact(distinctQs),
+    ]);
+    const auto = autoAnswerFirst();
+    const out = await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        onQuestion: auto.answer,
+      },
+      adapter,
+    );
+    // Exactly one re-prompt issued.
+    expect(adapter.asks.length).toBe(2);
+    // Retry prompt is stricter (mentions the duplicate problem).
+    const retryPrompt = adapter.asks[1].prompt.toLowerCase();
+    expect(retryPrompt).toMatch(/duplicate|distinct/);
+    // Final user-visible question set is distinct (normalized).
+    const seenTexts = out.questions.map((q) => q.text.trim().toLowerCase());
+    const uniq = new Set(seenTexts);
+    expect(uniq.size).toBe(seenTexts.length);
+    // Answers wired through to all asked questions.
+    expect(out.answers.length).toBe(out.questions.length);
+  });
+
+  test("paraphrase / whitespace-only duplicates are detected (normalized match)", async () => {
+    // First response: two questions differing only by trailing whitespace
+    // and case — normalization must catch them as duplicates.
+    const dupQs = [
+      { id: "q1", text: "Who are the target users?" },
+      { id: "q2", text: "  who are the target users?  " },
+    ];
+    const distinctQs = [
+      { id: "q1", text: "Who are the target users?" },
+      { id: "q2", text: "What is success?" },
+    ];
+    const adapter = makeScriptedAskAdapter([
+      makeQuestionsJsonExact(dupQs),
+      makeQuestionsJsonExact(distinctQs),
+    ]);
+    const auto = autoAnswerFirst();
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        onQuestion: auto.answer,
+      },
+      adapter,
+    );
+    // Retry was triggered.
+    expect(adapter.asks.length).toBe(2);
+  });
+
+  test("if both responses are duplicates, throws InterviewTerminalError (no hang)", async () => {
+    const dupQs = [
+      { id: "q1", text: "Who are the target users?" },
+      { id: "q2", text: "Who are the target users?" },
+    ];
+    const adapter = makeScriptedAskAdapter([
+      makeQuestionsJsonExact(dupQs),
+      makeQuestionsJsonExact(dupQs),
+    ]);
+    const auto = autoAnswerFirst();
+    let caught: unknown = null;
+    try {
+      await runInterview(
+        {
+          slug: "test",
+          persona: 'Veteran "CLI engineer" expert',
+          explain: false,
+          subscriptionAuth: false,
+          onQuestion: auto.answer,
+        },
+        adapter,
+      );
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).not.toBeNull();
+    expect((caught as Error).name).toBe("InterviewTerminalError");
+    expect((caught as Error).message.toLowerCase()).toMatch(
+      /duplicate|distinct/,
+    );
+    // Exactly 2 lead calls (initial + 1 retry — bail after retry).
+    expect(adapter.asks.length).toBe(2);
+    // No questions were ever offered to the user (we aborted before UI).
+    expect(auto.saw.length).toBe(0);
+  });
+
+  test("distinct first response -> no re-prompt issued (regression guard)", async () => {
+    const distinctQs = [
+      { id: "q1", text: "Who are the target users?" },
+      { id: "q2", text: "What is success?" },
+      { id: "q3", text: "What is out of scope?" },
+    ];
+    const adapter = makeScriptedAskAdapter([
+      makeQuestionsJsonExact(distinctQs),
+    ]);
+    const auto = autoAnswerFirst();
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        onQuestion: auto.answer,
+      },
+      adapter,
+    );
+    expect(adapter.asks.length).toBe(1);
+    expect(auto.saw.length).toBe(3);
+  });
+});
+
+// Helper: emit a questions JSON payload preserving exact text (the
+// existing `makeQuestionsJson` templated text from id, which prevents
+// duplicate text from surviving into the payload).
+function makeQuestionsJsonExact(
+  items: readonly { readonly id: string; readonly text: string }[],
+): string {
+  return JSON.stringify({
+    questions: items.map((it) => ({
+      id: it.id,
+      text: it.text,
+      options: [`option A for ${it.id}`, `option B for ${it.id}`],
+    })),
+  });
+}
