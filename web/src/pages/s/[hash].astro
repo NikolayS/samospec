@@ -2,14 +2,21 @@
 import Layout from "../../layouts/Layout.astro";
 import { sql, type SpecRow } from "../../lib/db";
 import { renderMarkdown } from "../../lib/markdown";
-import { verifyCode } from "../../lib/codes";
+import { verifyCode, HASH_REGEX } from "../../lib/codes";
+import { signSessionCookie, verifySessionCookie } from "../../lib/session";
+import { isSameOriginPost } from "../../lib/auth";
+import {
+  checkLocked,
+  recordFailure,
+  recordSuccess,
+} from "../../lib/rate-limit";
 
 const { hash } = Astro.params;
-if (!hash || !/^[a-z0-9]{6,32}$/.test(hash)) return Astro.redirect("/404");
+if (!hash || !HASH_REGEX.test(hash)) return Astro.redirect("/404");
 
 const rows = await sql<SpecRow[]>`
   select hash, title, body_md, code_hash, code_salt, byte_size, view_count,
-         created_at, updated_at
+         created_at, updated_at, last_viewed_at
     from specs
    where hash = ${hash}
    limit 1
@@ -19,38 +26,63 @@ if (!spec) return new Response("Not found", { status: 404 });
 
 let needsCode = !!spec.code_hash;
 let badCode = false;
+let lockoutSec = 0;
 
 if (needsCode) {
-  const cookie = Astro.cookies.get(`spec_${spec.hash}`)?.value;
-  if (cookie === spec.code_hash) {
+  const cookie = Astro.cookies.get(`spec_${spec.hash}`)?.value ?? "";
+  if (
+    cookie &&
+    spec.code_hash &&
+    (await verifySessionCookie(cookie, spec.hash, spec.code_hash))
+  ) {
     needsCode = false;
   } else if (Astro.request.method === "POST") {
-    const form = await Astro.request.formData();
-    const submitted = String(form.get("code") ?? "")
-      .trim()
-      .toUpperCase();
-    if (
-      submitted &&
-      spec.code_salt &&
-      spec.code_hash &&
-      (await verifyCode(submitted, spec.code_salt, spec.code_hash))
-    ) {
-      Astro.cookies.set(`spec_${spec.hash}`, spec.code_hash, {
-        path: `/s/${spec.hash}`,
-        httpOnly: true,
-        sameSite: "lax",
-        secure: Astro.url.protocol === "https:",
-        maxAge: 60 * 60 * 24 * 7,
-      });
-      needsCode = false;
+    if (!isSameOriginPost(Astro.request)) {
+      return new Response("Forbidden", { status: 403 });
+    }
+    const lock = await checkLocked(spec.hash);
+    if (!lock.ok) {
+      lockoutSec = lock.retryAfterSec;
     } else {
-      badCode = true;
+      const form = await Astro.request.formData();
+      const submitted = String(form.get("code") ?? "")
+        .trim()
+        .toUpperCase();
+      if (
+        submitted &&
+        spec.code_salt &&
+        spec.code_hash &&
+        (await verifyCode(submitted, spec.code_salt, spec.code_hash))
+      ) {
+        const sig = await signSessionCookie(spec.hash, spec.code_hash);
+        Astro.cookies.set(`spec_${spec.hash}`, sig, {
+          path: `/s/${spec.hash}`,
+          httpOnly: true,
+          sameSite: "lax",
+          secure: Astro.url.protocol === "https:",
+          maxAge: 60 * 60 * 24 * 7,
+        });
+        await recordSuccess(spec.hash);
+        needsCode = false;
+      } else {
+        await recordFailure(spec.hash);
+        badCode = true;
+      }
     }
   }
 }
 
 if (!needsCode) {
-  await sql`update specs set view_count = view_count + 1 where hash = ${spec.hash}`;
+  // Throttle the view counter: at most once per 5 s per spec. Stops a
+  // scripted reload loop from inflating counts or hammering the row.
+  await sql`
+    update specs
+       set view_count = view_count + 1,
+           last_viewed_at = now()
+     where hash = ${spec.hash}
+       and (last_viewed_at is null
+            or last_viewed_at < now() - interval '5 seconds')
+  `;
 }
 
 const html = !needsCode ? renderMarkdown(spec.body_md) : "";
@@ -70,9 +102,20 @@ const created = spec.created_at.toISOString().slice(0, 10);
           maxlength="6"
           spellcheck="false"
           placeholder="XXXXXX"
+          disabled={lockoutSec > 0}
         />
-        {badCode && <div class="error">Incorrect code. Try again.</div>}
-        <button type="submit">View spec</button>
+        {lockoutSec > 0 && (
+          <div class="error">
+            Too many attempts. Try again in {lockoutSec} second
+            {lockoutSec === 1 ? "" : "s"}.
+          </div>
+        )}
+        {badCode && lockoutSec === 0 && (
+          <div class="error">Incorrect code. Try again.</div>
+        )}
+        <button type="submit" disabled={lockoutSec > 0}>
+          View spec
+        </button>
       </form>
     </Layout>
   ) : (

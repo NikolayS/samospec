@@ -1,24 +1,32 @@
-// Hashing for the optional 6-character access code on a published spec.
-// PBKDF2 via Web Crypto so we have no native deps inside the container.
+// Hashing for the optional 6-character access code on a published spec,
+// plus URL hash generation and the shared alphabets used by both.
+//
+// PBKDF2 + HMAC via Web Crypto so we have no native deps inside the
+// container.
 
 const ITERATIONS = 200_000;
 const HASH_BYTES = 32;
 const SALT_BYTES = 16;
 
-// Unambiguous alphabet: digits + uppercase, minus 0/O/1/I.
-const ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+// Unambiguous alphabet: digits + uppercase, minus 0/O/1/I. Used for
+// human-readable access codes.
+export const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+
+// URL-safe slug alphabet: lowercase + digits, minus l/o/1/0 to avoid
+// transcription mistakes. The /s/[hash] route validates against this same
+// set (see HASH_REGEX).
+export const HASH_ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789";
+export const HASH_REGEX = /^[a-z0-9]{6,32}$/;
 
 export function generateCode(length = 6): string {
-  const buf = new Uint8Array(length);
-  crypto.getRandomValues(buf);
-  let out = "";
-  for (const b of buf) out += ALPHABET[b % ALPHABET.length];
-  return out;
+  return drawFromAlphabet(CODE_ALPHABET, length);
 }
 
 export function generateHash(length = 10): string {
-  // url-safe slug for /s/<hash>
-  const alphabet = "abcdefghijkmnpqrstuvwxyz23456789";
+  return drawFromAlphabet(HASH_ALPHABET, length);
+}
+
+function drawFromAlphabet(alphabet: string, length: number): string {
   const buf = new Uint8Array(length);
   crypto.getRandomValues(buf);
   let out = "";
@@ -44,6 +52,39 @@ export async function verifyCode(
   const expected = fromB64(hashB64);
   const actual = await pbkdf2(code, salt);
   return timingSafeEqual(expected, actual);
+}
+
+// HMAC-SHA256 in hex. Used to sign session cookies so that a leaked DB
+// snapshot (which contains code_hash) is not sufficient to mint cookies.
+export async function hmacHex(
+  secret: string,
+  message: string,
+): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(message),
+  );
+  return Array.from(new Uint8Array(sig))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// Constant-time string compare. Strings of differing length still
+// short-circuit, which is the correct behaviour for fixed-length tokens
+// like HMAC outputs.
+export function timingSafeStringEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 async function pbkdf2(code: string, salt: Uint8Array): Promise<Uint8Array> {

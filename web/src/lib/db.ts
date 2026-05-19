@@ -21,4 +21,5 @@ export type SpecRow = {
   view_count: number;
   created_at: Date;
   updated_at: Date;
+  last_viewed_at: Date | null;
 };

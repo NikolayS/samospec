@@ -24,3 +24,37 @@ export async function authorizePublish(req: Request): Promise<boolean> {
   `;
   return rows.length === 1;
 }
+
+// Reject cross-origin POSTs. Astro renders forms from the same origin, so
+// any other Origin header value is a forged-request attempt. We accept
+// missing Origin (some clients omit it on same-origin POSTs from older
+// browsers) but require the value to match when present.
+export function isSameOriginPost(req: Request): boolean {
+  if (req.method !== "POST") return true;
+  const origin = req.headers.get("origin");
+  if (!origin) return true;
+  const expected = expectedOrigin(req);
+  return origin === expected;
+}
+
+function expectedOrigin(req: Request): string {
+  const base = process.env.PUBLIC_BASE_URL;
+  if (base) return base.replace(/\/+$/, "");
+  // Fallback: derive from the request URL.
+  const url = new URL(req.url);
+  return `${url.protocol}//${url.host}`;
+}
+
+// Pull the publisher IP. We do NOT trust X-Forwarded-For or
+// CF-Connecting-IP unless TRUST_FORWARDED_IPS is explicitly enabled in
+// the container's config — the alternative is that any direct caller can
+// spoof publisher_ip. With trust disabled (the default) we leave the
+// column NULL, which is honest about what we can prove.
+export function publisherIp(req: Request): string | null {
+  if (process.env.TRUST_FORWARDED_IPS !== "1") return null;
+  return (
+    req.headers.get("cf-connecting-ip") ??
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    null
+  );
+}

@@ -7,9 +7,10 @@
   "scripts": {
     "dev": "astro dev --host 0.0.0.0",
     "build": "astro build",
-    "start": "node ./dist/server/entry.mjs",
+    "start": "bun ./dist/server/entry.mjs",
     "migrate": "bun run ./scripts/migrate.ts",
-    "typecheck": "astro check"
+    "typecheck": "astro check",
+    "test": "bun test"
   },
   "dependencies": {
     "@astrojs/check": "^0.9.4",
