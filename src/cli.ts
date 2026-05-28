@@ -31,6 +31,7 @@ import {
   buildNonInteractiveResolvers,
   emitProtocolComplete,
   loadAnswersFile,
+  loadIdeaFile,
 } from "./cli/non-interactive.ts";
 import { runBrief } from "./cli/brief.ts";
 import { runPublish } from "./cli/publish.ts";
@@ -106,6 +107,10 @@ const USAGE =
   "Options for `new`:\n" +
   "  --idea <text>\n" +
   "      Initial idea text (default: the <slug>).\n" +
+  "  --idea-file <path>\n" +
+  "      Read the idea from a file instead of --idea. Preferred for long,\n" +
+  "      structured ideas (AI agents, CI): avoids fragile shell-quoting.\n" +
+  "      Mutually exclusive with --idea.\n" +
   "  --force\n" +
   "      Archive any existing run, then start fresh.\n" +
   "  --skip <sections>\n" +
@@ -290,6 +295,14 @@ interface NewArgs {
   readonly yes: boolean;
   readonly answersFile?: string;
   /**
+   * Read the idea from a file instead of `--idea <text>`. Preferred for
+   * long, structured ideas (AI agents, CI) that are awkward to quote as a
+   * single shell argument. Mutually exclusive with `--idea`. The file is
+   * read in `runNewCommand` (kept out of `parseNewArgs` so parsing stays
+   * free of filesystem I/O and remains unit-testable).
+   */
+  readonly ideaFile?: string;
+  /**
    * v0.7.0: `--interview-protocol jsonl` — machine-driven interview.
    * When set, samospec emits one JSON event per line on stdout
    * ({"type":"persona-proposal"…}, {"type":"question"…}, {"type":"complete"})
@@ -359,6 +372,8 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let yes = false;
   let answersFile: string | undefined;
   let interviewProtocol: "jsonl" | undefined;
+  let ideaFile: string | undefined;
+  let ideaSeen = false;
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === undefined) continue;
@@ -425,13 +440,32 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
       interviewProtocol = "jsonl";
       continue;
     }
+    if (token === "--idea-file") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      if (raw.length === 0 || raw.startsWith("--")) {
+        return "samospec new: --idea-file requires a path";
+      }
+      ideaFile = raw;
+      continue;
+    }
+    if (token.startsWith("--idea-file=")) {
+      const raw = token.slice("--idea-file=".length);
+      if (raw.length === 0) {
+        return "samospec new: --idea-file requires a path";
+      }
+      ideaFile = raw;
+      continue;
+    }
     if (token === "--idea") {
       idea = argv[i + 1] ?? "";
+      ideaSeen = true;
       i += 1;
       continue;
     }
     if (token.startsWith("--idea=")) {
       idea = token.slice("--idea=".length);
+      ideaSeen = true;
       continue;
     }
     if (token === "--skip") {
@@ -476,6 +510,9 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   if (slug === null || slug.length === 0) {
     return "samospec new: missing <slug>";
   }
+  if (ideaSeen && ideaFile !== undefined) {
+    return "samospec new: --idea and --idea-file are mutually exclusive";
+  }
   return {
     slug,
     idea: idea ?? slug,
@@ -488,6 +525,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
     ...(answersFile !== undefined ? { answersFile } : {}),
     ...(interviewProtocol !== undefined ? { interviewProtocol } : {}),
+    ...(ideaFile !== undefined ? { ideaFile } : {}),
   };
 }
 
@@ -622,13 +660,23 @@ async function runNewCommand(rest: readonly string[]) {
       stderr: `${resolversOrErr}\n\n${USAGE}`,
     };
   }
+  // Resolve --idea-file → idea text here (kept out of parseNewArgs so
+  // parsing stays free of filesystem I/O and remains unit-testable).
+  let effectiveIdea = parsed.idea;
+  if (parsed.ideaFile !== undefined) {
+    const loaded = loadIdeaFile(parsed.ideaFile);
+    if (!loaded.ok) {
+      return { exitCode: 1, stdout: "", stderr: `${loaded.error}\n\n${USAGE}` };
+    }
+    effectiveIdea = loaded.idea;
+  }
   const adapter = leadAdapter();
   const jsonlMode = parsed.interviewProtocol === "jsonl";
   const result = await runNew(
     {
       cwd: process.cwd(),
       slug: parsed.slug,
-      idea: parsed.idea,
+      idea: effectiveIdea,
       explain: parsed.explain,
       force: parsed.force,
       verbose: parsed.verbose,
