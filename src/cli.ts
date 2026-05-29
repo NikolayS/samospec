@@ -52,6 +52,24 @@ export interface CliResult {
   readonly stderr: string;
 }
 
+/**
+ * Test-only dependency injection seam for `runCli`. Production callers
+ * (`src/main.ts`) pass nothing, so every field falls back to the real
+ * implementation (live `ClaudeAdapter`, `process.cwd()`) and behaviour
+ * is byte-for-byte identical to before this seam existed.
+ *
+ * Tests use it to drive `samospec new` end-to-end against a scripted
+ * fake adapter inside a throwaway git repo, so the full
+ * argv → parse → idea resolution → `runNew` → on-disk spec path can be
+ * asserted without contacting the real Claude CLI.
+ */
+export interface RunCliDeps {
+  /** Adapter used by `samospec new`. Defaults to the live lead adapter. */
+  readonly newAdapter?: Adapter;
+  /** Working directory for `samospec new`. Defaults to `process.cwd()`. */
+  readonly cwd?: string;
+}
+
 const VERSION_FLAGS: ReadonlySet<string> = new Set([
   "version",
   "-v",
@@ -213,7 +231,10 @@ function defaultAdapterBindings(): readonly DoctorAdapterBinding[] {
  * Dispatch subcommands. Returns a Promise so async subcommands (doctor)
  * can resolve; synchronous subcommands (version, init) are wrapped.
  */
-export async function runCli(argv: readonly string[]): Promise<CliResult> {
+export async function runCli(
+  argv: readonly string[],
+  deps: RunCliDeps = {},
+): Promise<CliResult> {
   const [command, ...rest] = argv;
 
   if (command !== undefined && VERSION_FLAGS.has(command)) {
@@ -243,7 +264,7 @@ export async function runCli(argv: readonly string[]): Promise<CliResult> {
   }
 
   if (command === "new") {
-    return runNewCommand(rest);
+    return runNewCommand(rest, deps);
   }
 
   if (command === "resume") {
@@ -643,7 +664,7 @@ function interactiveResolvers(): ChoiceResolvers {
   };
 }
 
-async function runNewCommand(rest: readonly string[]) {
+async function runNewCommand(rest: readonly string[], deps: RunCliDeps = {}) {
   const parsed = parseNewArgs(rest);
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
@@ -670,11 +691,11 @@ async function runNewCommand(rest: readonly string[]) {
     }
     effectiveIdea = loaded.idea;
   }
-  const adapter = leadAdapter();
+  const adapter = deps.newAdapter ?? leadAdapter();
   const jsonlMode = parsed.interviewProtocol === "jsonl";
   const result = await runNew(
     {
-      cwd: process.cwd(),
+      cwd: deps.cwd ?? process.cwd(),
       slug: parsed.slug,
       idea: effectiveIdea,
       explain: parsed.explain,
