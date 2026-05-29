@@ -150,18 +150,61 @@ export function buildLeadAdapter(cwd: string): Adapter {
   });
 }
 
+/** Optional one-line notice sink (defaults to a stderr writer). */
+export interface BuildReviewLoopOptions {
+  /** Emit a one-line warning/notice (no trailing newline required). */
+  readonly warn?: (line: string) => void;
+}
+
+function defaultWarn(line: string): void {
+  process.stderr.write(`${line}\n`);
+}
+
 /**
  * Build the full review-loop adapter trio from `.samo/config.json`.
  * Lead + reviewer-B share one config-pinned {@link ClaudeResolver}
  * (coupled fallback); reviewer-A (codex) is pinned from its own
  * configured chain. Absent config falls back to pinned defaults.
+ *
+ * SPEC §11 couples reviewer-B to the lead's shared Claude resolver, so a
+ * distinct `adapters.reviewer_b.{model_id,fallback_chain}` is INERT. That
+ * coupling is intentional, but silently ignoring a divergent reviewer_b
+ * config is a footgun (samospec #180 FIX 3): when reviewer_b's resolved
+ * chain differs from lead's we emit a one-line warning via `opts.warn`
+ * (stderr by default) explaining the config is ignored. The coupling
+ * behavior itself is unchanged.
  */
-export function buildReviewLoopAdaptersFromConfig(cwd: string): {
+export function buildReviewLoopAdaptersFromConfig(
+  cwd: string,
+  opts: BuildReviewLoopOptions = {},
+): {
   readonly lead: Adapter;
   readonly reviewerA: Adapter;
   readonly reviewerB: Adapter;
 } {
   const cfg = readAdaptersConfig(cwd);
+  const warn = opts.warn ?? defaultWarn;
+
+  // SPEC §11 coupling footgun warning (FIX 3): reviewer_b shares the
+  // lead's resolver, so a reviewer_b chain that differs from lead's is
+  // ignored. Warn (once) rather than silently dropping it. Compared on
+  // the RESOLVED chains (sentinels stripped, pin de-duped) so equivalent
+  // configs written differently don't false-positive.
+  const leadResolved = resolveChain(cfg.lead);
+  const reviewerBResolved = resolveChain(cfg.reviewer_b);
+  if (
+    reviewerBResolved !== undefined &&
+    JSON.stringify(reviewerBResolved) !== JSON.stringify(leadResolved)
+  ) {
+    warn(
+      "samospec: adapters.reviewer_b model config " +
+        `(${reviewerBResolved.join(" -> ")}) differs from adapters.lead ` +
+        `(${(leadResolved ?? ["<default>"]).join(" -> ")}) but is ignored: ` +
+        "reviewer_b is coupled to the lead's shared Claude resolver per " +
+        "SPEC §11 (coupled fallback). Set reviewer_b to match lead to " +
+        "silence this warning.",
+    );
+  }
 
   // Shared Claude resolver (lead + reviewer B).
   const resolver = buildClaudeResolver(cfg);

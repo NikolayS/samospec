@@ -246,7 +246,10 @@ describe("reviewer_b shared resolver vs its own configured pin (SPEC §11 couple
         },
       },
     });
-    const { lead, reviewerB } = buildReviewLoopAdaptersFromConfig(cwd);
+    // Divergent reviewer_b fires the FIX 3 coupling warning; swallow it.
+    const { lead, reviewerB } = buildReviewLoopAdaptersFromConfig(cwd, {
+      warn: (line) => void line,
+    });
 
     expect((lead as ClaudeAdapter).currentModelId()).toBe("claude-opus-4-8");
     // The spawned --model pin follows the LEAD, not reviewer_b's own
@@ -278,7 +281,13 @@ describe("reviewer_b shared resolver vs its own configured pin (SPEC §11 couple
         },
       },
     });
-    const { lead, reviewerB } = buildReviewLoopAdaptersFromConfig(cwd);
+    // Divergent reviewer_b config fires the FIX 3 coupling warning;
+    // swallow it here (this test characterizes the coupling itself, not
+    // the warning) to keep test output clean.
+    const swallowed: string[] = [];
+    const { lead, reviewerB } = buildReviewLoopAdaptersFromConfig(cwd, {
+      warn: (line) => swallowed.push(line),
+    });
 
     // Both start on the lead's pinned head.
     expect((lead as ClaudeAdapter).currentModelId()).toBe("claude-opus-4-8");

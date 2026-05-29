@@ -290,3 +290,71 @@ describe("buildReviewLoopAdaptersFromConfig (FIX 1)", () => {
     expect((reviewerA as CodexAdapter).currentModelId()).toBe("gpt-5.5");
   });
 });
+
+// ---------- FIX 3: warn when reviewer_b config diverges from lead ----------
+
+describe("buildReviewLoopAdaptersFromConfig — reviewer_b coupling warning (FIX 3)", () => {
+  test("warns once when reviewer_b's chain DIFFERS from lead's (SPEC §11 coupling makes it inert)", () => {
+    const cwd = tmpRepo();
+    writeConfig(cwd, {
+      adapters: {
+        lead: {
+          model_id: "claude-opus-4-8",
+          fallback_chain: ["claude-opus-4-8", "terminal"],
+        },
+        reviewer_b: {
+          // Deliberately DIFFERENT from lead — this is silently ignored
+          // because reviewer_b shares the lead's resolver (SPEC §11).
+          model_id: "claude-sonnet-4-6",
+          fallback_chain: ["claude-sonnet-4-6", "terminal"],
+        },
+      },
+    });
+    const warnings: string[] = [];
+    buildReviewLoopAdaptersFromConfig(cwd, {
+      warn: (line) => warnings.push(line),
+    });
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain("reviewer_b");
+    expect(warnings[0]).toContain("§11");
+    expect(warnings[0]?.toLowerCase()).toContain("ignored");
+  });
+
+  test("silent when reviewer_b matches lead", () => {
+    const cwd = tmpRepo();
+    writeConfig(cwd, {
+      adapters: {
+        lead: {
+          model_id: "claude-opus-4-8",
+          fallback_chain: ["claude-opus-4-8", "terminal"],
+        },
+        reviewer_b: {
+          model_id: "claude-opus-4-8",
+          fallback_chain: ["claude-opus-4-8", "terminal"],
+        },
+      },
+    });
+    const warnings: string[] = [];
+    buildReviewLoopAdaptersFromConfig(cwd, {
+      warn: (line) => warnings.push(line),
+    });
+    expect(warnings).toEqual([]);
+  });
+
+  test("silent when reviewer_b config is absent", () => {
+    const cwd = tmpRepo();
+    writeConfig(cwd, {
+      adapters: {
+        lead: {
+          model_id: "claude-opus-4-8",
+          fallback_chain: ["claude-opus-4-8", "terminal"],
+        },
+      },
+    });
+    const warnings: string[] = [];
+    buildReviewLoopAdaptersFromConfig(cwd, {
+      warn: (line) => warnings.push(line),
+    });
+    expect(warnings).toEqual([]);
+  });
+});
