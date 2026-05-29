@@ -568,3 +568,103 @@ describe("proposePersona — lead effort policy", () => {
     expect(adapter.asks[0].opts.effort).toBe("high");
   });
 });
+
+// ---------- timeout policy (raised SPEC §7 default) ----------
+//
+// Regression guard for the timeouts robustness pass: persona's lead
+// `ask()` must default `opts.timeout` to 900_000 ms (15m) so a slow
+// max-effort lead is not preempted mid-flight. Before this guard the
+// suite asserted `opts.effort` but NEVER `opts.timeout`, so a revert of
+// the 900_000 default (e.g. back to 300_000) would have passed green.
+// See draft.test.ts (DRAFT_REVISE_TIMEOUT_MS) for the sibling pattern.
+
+describe("proposePersona — lead timeout policy (SPEC §7)", () => {
+  test("defaults opts.timeout to 900_000 ms (15m) when no override is given", async () => {
+    const adapter = makeScriptedAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "CLI software engineer" expert',
+        rationale: "r",
+      }),
+    ]);
+    await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+    expect(adapter.asks[0].opts.timeout).toBe(900_000);
+  });
+
+  test("a caller-supplied timeoutMs override reaches adapter.ask opts.timeout", async () => {
+    const adapter = makeScriptedAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "CLI software engineer" expert',
+        rationale: "r",
+      }),
+    ]);
+    await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+        timeoutMs: 123_456,
+      },
+      adapter,
+    );
+    expect(adapter.asks[0].opts.timeout).toBe(123_456);
+  });
+
+  test("the 900_000 default and the override both apply on the repair retry too", async () => {
+    // First answer is malformed -> triggers ONE repair retry. The
+    // timeout override must thread through to BOTH asks (the default
+    // would otherwise silently re-appear on the retry path).
+    const adapter = makeScriptedAskAdapter([
+      JSON.stringify({ persona: "not canonical", rationale: "r1" }),
+      JSON.stringify({
+        persona: 'Veteran "CLI software engineer" expert',
+        rationale: "r2",
+      }),
+    ]);
+    await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+        timeoutMs: 777_000,
+      },
+      adapter,
+    );
+    expect(adapter.asks.length).toBe(2);
+    expect(adapter.asks[0].opts.timeout).toBe(777_000);
+    expect(adapter.asks[1].opts.timeout).toBe(777_000);
+  });
+
+  test("effort AND timeout are BOTH correct on the same ask (no regression from the timeout raise)", async () => {
+    // Combined assertion: bumping the timeout default must not regress
+    // effort threading, and vice versa. effort defaults to the unified
+    // `medium`; timeout defaults to 900_000.
+    const adapter = makeScriptedAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "CLI software engineer" expert',
+        rationale: "r",
+      }),
+    ]);
+    await proposePersona(
+      {
+        idea: "idea",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+        effort: "high",
+      },
+      adapter,
+    );
+    expect(adapter.asks[0].opts.effort).toBe("high");
+    expect(adapter.asks[0].opts.timeout).toBe(900_000);
+  });
+});

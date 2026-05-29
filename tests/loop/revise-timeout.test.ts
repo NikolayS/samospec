@@ -37,7 +37,12 @@ import type {
   ReviseInput,
   ReviseOutput,
 } from "../../src/adapter/types.ts";
-import { roundDirsFor, runRound } from "../../src/loop/round.ts";
+import {
+  CRITIQUE_TIMEOUT_MS,
+  REVISE_TIMEOUT_MS,
+  roundDirsFor,
+  runRound,
+} from "../../src/loop/round.ts";
 import { runIterate } from "../../src/cli/iterate.ts";
 import { writeState, newState } from "../../src/state/store.ts";
 import { runInit } from "../../src/cli/init.ts";
@@ -109,6 +114,74 @@ function hangingLead(): Adapter & { reviseCalls: () => number } {
     },
   };
   return Object.assign(adapter, { reviseCalls: () => calls });
+}
+
+/**
+ * Reviewer that succeeds and RECORDS the `opts.timeout` it was handed on
+ * its `critique()` call, so a test can assert the default critique
+ * timeout actually threads from runRound into the adapter.
+ */
+function capturingReviewer(): Adapter & {
+  critiqueTimeouts: () => readonly (number | undefined)[];
+} {
+  const seen: (number | undefined)[] = [];
+  const adapter: Adapter = {
+    vendor: "fake-reviewer-capture",
+    detect: (): Promise<DetectResult> =>
+      Promise.resolve({ installed: true, version: "0", path: "/fake" }),
+    auth_status: (): Promise<AuthStatus> =>
+      Promise.resolve({ authenticated: true }),
+    supports_structured_output: () => true,
+    supports_effort: (_: EffortLevel) => true,
+    models: (): Promise<readonly ModelInfo[]> =>
+      Promise.resolve([{ id: "fake", family: "fake" }]),
+    ask: (_i: AskInput): Promise<AskOutput> =>
+      Promise.reject(new Error("ask not used")),
+    critique: (i: CritiqueInput): Promise<CritiqueOutput> => {
+      seen.push(i.opts.timeout);
+      return Promise.resolve(SAMPLE_CRITIQUE);
+    },
+    revise: (_i: ReviseInput): Promise<ReviseOutput> =>
+      Promise.reject(new Error("revise not used on reviewer seat")),
+  };
+  return Object.assign(adapter, { critiqueTimeouts: () => seen });
+}
+
+/**
+ * Lead that succeeds and RECORDS the `opts.timeout` it was handed on its
+ * `revise()` call, so a test can assert the default revise timeout
+ * actually threads from runRound into the adapter.
+ */
+function capturingLead(): Adapter & {
+  reviseTimeouts: () => readonly (number | undefined)[];
+} {
+  const seen: (number | undefined)[] = [];
+  const adapter: Adapter = {
+    vendor: "fake-lead-capture",
+    detect: (): Promise<DetectResult> =>
+      Promise.resolve({ installed: true, version: "0", path: "/fake" }),
+    auth_status: (): Promise<AuthStatus> =>
+      Promise.resolve({ authenticated: true }),
+    supports_structured_output: () => true,
+    supports_effort: (_: EffortLevel) => true,
+    models: (): Promise<readonly ModelInfo[]> =>
+      Promise.resolve([{ id: "fake", family: "fake" }]),
+    ask: (_i: AskInput): Promise<AskOutput> =>
+      Promise.reject(new Error("ask not used")),
+    critique: (_i: CritiqueInput): Promise<CritiqueOutput> =>
+      Promise.reject(new Error("critique not used on lead")),
+    revise: (i: ReviseInput): Promise<ReviseOutput> => {
+      seen.push(i.opts.timeout);
+      return Promise.resolve({
+        spec: "# SPEC\n\nrevised body",
+        ready: true,
+        rationale: "ok",
+        usage: null,
+        effort_used: "max",
+      });
+    },
+  };
+  return Object.assign(adapter, { reviseTimeouts: () => seen });
 }
 
 let tmp: string;
@@ -808,4 +881,123 @@ describe("iterate — changelog note differs by retry kind (#92 REV)", () => {
     expect(changelog).toContain("reviewers retried this round");
     expect(changelog).not.toContain("lead revise retried after timeout");
   }, 30_000);
+});
+
+// ---------- raised SPEC §7 default constants (the feature) ----------
+//
+// These constants ARE the timeouts feature. The robustness pass raised
+// CRITIQUE_TIMEOUT_MS 300s -> 900s and REVISE_TIMEOUT_MS 600s -> 1800s so
+// a slow max-effort lead/reviewer is not preempted mid-flight. Before
+// this guard NO test in the suite imported or asserted either constant,
+// so a revert to the old values (or any other number) would have passed
+// the entire suite green.
+
+describe("loop/round — raised default timeout constants (SPEC §7)", () => {
+  test("CRITIQUE_TIMEOUT_MS is 900_000 ms (15m)", () => {
+    expect(CRITIQUE_TIMEOUT_MS).toBe(900_000);
+  });
+
+  test("REVISE_TIMEOUT_MS is 1_800_000 ms (30m)", () => {
+    expect(REVISE_TIMEOUT_MS).toBe(1_800_000);
+  });
+});
+
+// ---------- default-path threading (overrides omitted) ----------
+//
+// Every other round-level test passes explicit small overrides
+// (reviseTimeoutMs/critiqueTimeoutMs ~200ms). None omits BOTH to verify
+// runRound falls back to the raised defaults AND threads them into
+// adapter.critique / adapter.revise opts.timeout. round.ts:548-549's
+// default branch was therefore unguarded.
+
+describe("loop/round — default timeouts thread into adapter opts (SPEC §7)", () => {
+  test("omitting both overrides: critique() gets 900_000, revise() gets 1_800_000", async () => {
+    const lead = capturingLead();
+    const revA = capturingReviewer();
+    const revB = capturingReviewer();
+
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+      // critiqueTimeoutMs / reviseTimeoutMs intentionally OMITTED so the
+      // CRITIQUE_TIMEOUT_MS / REVISE_TIMEOUT_MS defaults are exercised.
+    });
+
+    expect(outcome.roundStopReason).toBe("ok");
+    // Each reviewer's critique() saw the raised default critique timeout.
+    expect(revA.critiqueTimeouts()).toEqual([CRITIQUE_TIMEOUT_MS]);
+    expect(revA.critiqueTimeouts()).toEqual([900_000]);
+    expect(revB.critiqueTimeouts()).toEqual([CRITIQUE_TIMEOUT_MS]);
+    // The lead's revise() saw the raised default revise timeout. With no
+    // remainingSessionMsFn the configured value passes through unshaved.
+    expect(lead.reviseTimeouts()).toEqual([REVISE_TIMEOUT_MS]);
+    expect(lead.reviseTimeouts()).toEqual([1_800_000]);
+  });
+});
+
+// ---------- clamp interaction with the raised default magnitude ----------
+//
+// resolveEffectiveReviseTimeout is only exercised elsewhere with small
+// numbers (60_000 configured / 200ms remaining). It is never tested
+// against the ACTUAL new default magnitude (1_800_000), so an off-by-
+// margin interaction with the larger default is unverified. These tests
+// drive runRound (which calls resolveEffectiveReviseTimeout internally)
+// with the real REVISE_TIMEOUT_MS default and assert the lead's revise()
+// observed the correctly clamped/biased / unshaved value.
+
+describe("loop/round — clamp vs raised revise default (SPEC §7)", () => {
+  test("configured-only (no remainingSessionMsFn) passes 1_800_000 through unshaved", async () => {
+    const lead = capturingLead();
+    const revA = capturingReviewer();
+    const revB = capturingReviewer();
+
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+      // No remainingSessionMsFn → configured-only, must NOT shave the
+      // CLAMP_SAFETY_MARGIN (that margin only biases the wall-clock race).
+    });
+
+    expect(outcome.roundStopReason).toBe("ok");
+    expect(lead.reviseTimeouts()).toEqual([REVISE_TIMEOUT_MS]);
+  });
+
+  test("remaining budget just under the default clamps to remaining minus the 2000ms margin", async () => {
+    const lead = capturingLead();
+    const revA = capturingReviewer();
+    const revB = capturingReviewer();
+
+    // Remaining is just BELOW the raised default. Because remaining <
+    // configured, the clamp engages and the 2000ms safety margin is
+    // subtracted to bias the inner deadline strictly before any outer
+    // session deadline. Held constant (not a live countdown) so the
+    // expected value is exact and not jitter-dependent.
+    const remaining = REVISE_TIMEOUT_MS - 5_000; // 1_795_000
+    const dirs = roundDirsFor(tmp, 1);
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs,
+      specText: "# SPEC\n\nbody",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+      remainingSessionMsFn: () => remaining,
+    });
+
+    expect(outcome.roundStopReason).toBe("ok");
+    // clamped = min(1_800_000, 1_795_000) = 1_795_000; since that is
+    // strictly less than configured, the 2000ms margin is subtracted.
+    expect(lead.reviseTimeouts()).toEqual([remaining - 2_000]);
+    expect(lead.reviseTimeouts()).toEqual([1_793_000]);
+  });
 });

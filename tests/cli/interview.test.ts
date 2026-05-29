@@ -9,7 +9,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
-import type { Adapter, AskInput, AskOutput } from "../../src/adapter/types.ts";
+import type {
+  Adapter,
+  AskInput,
+  AskOutput,
+  EffortLevel,
+} from "../../src/adapter/types.ts";
 import {
   INTERVIEW_MAX_QUESTIONS,
   INTERVIEW_ESCAPE_HATCHES,
@@ -427,6 +432,96 @@ describe("runInterview — persona + explain wiring (SPEC §7)", () => {
       /at most one tech-stack question|at most 1 tech-stack question/,
     );
     expect(first.prompt.toLowerCase()).toMatch(/project substance/);
+  });
+});
+
+// ---------- timeout policy (raised SPEC §7 default) ----------
+//
+// Regression guard for the timeouts robustness pass: runInterview's lead
+// `ask()` must default `opts.timeout` to 900_000 ms (15m). interview.ts
+// is the ONLY interview coverage and it asserted persona/explain wiring
+// and (separately) effort, but NEVER timeout — so a revert of the
+// 900_000 default would have passed the suite green. Mirrors the
+// effort-precedence shape so override-vs-default is symmetric.
+
+describe("runInterview — lead timeout policy (SPEC §7)", () => {
+  test("defaults opts.timeout to 900_000 ms (15m) when no override is given", async () => {
+    const qs = [{ id: "q1", text: "something?" }];
+    const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    expect(adapter.asks[0].opts.timeout).toBe(900_000);
+  });
+
+  test("a caller-supplied timeoutMs override reaches adapter.ask opts.timeout", async () => {
+    const qs = [{ id: "q1", text: "something?" }];
+    const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        timeoutMs: 654_321,
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    expect(adapter.asks[0].opts.timeout).toBe(654_321);
+  });
+
+  test("effort AND timeout are BOTH correct on the same ask (no regression from the timeout raise)", async () => {
+    const qs = [{ id: "q1", text: "something?" }];
+    const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        effort: "high" as EffortLevel,
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    expect(adapter.asks[0].opts.effort).toBe("high");
+    expect(adapter.asks[0].opts.timeout).toBe(900_000);
+  });
+
+  test("override timeout threads through the dedupe re-prompt path too", async () => {
+    // First lead response has duplicate question text -> one dedupe
+    // re-prompt. Both asks must carry the override timeout, not the
+    // default, on the retry leg.
+    const dupJson = JSON.stringify({
+      questions: [
+        { id: "a", text: "same?", options: ["x", "y"] },
+        { id: "b", text: "same?", options: ["x", "y"] },
+      ],
+    });
+    const cleanJson = makeQuestionsJson([{ id: "q1", text: "distinct?" }]);
+    const adapter = makeScriptedAskAdapter([dupJson, cleanJson]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        timeoutMs: 888_000,
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    expect(adapter.asks.length).toBe(2);
+    expect(adapter.asks[0].opts.timeout).toBe(888_000);
+    expect(adapter.asks[1].opts.timeout).toBe(888_000);
   });
 });
 
