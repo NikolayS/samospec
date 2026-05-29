@@ -157,7 +157,7 @@ export const DEFAULT_CONFIG: DefaultConfig = {
     max_reviewers: 2,
     max_tokens_per_round: 250_000,
     max_total_tokens_per_session: 2_000_000,
-    max_wall_clock_minutes: 240,
+    max_wall_clock_minutes: 600,
     preflight_confirm_usd: 20,
   },
   git: {

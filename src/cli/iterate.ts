@@ -123,8 +123,14 @@ import {
 // ---------- constants ----------
 
 const DEFAULT_MAX_ROUNDS = 10 as const;
-const DEFAULT_WALL_CLOCK_MS = 240 * 60 * 1000; // 240 minutes
-const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
+// Default session wall-clock budget (samospec #180 FIX 1). Bumped from
+// 240 min: with the raised SPEC §7 per-call timeouts (critique 900s,
+// revise 1800s) a realistic round costs ~54 min through the
+// `shouldStartNextRound` gate, so 240 min only admitted ~4 rounds. 600
+// min lets a default session run up to DEFAULT_MAX_ROUNDS (10) realistic
+// rounds before wall-clock — not the gate — becomes the binding limit.
+const DEFAULT_MAX_WALL_CLOCK_MIN = 600;
+const DEFAULT_WALL_CLOCK_MS = DEFAULT_MAX_WALL_CLOCK_MIN * 60 * 1000;
 // NOTE: the session wall-clock cap (#91 /
 // DEFAULT_SESSION_WALL_CLOCK_MS) was removed per Rule 10 ("nothing
 // kills a dev LLM run on the wall clock"). It produced exit code 4 +

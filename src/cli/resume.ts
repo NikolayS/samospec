@@ -66,7 +66,9 @@ import {
 import { inspectSpec, specPaths, type ChoiceResolvers } from "./new.ts";
 import { PERSONA_FORM_RE, formatPersonaString } from "./persona.ts";
 
-const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
+// samospec #180 FIX 1: 600 min, in lockstep with iterate's default
+// session budget so the lock-staleness buffer matches the round gate.
+const DEFAULT_MAX_WALL_CLOCK_MIN = 600;
 const V01_VERSION = "0.1.0" as const;
 
 export interface RunResumeInput {

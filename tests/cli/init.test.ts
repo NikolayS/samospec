@@ -86,7 +86,9 @@ describe("samospec init — fresh directory", () => {
     const budget = parsed["budget"] as Record<string, unknown>;
     expect(budget["max_tokens_per_round"]).toBe(250_000);
     expect(budget["max_total_tokens_per_session"]).toBe(2_000_000);
-    expect(budget["max_wall_clock_minutes"]).toBe(240);
+    // samospec #180 FIX 1: bumped from 240 so a default session can run
+    // a healthy number of rounds at the raised SPEC §7 per-call timeouts.
+    expect(budget["max_wall_clock_minutes"]).toBe(600);
     expect(budget["preflight_confirm_usd"]).toBe(20);
 
     // Git remote probe disabled by default (§14).

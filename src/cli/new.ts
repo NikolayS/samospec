@@ -96,7 +96,9 @@ import {
   type PersonaProposal,
 } from "./persona.ts";
 
-const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
+// samospec #180 FIX 1: 600 min, in lockstep with iterate's default
+// session budget so the lock-staleness buffer matches the round gate.
+const DEFAULT_MAX_WALL_CLOCK_MIN = 600;
 
 // NOTE: the session wall-clock cap (#81 / DEFAULT_SESSION_WALL_CLOCK_MS)
 // was removed per Rule 10 ("nothing kills a dev LLM run on the wall
