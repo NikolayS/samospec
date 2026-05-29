@@ -724,13 +724,21 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
   // Mark as complete before revise runs.
   // #100: completed_at stamps real wall-clock at finalization, distinct
   // from started_at so consumers can measure actual round duration.
+  // FIX 4 (samospec #180): on the reuse path a non-recovered seat whose
+  // critique FILE is still on disk must not be recorded as a misleading
+  // "failed". seatToDiskStatusOnReuse records such a seat as "pending"
+  // (artifact present, not completed) instead. Non-reuse rounds keep the
+  // plain seatToDiskStatus mapping.
+  const isReuse = input.reusedCritiques !== undefined;
+  const diskStatus = (seat: SeatOutcome, file: string): RoundSidecarSeat =>
+    isReuse ? seatToDiskStatusOnReuse(seat, file) : seatToDiskStatus(seat);
   const roundComplete: RoundSidecar = {
     round: roundNumber,
     status:
       seatA.state === "ok" && seatB.state === "ok" ? "complete" : "partial",
     seats: {
-      reviewer_a: seatToDiskStatus(seatA),
-      reviewer_b: seatToDiskStatus(seatB),
+      reviewer_a: diskStatus(seatA, dirs.codexPath),
+      reviewer_b: diskStatus(seatB, dirs.claudePath),
     },
     started_at: startedAt,
     completed_at: clock(),
@@ -1227,6 +1235,27 @@ function seatToDiskStatus(seat: SeatOutcome): RoundSidecarSeat {
   }
   // Fallback: plain string (legacy path).
   return seat.state;
+}
+
+/**
+ * Disk status for a seat on the RESUMABLE-REUSE path (samospec #180 FIX
+ * 4). A seat whose critique could not be reused (e.g. its file is present
+ * on disk but unparseable, so it was mapped to a `failed` SeatOutcome)
+ * must NOT be recorded as a hard "failed" while its persisted critique
+ * file still exists — that is misleading on post-hoc inspection. When the
+ * seat's critique file is present we record `pending` (truthfully: "not
+ * completed this round, artifact still on disk") instead of `failed`. An
+ * `ok` reuse, or a failed seat with NO file on disk, is recorded as
+ * normal via {@link seatToDiskStatus}.
+ */
+function seatToDiskStatusOnReuse(
+  seat: SeatOutcome,
+  critiqueFile: string,
+): RoundSidecarSeat {
+  if (seat.state !== "ok" && existsSync(critiqueFile)) {
+    return "pending";
+  }
+  return seatToDiskStatus(seat);
 }
 
 // ---------- persistence ----------

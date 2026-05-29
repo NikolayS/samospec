@@ -325,6 +325,80 @@ describe("resumable reviews — partial-seat reuse (one seat absent)", () => {
   });
 });
 
+// ---------- FIX 4: don't record "failed" when the critique file exists ----------
+
+// On the reuse path, a seat whose critique could NOT be recovered (its
+// file is present on disk but, e.g., unparseable) was mapped to a 'failed'
+// SeatOutcome and persistSeatResults then wrote round.json seat='failed' —
+// even though codex.md / claude.md still exists on disk. That is
+// misleading: post-hoc inspection sees a "failed" seat with a real
+// critique file next to it. FIX 4: round.json must not record a misleading
+// "failed" for a seat whose persisted critique file is present.
+
+/** Seed BOTH critique files but make claude.md unparseable (no trailer). */
+function seedSeatBUnparseable(dir: ReturnType<typeof roundDirsFor>): void {
+  mkdirSync(dir.roundDir, { recursive: true });
+  writeFileSync(
+    dir.codexPath,
+    renderCritiqueMarkdown(CRIT_A, "reviewer_a"),
+    "utf8",
+  );
+  // claude.md EXISTS on disk but carries no machine-readable trailer, so
+  // recoverCritiqueFromFile() returns null → not in reusedCritiques.
+  writeFileSync(
+    dir.claudePath,
+    "# Reviewer B — Claude\n\nnot parseable\n",
+    "utf8",
+  );
+}
+
+describe("resumable reviews — FIX 4: no misleading 'failed' when critique file persists", () => {
+  test("round.json does NOT record reviewer_b 'failed' when claude.md exists on disk", async () => {
+    const dirs = roundDirsFor(tmp, 8);
+    seedSeatBUnparseable(dirs);
+
+    // Only reviewer_a is recoverable; reviewer_b's file exists but is
+    // unparseable, so loadPersistedCritiques yields reviewer_b: null.
+    const reused = loadPersistedCritiques(dirs);
+    expect(reused).not.toBeNull();
+    expect(reused?.reviewer_b).toBeNull();
+    if (reused === null) return;
+
+    const { adapter: lead } = recordingLead();
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 8,
+      dirs,
+      specText: "# SPEC v0.1\n\noriginal",
+      decisionsHistory: [],
+      adapters: {
+        lead,
+        reviewerA: explodingReviewer(),
+        reviewerB: explodingReviewer(),
+      },
+      reusedCritiques: {
+        ...(reused.reviewer_a !== null
+          ? { reviewer_a: reused.reviewer_a }
+          : {}),
+        // reviewer_b omitted: file present on disk but not recovered.
+      },
+    });
+    expect(outcome.roundStopReason).toBe("ok");
+
+    // The claude.md artifact is still on disk after the reuse.
+    expect(readFileSync(dirs.claudePath, "utf8")).toContain("Reviewer B");
+
+    // round.json must NOT misleadingly record reviewer_b as a failure
+    // while its critique file persists on disk.
+    const sidecar = readRoundJson(dirs.roundJson);
+    const seatB = sidecar?.seats.reviewer_b;
+    const failedStatus =
+      seatB === "failed" ||
+      (typeof seatB === "object" && seatB?.status === "failed");
+    expect(failedStatus).toBe(false);
+  });
+});
+
 // ---------- persisted-artifact idempotency on the reuse path ----------
 
 // On the reuse path a reused 'ok' seat still carries its critique, so
