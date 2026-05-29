@@ -92,9 +92,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   `.samo/config.json` > a NEW unified default of **`medium`** (a balanced
   average; previously the scattered default was `max`). In an interactive
   terminal with no flag and no config pin, samospec prompts once at
-  startup to pick a level, explaining the speed/depth tradeoff (max =
-  deepest/slowest ~20-40 min/round on large specs; off = minimal/fastest;
-  medium = balanced default). The prompt is skipped under `--yes`,
+  startup to pick a level, explaining the speed/depth tradeoff with a
+  rough per-level ETA (max ~20-40, high ~15-30, medium ~5-12, low ~2-5,
+  off ~1-2 min/round) and a caveat that the ETAs are rough and scale with
+  spec size + provider speed. The prompt is skipped under `--yes`,
   `--no-interactive`, the jsonl interview protocol, and any non-TTY
   (piped/CI) context, which fall back to the flag/config/medium default.
   New module: `src/adapter/effort.ts`.

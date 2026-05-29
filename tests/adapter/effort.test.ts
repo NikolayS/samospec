@@ -192,11 +192,24 @@ describe("effortIsPinned", () => {
 
 describe("interactive prompt copy", () => {
   test("intro explains the depth/speed tradeoff for each level", () => {
-    expect(EFFORT_PROMPT_INTRO).toContain("Reasoning effort (depth vs speed)");
+    expect(EFFORT_PROMPT_INTRO).toContain("Reasoning effort — depth vs speed");
     expect(EFFORT_PROMPT_INTRO).toContain("max");
-    expect(EFFORT_PROMPT_INTRO).toContain("slowest");
+    expect(EFFORT_PROMPT_INTRO).toContain("deepest review");
     expect(EFFORT_PROMPT_INTRO).toContain("medium — balanced (default)");
-    expect(EFFORT_PROMPT_INTRO).toContain("fastest");
+    expect(EFFORT_PROMPT_INTRO).toContain("minimal");
+  });
+
+  test("intro carries a per-level rough ETA", () => {
+    expect(EFFORT_PROMPT_INTRO).toContain("~20-40 min/round"); // max
+    expect(EFFORT_PROMPT_INTRO).toContain("~15-30 min/round"); // high
+    expect(EFFORT_PROMPT_INTRO).toContain("~5-12 min/round"); // medium
+    expect(EFFORT_PROMPT_INTRO).toContain("~2-5 min/round"); // low
+    expect(EFFORT_PROMPT_INTRO).toContain("~1-2 min/round"); // off
+  });
+
+  test("intro carries the caveat that ETAs are rough and scale with spec size", () => {
+    expect(EFFORT_PROMPT_INTRO).toContain("ETAs are rough");
+    expect(EFFORT_PROMPT_INTRO).toContain("scale with spec size");
   });
 
   test("choose line advertises medium as default", () => {

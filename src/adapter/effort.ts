@@ -168,18 +168,21 @@ export function effortIsPinned(input: {
 }
 
 /**
- * The interactive effort prompt copy. Concise tradeoff explanation
- * followed by the choose line. Exported so the CLI prompt and tests
- * compare against one canonical string. `\n`-terminated lines; the
- * caller appends the readline answer inline after the final colon.
+ * The interactive effort prompt copy. Concise tradeoff explanation with
+ * a rough per-level ETA and an explicit caveat that the ETAs are rough
+ * and scale with spec size + provider speed. Followed by the choose
+ * line. Exported so the CLI prompt and tests compare against one
+ * canonical string. `\n`-terminated lines; the caller appends the
+ * readline answer inline after the final colon.
  */
 export const EFFORT_PROMPT_INTRO =
-  "Reasoning effort (depth vs speed):\n" +
-  "  max    — deepest review; slowest (can be ~20-40 min/round on large specs)\n" +
-  "  high   — deep; slow\n" +
-  "  medium — balanced (default)\n" +
-  "  low    — shallow; fast (a few min/round)\n" +
-  "  off    — minimal; fastest\n";
+  "Reasoning effort — depth vs speed " +
+  "(ETAs are rough; scale with spec size + provider speed):\n" +
+  "  max    — deepest review;     ~20-40 min/round\n" +
+  "  high   — deep;               ~15-30 min/round\n" +
+  "  medium — balanced (default); ~5-12 min/round\n" +
+  "  low    — shallow, fast;      ~2-5 min/round\n" +
+  "  off    — minimal;            ~1-2 min/round\n";
 
 /** The trailing choose line (with default). */
 export const EFFORT_PROMPT_CHOOSE =
