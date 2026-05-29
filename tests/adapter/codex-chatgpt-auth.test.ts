@@ -259,14 +259,23 @@ describe("Bug #54-2: account-default fallback after both explicit pins fail", ()
       stateFile: stateJson,
     });
     const { host } = makeInstalledHost();
-    const adapter = new CodexAdapter({ host, spawn: spy.spawn });
+    // Pin a 2-model list so the "both explicit pins fail" scenario stays
+    // exactly two explicit tiers regardless of the global default chain.
+    const adapter = new CodexAdapter({
+      host,
+      spawn: spy.spawn,
+      models: [
+        { id: "gpt-5.5", family: "codex" },
+        { id: "gpt-5.3-codex", family: "codex" },
+      ],
+    });
 
     const out = await adapter.ask(sampleAsk());
 
     // The adapter must succeed using the account-default tier.
     expect(out.answer).toBe("account-default-ok");
 
-    // Three spawns: gpt-5.4 (fail), gpt-5.3-codex (fail),
+    // Three spawns: first pin (fail), second pin (fail),
     // account-default (no --model flag, success).
     expect(spy.calls.length).toBe(3);
 
@@ -332,7 +341,16 @@ describe("Bug #54-2: account-default fallback after both explicit pins fail", ()
         },
       ]);
       const { host } = makeInstalledHost();
-      const adapter = new CodexAdapter({ host, spawn: spy.spawn });
+      // Two explicit pins so the scripted 3-response sequence (two
+      // failures then account-default success) maps 1:1 to the spawns.
+      const adapter = new CodexAdapter({
+        host,
+        spawn: spy.spawn,
+        models: [
+          { id: "gpt-5.4", family: "codex" },
+          { id: "gpt-5.3-codex", family: "codex" },
+        ],
+      });
 
       const out = await adapter.ask(sampleAsk());
       expect(out.answer).toBe("ok");
@@ -393,7 +411,16 @@ describe("Bug #54-3: terminal with informative message when all tiers fail", () 
         },
       ]);
       const { host } = makeInstalledHost();
-      const adapter = new CodexAdapter({ host, spawn: spy.spawn });
+      // Two explicit pins + account-default = three tiers, matching the
+      // three scripted responses.
+      const adapter = new CodexAdapter({
+        host,
+        spawn: spy.spawn,
+        models: [
+          { id: "gpt-5.4", family: "codex" },
+          { id: "gpt-5.3-codex", family: "codex" },
+        ],
+      });
 
       let err: unknown;
       try {

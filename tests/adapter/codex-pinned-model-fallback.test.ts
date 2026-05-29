@@ -175,6 +175,13 @@ describe("Bug #88-1 fallback: exit-1 invalid_request_error fires account-default
       host: FAKE_HOST,
       spawn: spy.spawn,
       binary: "/usr/bin/codex",
+      // Two explicit pins so the scripted 3-response sequence (two
+      // failures + account-default) maps 1:1 to the spawns regardless
+      // of the global default chain length.
+      models: [
+        { id: "gpt-5.4", family: "codex" },
+        { id: "gpt-5.3-codex", family: "codex" },
+      ],
     });
 
     const out = await adapter.ask(sampleAsk());
@@ -202,6 +209,13 @@ describe("Bug #88-1 fallback: exit-1 invalid_request_error fires account-default
       host: FAKE_HOST,
       spawn: spy.spawn,
       binary: "/usr/bin/codex",
+      // Two explicit pins so the scripted 3-response sequence (two
+      // failures + account-default) maps 1:1 to the spawns regardless
+      // of the global default chain length.
+      models: [
+        { id: "gpt-5.4", family: "codex" },
+        { id: "gpt-5.3-codex", family: "codex" },
+      ],
     });
 
     const out = await adapter.ask(sampleAsk());

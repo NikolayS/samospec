@@ -32,6 +32,7 @@ import path from "node:path";
 
 import { z } from "zod";
 
+import { UNIFIED_DEFAULT_EFFORT } from "../adapter/effort.ts";
 import { preParseJson } from "../adapter/json-parse.ts";
 import type { Adapter, AskInput, EffortLevel } from "../adapter/types.ts";
 import { PERSONA_FORM_RE } from "./persona.ts";
@@ -318,8 +319,8 @@ export async function runInterview(
     );
   }
 
-  const effort: EffortLevel = input.effort ?? "max";
-  const timeoutMs = input.timeoutMs ?? 120_000;
+  const effort: EffortLevel = input.effort ?? UNIFIED_DEFAULT_EFFORT;
+  const timeoutMs = input.timeoutMs ?? 900_000;
   const prompt = buildInterviewPrompt({
     persona: input.persona,
     explain: input.explain,

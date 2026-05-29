@@ -19,6 +19,7 @@
 
 import { z } from "zod";
 
+import { UNIFIED_DEFAULT_EFFORT } from "../adapter/effort.ts";
 import { preParseJson } from "../adapter/json-parse.ts";
 import type { Adapter, AskInput, EffortLevel } from "../adapter/types.ts";
 
@@ -74,9 +75,14 @@ export interface ProposePersonaInput {
   readonly choice: PersonaChoice;
   /** Sink for surface messages (subscription-auth copy etc.). */
   readonly onNotice?: (line: string) => void;
-  /** Effort override; defaults to `max`. */
+  /**
+   * Effort for the lead's persona call. Resolved up in the CLI
+   * (`--effort` flag > per-seat config > unified `high`) and threaded
+   * down via the caller. Defaults to the unified `high` level when the
+   * caller passes nothing (previously defaulted to `max`).
+   */
   readonly effort?: EffortLevel;
-  /** Timeout override in ms; defaults to 120_000 (AskInput default). */
+  /** Timeout override in ms; defaults to 900_000 (15m, for slow max-effort models). */
   readonly timeoutMs?: number;
 }
 
@@ -224,8 +230,8 @@ export async function proposePersona(
     notice(SUBSCRIPTION_AUTH_MESSAGE);
   }
 
-  const effort: EffortLevel = input.effort ?? "max";
-  const timeoutMs = input.timeoutMs ?? 120_000;
+  const effort: EffortLevel = input.effort ?? UNIFIED_DEFAULT_EFFORT;
+  const timeoutMs = input.timeoutMs ?? 900_000;
   const prompt = buildPersonaPrompt({
     idea: input.idea,
     explain: input.explain,

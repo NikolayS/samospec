@@ -32,6 +32,7 @@ import {
   type AdapterResolutionSnapshot,
 } from "../loop/degradation.ts";
 import {
+  typicalRoundDurationMs,
   worstCaseRoundDuration,
   type CallTimeoutsMs,
 } from "../policy/wallclock.ts";
@@ -69,11 +70,14 @@ export interface StatusResult {
   readonly stderr: string;
 }
 
-const DEFAULT_WALL_CLOCK_MS = 240 * 60 * 1000;
+// Keep in lockstep with src/cli/iterate.ts DEFAULT_WALL_CLOCK_MS
+// (samospec #180 FIX 1): 600 min so `status` reports the same default
+// session budget the iterate gate enforces.
+const DEFAULT_WALL_CLOCK_MS = 600 * 60 * 1000;
 const DEFAULT_CALL_TIMEOUTS: CallTimeoutsMs = {
-  criticA_ms: 300_000,
-  criticB_ms: 300_000,
-  revise_ms: 600_000,
+  criticA_ms: 900_000,
+  criticB_ms: 900_000,
+  revise_ms: 1_800_000,
 };
 
 // ---------- main ----------
@@ -173,16 +177,20 @@ export async function runStatus(input: StatusInput): Promise<StatusResult> {
   const nowMs = input.nowMs ?? Date.parse(input.now);
   const elapsed = Math.max(0, nowMs - sessionStartedMs);
   const remaining = Math.max(0, wallClockMs - elapsed);
+  // `typical` is what the between-round gate (shouldStartNextRound)
+  // actually compares against (samospec #180 FIX 1); `worstCase` (3.5x
+  // retry tail) is shown for transparency as the per-call ceiling.
+  const typical = typicalRoundDurationMs(callTimeouts);
   const worstCase = worstCaseRoundDuration(callTimeouts);
   lines.push(
     `- wall-clock: remaining ${fmtMinutes(remaining)} / budget ${fmtMinutes(wallClockMs)}`,
   );
   lines.push(
-    `- worst-case one more round: ${fmtMinutes(worstCase)} (SPEC §11 overrun rule)`,
+    `- one more round estimate: ${fmtMinutes(typical)} (gate) / worst-case ${fmtMinutes(worstCase)} (SPEC §11 overrun rule)`,
   );
-  if (remaining < worstCase) {
+  if (remaining < typical) {
     lines.push(
-      `- warning: remaining wall-clock is less than worst-case one-more-round duration; next \`samospec iterate\` will halt with reason \`wall-clock\`.`,
+      `- warning: remaining wall-clock is less than the estimated one-more-round duration; next \`samospec iterate\` will halt with reason \`wall-clock\`.`,
     );
   }
 
@@ -272,15 +280,15 @@ function inferStatusResolutions(
   return {
     lead: {
       adapter: roleOf("lead")?.adapter.vendor ?? "claude",
-      model_id: stateAdapters.lead?.model_id ?? "claude-opus-4-7",
+      model_id: stateAdapters.lead?.model_id ?? "claude-opus-4-8",
     },
     reviewer_a: {
       adapter: roleOf("reviewer_a")?.adapter.vendor ?? "codex",
-      model_id: stateAdapters.reviewer_a?.model_id ?? "gpt-5.4",
+      model_id: stateAdapters.reviewer_a?.model_id ?? "gpt-5.5",
     },
     reviewer_b: {
       adapter: roleOf("reviewer_b")?.adapter.vendor ?? "claude",
-      model_id: stateAdapters.reviewer_b?.model_id ?? "claude-opus-4-7",
+      model_id: stateAdapters.reviewer_b?.model_id ?? "claude-opus-4-8",
     },
     coupled_fallback: state.coupled_fallback,
   };

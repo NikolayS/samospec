@@ -31,22 +31,22 @@ export const CONFIG_SCHEMA_VERSION = 1 as const;
 
 export interface LeadAdapterDefaults {
   readonly adapter: "claude";
-  readonly model_id: "claude-opus-4-7";
-  readonly effort: "max";
+  readonly model_id: "claude-opus-4-8";
+  readonly effort: "high";
   readonly fallback_chain: readonly string[];
 }
 
 export interface ReviewerAAdapterDefaults {
   readonly adapter: "codex";
-  readonly model_id: "gpt-5.4";
-  readonly effort: "max";
+  readonly model_id: "gpt-5.5";
+  readonly effort: "high";
   readonly fallback_chain: readonly string[];
 }
 
 export interface ReviewerBAdapterDefaults {
   readonly adapter: "claude";
-  readonly model_id: "claude-opus-4-7";
-  readonly effort: "max";
+  readonly model_id: "claude-opus-4-8";
+  readonly effort: "high";
   readonly fallback_chain: readonly string[];
 }
 
@@ -105,32 +105,51 @@ export interface DefaultConfig {
 
 /**
  * Pinned v1 defaults. SPEC §11.
- * - Lead: claude / claude-opus-4-7 / max
- * - Reviewer A: codex / gpt-5.4 / max (xhigh reasoning effort)
- * - Reviewer B: claude / claude-opus-4-7 / max (same family as lead)
+ * - Lead: claude / claude-opus-4-8 / high
+ * - Reviewer A: codex / gpt-5.5 / high
+ * - Reviewer B: claude / claude-opus-4-8 / high (same family as lead)
  * - Budget: generous defaults (SPEC §11 Budget guardrails).
  * - Git: remote_probe off by default (SPEC §14 threat model).
+ *
+ * Effort: every seat defaults to the UNIFIED `high` level (deep, strong
+ * review out of the box). Bump any seat to `max` for the deepest review,
+ * or down to `medium`/`low` for speed; the global `--effort` flag
+ * overrides every seat at once for a run.
+ *
+ * Latest-model refresh: the new top models are prepended ahead of the
+ * prior pins in each fallback chain, so a freshly-`init`ed project picks
+ * the newest model first but still degrades through the proven chain.
  */
 export const DEFAULT_CONFIG: DefaultConfig = {
   schema_version: CONFIG_SCHEMA_VERSION,
   adapters: {
     lead: {
       adapter: "claude",
-      model_id: "claude-opus-4-7",
-      effort: "max",
-      fallback_chain: ["claude-opus-4-7", "claude-sonnet-4-6", "terminal"],
+      model_id: "claude-opus-4-8",
+      effort: "high",
+      fallback_chain: [
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-sonnet-4-6",
+        "terminal",
+      ],
     },
     reviewer_a: {
       adapter: "codex",
-      model_id: "gpt-5.4",
-      effort: "max",
-      fallback_chain: ["gpt-5.4", "gpt-5.3-codex", "terminal"],
+      model_id: "gpt-5.5",
+      effort: "high",
+      fallback_chain: ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "terminal"],
     },
     reviewer_b: {
       adapter: "claude",
-      model_id: "claude-opus-4-7",
-      effort: "max",
-      fallback_chain: ["claude-opus-4-7", "claude-sonnet-4-6", "terminal"],
+      model_id: "claude-opus-4-8",
+      effort: "high",
+      fallback_chain: [
+        "claude-opus-4-8",
+        "claude-opus-4-7",
+        "claude-sonnet-4-6",
+        "terminal",
+      ],
     },
   },
   budget: {
@@ -138,7 +157,7 @@ export const DEFAULT_CONFIG: DefaultConfig = {
     max_reviewers: 2,
     max_tokens_per_round: 250_000,
     max_total_tokens_per_session: 2_000_000,
-    max_wall_clock_minutes: 240,
+    max_wall_clock_minutes: 600,
     preflight_confirm_usd: 20,
   },
   git: {

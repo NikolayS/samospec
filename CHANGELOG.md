@@ -7,8 +7,149 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Wall-clock between-round gate no longer collapses a default session
+  (#180).** `shouldStartNextRound` gated on the 3.5× capped-retry
+  worst-case round duration, which assumes every round exhausts every
+  retry tier. With the raised SPEC §7 per-call timeouts (critique 900s,
+  revise 1800s) that worst case is ≈157.5 min, so the 240-min default
+  budget admitted only ~2 rounds before halting with `wall-clock` — far
+  short of `DEFAULT_MAX_ROUNDS` (10). The between-round gate now estimates
+  a _realistic_ round (one critique pass + one revise) via the new
+  `typicalRoundDurationMs` (a small ~1.2× safety factor, not the 3.5×
+  retry inflation), and the default session budget is bumped from 240 to
+  600 min so wall-clock is no longer the binding limit before max-rounds.
+  The 3.5× `worstCaseRoundDuration` is retained for the per-call cap and
+  shown in `samospec status` as the worst-case ceiling. A regression test
+  pins ≥5 startable rounds at the default budget and that the gate still
+  halts when a realistic round genuinely cannot fit, so a future timeout
+  bump cannot silently re-collapse the budget.
+- **Prior-context truncation keeps the lead-decisions section (#180).**
+  The reviewer prior-context block assembled `[your prior findings, lead
+decisions]` with decisions LAST and truncated by keeping the head, so
+  once a seat's own findings filled the 8000-char budget in later rounds
+  the "Lead decisions on prior findings" section (the deferred/rejected
+  rulings convergence depends on) was sliced off entirely. Decisions are
+  now emitted FIRST, capped to a reserved sub-budget that keeps the TAIL
+  (most-recent rulings), so a reviewer always sees the lead's recent
+  rulings even when its own prior findings are long. Fixed the misleading
+  `capBlock` comment that claimed the head carried the convergence
+  instruction (it is added later by `renderPriorContextPromptBlock`).
+- **`reviewer_b` divergent model config now warns instead of silently
+  ignored (#180).** SPEC §11 couples reviewer-B to the lead's shared
+  Claude resolver, so an `adapters.reviewer_b.{model_id,fallback_chain}`
+  that differs from the lead is inert by design — but silently. When the
+  resolved reviewer_b chain differs from lead's,
+  `buildReviewLoopAdaptersFromConfig` now emits a one-line stderr warning
+  explaining the config is ignored per SPEC §11. The coupling behavior is
+  unchanged.
+- **`round.json` no longer records a misleading "failed" for a reused
+  seat whose critique file is present (#180).** On the resumable-reuse
+  path a seat that could not be recovered (its `codex.md`/`claude.md`
+  exists on disk but, e.g., is unparseable) was mapped to a `failed`
+  seat and written to `round.json` as `failed` even though the artifact
+  was still on disk. Such a seat is now recorded as `pending` (artifact
+  present, not completed this round) rather than `failed`; a genuinely
+  absent file is still recorded `failed`.
+- **`samospec doctor` warns when `claude` lacks `--effort` (#180).**
+  samospec appends `--effort` to every `claude` work-call spawn, so a
+  CLI older than v2.1.0 (when `--effort` was added) would fail every
+  call. A new doctor check probes the installed `claude` version and
+  WARNs (never FAILs) when it predates the minimum, naming the required
+  version. Minimum version documented in README and CLAUDE.md.
+- **Reviewer context preservation across rounds (convergence fix).** Each
+  reviewer now "remembers what it noticed on previous rounds" so the
+  review loop converges instead of re-litigating. Previously every seat
+  was called each round with ONLY the current spec — the one-shot
+  `claude --print` / `codex exec` subprocesses carry no session memory and
+  the lead's `decisions.md` was fed to the LEAD's `revise()`, never to the
+  reviewers — so each reviewer reviewed cold, re-raising consciously
+  deferred/rejected findings and re-discovering issues, making the major
+  count oscillate. On round N>1 the round runner now reconstructs each
+  seat's prior context from PERSISTED artifacts (its OWN prior critique
+  files — `reviews/rNN/codex.md` for Reviewer A, `reviews/rNN/claude.md`
+  for Reviewer B — plus the lead's per-finding rulings from
+  `decisions.md`) and passes it as `CritiqueInput.prior_context`. Each
+  reviewer sees ONLY its own history (never the other seat's), framed by
+  an explicit convergence instruction (verify whether each prior finding
+  is now resolved; do not re-raise a finding the lead consciously
+  deferred/rejected with a rationale unless it regressed; concentrate on
+  new or still-unresolved issues). Because the context is rebuilt from
+  on-disk artifacts it survives `resume` automatically, and missing /
+  partial / unparseable files degrade gracefully to round-1 behavior.
+  Bounded to the last 3 rounds and capped at 8000 chars so the prompt
+  cannot grow unboundedly. New module: `src/loop/prior-context.ts`.
+- **Config-driven models (headline fix).** `samospec` now honors
+  `adapters.{lead,reviewer_a,reviewer_b}.{model_id,fallback_chain}` from
+  `.samo/config.json` everywhere adapters are built (`new`, `resume`,
+  `iterate`, `status`, `brief`). Previously every call-site constructed
+  adapters with their hardcoded pinned defaults and a fresh resolver, so
+  editing `model_id` in the config did nothing. A new
+  `src/adapter/from-config.ts` factory reads the config and builds the
+  lead / reviewer-A / reviewer-B adapters (and the shared Claude resolver
+  for the lead + reviewer-B coupled fallback) from the configured pins,
+  falling back to sensible defaults when the config is absent.
+- **Resumable reviews.** A revise timeout drops a round into
+  `lead_terminal`; `resume`/`iterate` no longer dead-end there. When the
+  round's reviewer critiques are persisted under
+  `.samo/spec/<slug>/reviews/rNN/`, the lead revise is retried reusing the
+  saved critiques without re-running (or re-paying for) the reviewers.
+  Falls back to a fresh round only when the critiques are missing or
+  unparseable.
+- **Non-TTY iterate robustness.** Multi-round `iterate` in a non-TTY
+  context no longer dies between rounds on samospec's own artifact churn
+  (the post-commit `state.json` rewrite, freshly written `reviews/rNN/`
+  files). When the only dirty paths are samospec-managed artifacts, the
+  non-TTY dirty guard auto-incorporates them; a genuine `SPEC.md` edit or
+  any foreign file still triggers the `--on-dirty` refusal.
+
+### Changed
+
+- **Raised default per-call timeouts** so long-running lead revises and
+  reviewer critiques are not preempted mid-flight at any effort level:
+  revise `600s -> 1800s`, critique `300s -> 900s` (round loop, `draft`,
+  and `status` defaults). Per-call overrides
+  (`budget.max_revise_call_ms` / `budget.max_critique_call_ms` /
+  `input.callTimeouts`) still take precedence.
+- **Real Claude `--effort`.** The Claude adapter now passes
+  `--effort <level>` (mapping samospec's `EffortLevel` onto the CLI's
+  `low|medium|high|max`, with `max -> max`) so effort is a genuine knob
+  rather than advisory.
+- **Latest-model defaults.** `samospec init` and the adapter / resolver
+  pinned defaults now lead with `claude-opus-4-8` (lead + reviewer B) and
+  `gpt-5.5` (reviewer A), each prepended ahead of the prior pin in its
+  fallback chain.
+- **Unified effort default is now `high` (was `max`).** The previously
+  scattered `effort ?? "max"` fallbacks (persona, interview, draft) and
+  the hardcoded `effort: "max"` in the review-round runner are replaced
+  by a single unified `high` default (deep, strong review out of the box)
+  applied consistently across all seats. `samospec init` now writes
+  `effort: "high"` for each seat instead of `effort: "max"`. For the
+  deepest review pass `--effort max`; to trade depth for speed pass a
+  lower level or pin `adapters.<seat>.effort` in `.samo/config.json`.
+
 ### Added
 
+- **Unified `--effort` knob for `new` and `iterate`.** One global
+  `--effort <max|high|medium|low|off>` flag sets the reasoning effort for
+  ALL seats at once (lead + reviewer_a + reviewer_b), trading depth vs
+  speed. It OVERRIDES every seat's per-adapter config effort uniformly.
+  Bad values exit 2 with a usage error naming the valid set. Effort now
+  resolves through ONE documented precedence everywhere
+  (persona/interview/draft + every review-round critique/revise):
+  `--effort` flag > per-seat `adapters.<seat>.effort` in
+  `.samo/config.json` > a NEW unified default of **`high`** (deep, strong
+  review out of the box; previously the scattered default was `max`). In
+  an interactive terminal with no flag and no config pin, samospec
+  prompts once at startup to pick a level, explaining the speed/depth
+  tradeoff with a rough per-level ETA (max ~20-40, high ~15-30, medium
+  ~5-12, low ~2-5, off ~1-2 min/round) and a caveat that the ETAs are
+  rough and scale with spec size + provider speed. The prompt is skipped
+  under `--yes`, `--no-interactive`, the jsonl interview protocol, and any
+  non-TTY (piped/CI) context, which fall back to the flag/config/high
+  default.
+  New module: `src/adapter/effort.ts`.
 - **`samospec new --idea-file <path>` — read the idea from a file.**
   Preferred input channel for long, structured ideas from AI agents and
   CI: no fragile shell-quoting of a multi-paragraph `--idea` argument.

@@ -13,6 +13,7 @@ import {
   type CheckResult,
 } from "./doctor-format.ts";
 import { checkCliAvailability } from "./doctor-checks/availability.ts";
+import { checkEffortSupport } from "./doctor-checks/effort-support.ts";
 import { checkAuthStatus, type ProbeResult } from "./doctor-checks/auth.ts";
 import { checkGitHealth } from "./doctor-checks/git.ts";
 import { checkLockfile } from "./doctor-checks/lock.ts";
@@ -150,7 +151,7 @@ export async function runDoctor(args: RunDoctorArgs): Promise<RunDoctorResult> {
   const isTty = args.isTty ?? process.stdout.isTTY ?? false;
   const color = shouldUseColor({ env, isTty });
   const now = args.now ?? Date.now();
-  const maxWallClockMinutes = args.maxWallClockMinutes ?? 240;
+  const maxWallClockMinutes = args.maxWallClockMinutes ?? 600;
 
   const isGitRepo = args.isGitRepo ?? (() => defaultIsGitRepo(args.cwd));
   const currentBranch =
@@ -171,6 +172,7 @@ export async function runDoctor(args: RunDoctorArgs): Promise<RunDoctorResult> {
   const results: CheckResult[] = [];
 
   results.push(await checkCliAvailability({ adapters: args.adapters }));
+  results.push(await checkEffortSupport({ adapters: args.adapters }));
   results.push(
     await checkAuthStatus({
       adapters: args.adapters,

@@ -7,7 +7,13 @@
 // exits 0.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -16,13 +22,17 @@ import type {
   Adapter,
   AskInput,
   AskOutput,
+  CritiqueOutput,
   ReviseInput,
   ReviseOutput,
 } from "../../src/adapter/types.ts";
 import { runInit } from "../../src/cli/init.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { runResume } from "../../src/cli/resume.ts";
+import { renderCritiqueMarkdown, roundDirsFor } from "../../src/loop/round.ts";
+import { specSlugDir } from "../../src/paths.ts";
 import { newState, readState, writeState } from "../../src/state/store.ts";
+import type { State } from "../../src/state/types.ts";
 import { readInterview, writeInterview } from "../../src/cli/interview.ts";
 
 function askOut(answer: string): AskOutput {
@@ -310,5 +320,171 @@ describe("samospec resume — lead_terminal", () => {
     );
     expect(result.exitCode).toBe(4);
     expect(result.stderr.toLowerCase()).toMatch(/lead_terminal/);
+  });
+});
+
+// ---------- resume at lead_terminal WITH saved critiques ----------
+
+// resumable-reviews (samospec robustness pass): when a lead_terminal
+// round has its reviewer critiques persisted on disk, `samospec resume`
+// must NOT dead-end at exit 4. Instead it exits 0 and points the user at
+// `samospec iterate`, which auto-resumes that round reusing the saved
+// critiques (src/cli/resume.ts lines 137-159). The pre-existing
+// lead_terminal test only covers the NO-critiques exit-4 path; this
+// block locks down the new exit-0 branch and its specific copy.
+
+const SAVED_CRIT_A: CritiqueOutput = {
+  findings: [
+    { category: "missing-risk", text: "no auth story", severity: "major" },
+  ],
+  summary: "reviewer A saved summary",
+  suggested_next_version: "0.2",
+  usage: null,
+  effort_used: "max",
+};
+
+const SAVED_CRIT_B: CritiqueOutput = {
+  findings: [
+    { category: "weak-implementation", text: "no tests", severity: "minor" },
+  ],
+  summary: "reviewer B saved summary",
+  suggested_next_version: "0.2",
+  usage: null,
+  effort_used: "max",
+};
+
+/**
+ * Seed a `review_loop` spec at `lead_terminal` with the failed round's
+ * critiques optionally persisted on disk. `round_index` is
+ * `failedRound - 1` to mirror the lead_terminal write that decrements it.
+ */
+function seedLeadTerminal(
+  cwd: string,
+  slug: string,
+  opts: {
+    readonly failedRound?: number;
+    readonly seatA?: CritiqueOutput | null;
+    readonly seatB?: CritiqueOutput | null;
+  } = {},
+): number {
+  const failedRound = opts.failedRound ?? 1;
+  const seatA = opts.seatA === undefined ? SAVED_CRIT_A : opts.seatA;
+  const seatB = opts.seatB === undefined ? SAVED_CRIT_B : opts.seatB;
+
+  const slugDir = path.join(cwd, ".samo", "spec", slug);
+  mkdirSync(slugDir, { recursive: true });
+  writeFileSync(path.join(slugDir, "SPEC.md"), "# SPEC\n\nv0.1\n", "utf8");
+
+  const state: State = {
+    slug,
+    phase: "review_loop",
+    round_index: failedRound - 1,
+    version: "0.1.0",
+    persona: { skill: "demo", accepted: true },
+    push_consent: null,
+    calibration: null,
+    remote_stale: false,
+    coupled_fallback: false,
+    head_sha: null,
+    round_state: "lead_terminal",
+    exit: {
+      code: 4,
+      reason: "lead-terminal:revise_timeout",
+      round_index: failedRound,
+    },
+    created_at: "2026-04-19T12:00:00Z",
+    updated_at: "2026-04-19T12:00:00Z",
+  };
+  writeState(path.join(slugDir, "state.json"), state);
+
+  const dirs = roundDirsFor(specSlugDir(cwd, slug), failedRound);
+  mkdirSync(dirs.roundDir, { recursive: true });
+  if (seatA !== null) {
+    writeFileSync(
+      dirs.codexPath,
+      renderCritiqueMarkdown(seatA, "reviewer_a"),
+      "utf8",
+    );
+  }
+  if (seatB !== null) {
+    writeFileSync(
+      dirs.claudePath,
+      renderCritiqueMarkdown(seatB, "reviewer_b"),
+      "utf8",
+    );
+  }
+  return failedRound;
+}
+
+describe("samospec resume — lead_terminal with saved critiques", () => {
+  test("exits 0 and points at `samospec iterate` (not the exit-4 absorbing copy)", async () => {
+    const slug = "demo";
+    seedLeadTerminal(tmp, slug);
+
+    const { adapter } = makeLeadAdapter([]);
+    const result = await runResume(
+      {
+        cwd: tmp,
+        slug,
+        now: "2026-04-19T11:00:00Z",
+        resolvers: acceptResolver(),
+      },
+      adapter,
+    );
+
+    // Exit 0, no error output.
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+
+    // Specific copy: names the saved critiques and points at iterate.
+    expect(result.stdout).toContain("saved reviewer");
+    expect(result.stdout).toContain("next: samospec iterate demo");
+    expect(result.stdout).toContain("reusing the saved critiques");
+    // It must NOT use the absorbing exit-4 wording.
+    expect(result.stdout).not.toContain("Edit .samo/spec");
+    expect(result.stdout).not.toContain("--force");
+  });
+
+  test("a single recoverable seat still routes to the exit-0 iterate path", async () => {
+    // loadPersistedCritiques returns non-null when at least one seat is
+    // present, so even a single saved critique must point at iterate.
+    const slug = "demo";
+    seedLeadTerminal(tmp, slug, { seatB: null });
+
+    const { adapter } = makeLeadAdapter([]);
+    const result = await runResume(
+      {
+        cwd: tmp,
+        slug,
+        now: "2026-04-19T11:00:00Z",
+        resolvers: acceptResolver(),
+      },
+      adapter,
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("next: samospec iterate demo");
+  });
+
+  test("no recoverable critiques keeps the absorbing exit-4 path", async () => {
+    // Regression guard: lead_terminal WITHOUT any persisted critique
+    // must still be a dead-end (exit 4 + manual-edit/--force copy).
+    const slug = "demo";
+    seedLeadTerminal(tmp, slug, { seatA: null, seatB: null });
+
+    const { adapter } = makeLeadAdapter([]);
+    const result = await runResume(
+      {
+        cwd: tmp,
+        slug,
+        now: "2026-04-19T11:00:00Z",
+        resolvers: acceptResolver(),
+      },
+      adapter,
+    );
+
+    expect(result.exitCode).toBe(4);
+    expect(result.stderr.toLowerCase()).toMatch(/lead_terminal/);
+    expect(result.stderr).toContain("--force");
   });
 });

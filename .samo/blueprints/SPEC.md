@@ -31,7 +31,7 @@ Engineers paper over this by copy-pasting between tools. A multi-model loop wire
 Four claims flow from this:
 
 1. **Asymmetric roles beat round-table chat.** The lead owns the document and the decisions; reviewers only critique. The default reviewer pair (Codex + a second Claude session) gives **cross-vendor diversity on one axis** (via Codex) and **distinct personas on both**. Full model independence requires a third vendor: once Gemini or OpenCode ships in v1.1+, the second reviewer seat auto-prefers it. The v1 claim is **persona orthogonality**, not full model orthogonality — the second Claude reviewer is role-diversified, not model-diversified.
-2. **Maximum model capability by default.** Spec authoring and review are the opposite of high-throughput inference — quality and reasoning depth matter more than cost and latency. Lead and reviewers run on the **strongest, latest model from each vendor, at maximum reasoning/thinking effort**. Downshifting is a conscious user choice, not a silent default.
+2. **Maximum model capability, deep reasoning by default.** Spec authoring and review are the opposite of high-throughput inference — quality and reasoning depth matter more than cost and latency. Lead and reviewers run on the **strongest, latest model from each vendor**; reasoning **effort defaults to `high`** (deep, strong review out of the box). The level is an explicit knob — `--effort max` for the deepest review, lower for speed — not a silent default downshift.
 3. **Git is the database.** No external store, no hidden state. Drafts, reviews, decisions, and summaries live under `.samo/spec/` and are committed on every material step. A reviewer with zero tool access can read the repo and reconstruct what happened.
 4. **Safe by default, networked by consent.** Auto-commit locally, never to protected branches. First push per repo requires explicit consent. Raw transcripts stay local unless opted in. Before the first paid loop, show a cost estimate.
 
@@ -184,9 +184,9 @@ the next `iterate` round without migration.
 
 ### Model roles
 
-- **Lead** (default `claude` CLI, `claude-opus-4-7`, effort `max`).
-- **Reviewer A** (default `codex` CLI, pinned model — §11, `reasoning_effort: high`). Persona: **"Paranoid security/ops engineer."** System prompt explicitly weights `missing-risk`, `weak-implementation`, and `unnecessary-scope` categories.
-- **Reviewer B** (default `claude` CLI, separate session from lead, `claude-opus-4-7`, effort `max`). Persona: **"Pedantic QA / testability reviewer."** System prompt explicitly weights `ambiguity`, `contradiction`, and `weak-testing`. **Same-family as the lead — persona-diverse but not model-diverse.** Follows the same fallback chain as the lead; if Opus falls back to Sonnet, Reviewer B does too (and `state.json` records the coupled fallback). In v1.1+, when a third-vendor adapter (Gemini or OpenCode) is available, this seat auto-prefers it for stronger independence.
+- **Lead** (default `claude` CLI, `claude-opus-4-7`, default effort `high`).
+- **Reviewer A** (default `codex` CLI, pinned model — §11, default `reasoning_effort: high`). Persona: **"Paranoid security/ops engineer."** System prompt explicitly weights `missing-risk`, `weak-implementation`, and `unnecessary-scope` categories.
+- **Reviewer B** (default `claude` CLI, separate session from lead, `claude-opus-4-7`, default effort `high`). Persona: **"Pedantic QA / testability reviewer."** System prompt explicitly weights `ambiguity`, `contradiction`, and `weak-testing`. **Same-family as the lead — persona-diverse but not model-diverse.** Follows the same fallback chain as the lead; if Opus falls back to Sonnet, Reviewer B does too (and `state.json` records the coupled fallback). In v1.1+, when a third-vendor adapter (Gemini or OpenCode) is available, this seat auto-prefers it for stronger independence.
 - **User.** Final authority.
 
 Persona weighting is advisory, not exclusive. The literal system-prompt phrasing is: *"Focus especially on {categories}. You may surface findings in other categories when warranted, but weight your effort toward these."* — not a hard filter. Category leakage between reviewers is a known failure mode; the lead's reclassification on ingest absorbs it.
@@ -225,7 +225,7 @@ Slimmer than v0.4 — three lifecycle probes and the `usage` return collapse int
 - `supports_effort(level) → boolean`.
 - `models() → [{ id, family }]` — installed/available model IDs. No `is_latest` flag (vendor CLIs rarely expose this honestly; pinned defaults + fallback chain cover the need).
 
-**Work (every call accepts `{ effort, timeout }`; default effort `max`):**
+**Work (every call accepts `{ effort, timeout }`; default effort `high`):**
 
 | Call | Default timeout |
 |---|---|
@@ -537,15 +537,15 @@ samospec version
 
 ## 11. Model policy
 
-**Default posture: strongest + latest + max effort.** Spec authoring and multi-round review are quality-critical, low-volume calls. Defaults bias toward reasoning depth over cost/latency. Per-invocation downshift: `--effort high|medium|low`. Per-repo: `samospec config set adapters.effort high`. Never silent.
+**Default posture: strongest + latest model, effort `high`.** Spec authoring and multi-round review are quality-critical, low-volume calls, so the default biases toward reasoning depth: every seat runs the strongest, latest model at effort `high` (deep, strong review out of the box). The level is an explicit knob, never silently changed: `--effort <max|high|medium|low|off>` overrides every seat at once (`--effort max` for the deepest review, lower for speed), and `samospec config set adapters.<seat>.effort <level>` pins a seat per-repo. In an interactive terminal with no flag or config pin, samospec prompts once for the level with per-level ETAs.
 
 ### Pinned defaults
 
 Both adapters are pinned with the same discipline — no "strongest available" handwaving.
 
-- **Lead:** `claude` CLI, model `claude-opus-4-7`, effort `max`. Fallback chain: `claude-opus-4-7 → claude-sonnet-4-6 → terminal`.
-- **Reviewer A:** `codex` CLI, model `gpt-5.4`. `reasoning_effort: xhigh` (maps from logical effort `max`). Three-tier fallback chain: `gpt-5.4 → gpt-5.3-codex → account-default (no --model flag) → terminal`. The account-default tier (#54) fires only when both explicit pins fail with `model_unavailable` (e.g. ChatGPT-account auth does not support the pinned models); it lets codex pick whatever the account supports. When the account-default tier is used, `state.json` records `account_default: true` and `samospec status` surfaces it as a degraded resolution. The `adapters.reviewer_a.account_default_fallback` config key (default `true`) can be set to `false` to force explicit-pin-only mode. Persona "Paranoid security/ops engineer". The pin is updated per `samospec` release — no runtime "strongest available" discovery.
-- **Reviewer B:** `claude` CLI (separate session from lead), model `claude-opus-4-7`, effort `max`. Persona "Pedantic QA / testability reviewer". **Follows the lead's fallback chain in lockstep** — if the lead resolves to Sonnet, Reviewer B does too (recorded in `state.json` as `coupled_fallback: true`). **v1.1+ auto-prefers Gemini/OpenCode** for this seat when those adapters ship, which also breaks the lockstep.
+- **Lead:** `claude` CLI, model `claude-opus-4-7`, default effort `high`. Fallback chain: `claude-opus-4-7 → claude-sonnet-4-6 → terminal`.
+- **Reviewer A:** `codex` CLI, model `gpt-5.4`. Default `reasoning_effort: high` (maps from logical effort `high`). Three-tier fallback chain: `gpt-5.4 → gpt-5.3-codex → account-default (no --model flag) → terminal`. The account-default tier (#54) fires only when both explicit pins fail with `model_unavailable` (e.g. ChatGPT-account auth does not support the pinned models); it lets codex pick whatever the account supports. When the account-default tier is used, `state.json` records `account_default: true` and `samospec status` surfaces it as a degraded resolution. The `adapters.reviewer_a.account_default_fallback` config key (default `true`) can be set to `false` to force explicit-pin-only mode. Persona "Paranoid security/ops engineer". The pin is updated per `samospec` release — no runtime "strongest available" discovery.
+- **Reviewer B:** `claude` CLI (separate session from lead), model `claude-opus-4-7`, default effort `high`. Persona "Pedantic QA / testability reviewer". **Follows the lead's fallback chain in lockstep** — if the lead resolves to Sonnet, Reviewer B does too (recorded in `state.json` as `coupled_fallback: true`). **v1.1+ auto-prefers Gemini/OpenCode** for this seat when those adapters ship, which also breaks the lockstep.
 - Post-v1 adapter policy (Gemini, OpenCode) is opt-in + accounting-required + fail-closed, with the subscription-auth escape (below) as the sole exception.
 
 The resolved `{ adapter, model_id, effort_requested, effort_used }` for each role is recorded in `state.json` at round start.

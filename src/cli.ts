@@ -7,10 +7,24 @@ import * as readline from "node:readline/promises";
 import path from "node:path";
 
 import { ClaudeAdapter } from "./adapter/claude.ts";
-import { ClaudeResolver } from "./adapter/claude-resolver.ts";
-import { ClaudeReviewerBAdapter } from "./adapter/claude-reviewer-b.ts";
 import { CodexAdapter } from "./adapter/codex.ts";
-import { BASELINE_SECTION_NAMES, type Adapter } from "./adapter/types.ts";
+import {
+  buildLeadAdapter,
+  buildReviewLoopAdaptersFromConfig,
+} from "./adapter/from-config.ts";
+import {
+  BASELINE_SECTION_NAMES,
+  type Adapter,
+  type EffortLevel,
+} from "./adapter/types.ts";
+import {
+  EFFORT_PROMPT_CHOOSE,
+  EFFORT_PROMPT_INTRO,
+  effortIsPinned,
+  parseEffortFlag,
+  resolveAllSeatEfforts,
+  resolvePromptedEffort,
+} from "./adapter/effort.ts";
 import { runInit } from "./cli/init.ts";
 import { runDoctor, type DoctorAdapterBinding } from "./cli/doctor.ts";
 import {
@@ -43,13 +57,176 @@ import {
 } from "./cli/persona.ts";
 import { runResume } from "./cli/resume.ts";
 import { runStatus, type StatusAdapterBinding } from "./cli/status.ts";
-import type { ManualEditChoice } from "./git/manual-edit.ts";
+import {
+  allFilesAreSamospecManaged,
+  type ManualEditChoice,
+} from "./git/manual-edit.ts";
+import { specSlugDirRelPosix } from "./paths.ts";
 import packageJson from "../package.json" with { type: "json" };
 
 export interface CliResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
+}
+
+/**
+ * A parse failure that carries an explicit exit code. Most arg-parse
+ * errors exit 1 (a plain `string` return), but a bad `--effort` value
+ * exits 2 (usage error, distinct from "missing slug"). The command
+ * handlers detect this shape and use its `exitCode`.
+ */
+interface ParseError {
+  readonly parseError: true;
+  readonly message: string;
+  readonly exitCode: number;
+}
+
+function isParseError(v: unknown): v is ParseError {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as Record<string, unknown>)["parseError"] === true
+  );
+}
+
+/**
+ * Parse a `--effort <level>` flag value (shared by `new` and `iterate`).
+ * On a bad value, returns a {@link ParseError} with exit code 2 and a
+ * message prefixed with the command name.
+ */
+function parseEffortArg(
+  command: "new" | "iterate",
+  raw: string,
+): EffortLevel | ParseError {
+  const parsed = parseEffortFlag(raw);
+  if (parsed.ok) return parsed.value;
+  return {
+    parseError: true,
+    message: `samospec ${command}: ${parsed.error}`,
+    exitCode: 2,
+  };
+}
+
+/**
+ * Resolve the unified per-seat effort for a command, optionally prompting
+ * the user interactively.
+ *
+ * Precedence (documented): `--effort` flag > per-seat
+ * `adapters.<seat>.effort` config > unified `high` default.
+ *
+ * Interactive prompt: when stdin IS a TTY, no `--effort` flag was passed,
+ * config doesn't pin any seat's effort, and we are NOT in a
+ * non-interactive context (`--yes` / `--no-interactive` / jsonl), prompt
+ * the user once at startup with a concise depth/speed tradeoff
+ * explanation. The chosen level (default `high` on empty input)
+ * overrides all seats uniformly — exactly as the `--effort` flag would.
+ *
+ * In any non-interactive context (piped stdin, `--yes`, jsonl) the prompt
+ * is skipped and per-seat config / unified default apply.
+ *
+ * `promptFn` is injected so this is testable without a real TTY; the
+ * production caller passes a readline-backed prompt. When `promptFn` is
+ * undefined, no prompt is issued regardless of the gate.
+ *
+ * Exported for unit testing the interactive-prompt gate.
+ */
+export async function resolveSeatEffortsWithPrompt(input: {
+  readonly cwd: string;
+  readonly flagEffort?: EffortLevel;
+  readonly stdinIsTty: boolean;
+  readonly nonInteractive: boolean;
+  readonly promptFn?: () => Promise<string>;
+}): Promise<ReturnType<typeof resolveAllSeatEfforts>> {
+  const pinned = effortIsPinned({
+    cwd: input.cwd,
+    ...(input.flagEffort !== undefined ? { flagEffort: input.flagEffort } : {}),
+  });
+
+  // Interactive prompt gate: TTY, not pinned, not a non-interactive run.
+  if (
+    !pinned &&
+    input.stdinIsTty &&
+    !input.nonInteractive &&
+    input.promptFn !== undefined
+  ) {
+    const raw = await input.promptFn();
+    const chosen = resolvePromptedEffort(raw);
+    // The prompted choice behaves like the flag: overrides every seat.
+    return resolveAllSeatEfforts({ cwd: input.cwd, flagEffort: chosen });
+  }
+
+  return resolveAllSeatEfforts({
+    cwd: input.cwd,
+    ...(input.flagEffort !== undefined ? { flagEffort: input.flagEffort } : {}),
+  });
+}
+
+/**
+ * Build the readline-backed effort prompt function for interactive runs.
+ * Prints the tradeoff explanation to stdout, then asks for a choice.
+ * Returns the raw answer (caller maps empty/unknown to the high
+ * default via {@link resolvePromptedEffort}). The interface is closed
+ * after the single question.
+ */
+function makeEffortPromptFn(): () => Promise<string> {
+  return async (): Promise<string> => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    try {
+      process.stdout.write(EFFORT_PROMPT_INTRO);
+      const ans = await rl.question(EFFORT_PROMPT_CHOOSE);
+      return ans.trim();
+    } finally {
+      rl.close();
+    }
+  };
+}
+
+/**
+ * Compute whether `samospec new` runs non-interactively (so the effort
+ * prompt — and any other readline prompt — is skipped). The prompt MUST
+ * be skipped under `--interview-protocol jsonl`, `--yes`,
+ * `--accept-persona`, or when stdin is not a TTY (piped / CI). Missing
+ * any one of these (e.g. forgetting jsonl) would reintroduce the #114
+ * class of readline-on-non-TTY crash, so the derivation is extracted and
+ * pinned here. Behaviour-preserving extraction of the inline expression
+ * in {@link runNewCommand}.
+ *
+ * Exported for unit testing the non-interactive seam.
+ */
+export function deriveNewNonInteractive(
+  parsed: {
+    readonly yes: boolean;
+    readonly acceptPersona: boolean;
+    readonly interviewProtocol?: "jsonl";
+  },
+  stdinIsTty: boolean,
+): boolean {
+  const jsonlMode = parsed.interviewProtocol === "jsonl";
+  return jsonlMode || parsed.yes || parsed.acceptPersona || !stdinIsTty;
+}
+
+/**
+ * Compute whether `samospec iterate` runs non-interactively. Unlike
+ * `new`, iterate has NO persona/jsonl interview surface, so its
+ * non-interactive set is intentionally narrower: only `--yes` or a
+ * non-TTY stdin suppress the effort prompt. This asymmetry with
+ * {@link deriveNewNonInteractive} is deliberate; the function is
+ * extracted so a future drift (e.g. accidentally folding in
+ * `acceptPersona`, which iterate doesn't even parse) is caught by a
+ * test. Behaviour-preserving extraction of the inline expression in
+ * {@link runIterateCommand}.
+ *
+ * Exported for unit testing the non-interactive seam.
+ */
+export function deriveIterateNonInteractive(
+  parsed: { readonly yes: boolean },
+  stdinIsTty: boolean,
+): boolean {
+  return parsed.yes || !stdinIsTty;
 }
 
 /**
@@ -129,6 +306,13 @@ const USAGE =
   "      Read the idea from a file instead of --idea. Preferred for long,\n" +
   "      structured ideas (AI agents, CI): avoids fragile shell-quoting.\n" +
   "      Mutually exclusive with --idea.\n" +
+  "  --effort <max|high|medium|low|off>\n" +
+  "      Unified reasoning effort for ALL seats (lead + both reviewers).\n" +
+  "      Trades depth vs speed. Overrides per-seat config. Precedence:\n" +
+  "      --effort flag > adapters.<seat>.effort in config > high\n" +
+  "      (the default). In an interactive terminal with no flag/config\n" +
+  "      pin, you are prompted once to choose. max is deepest/slowest;\n" +
+  "      off is minimal/fastest; high is the deep default.\n" +
   "  --force\n" +
   "      Archive any existing run, then start fresh.\n" +
   "  --skip <sections>\n" +
@@ -162,6 +346,13 @@ const USAGE =
   "Options for `iterate`:\n" +
   "  --rounds <N>\n" +
   "      Cap the number of review rounds this session.\n" +
+  "  --effort <max|high|medium|low|off>\n" +
+  "      Unified reasoning effort for ALL seats (lead + both reviewers).\n" +
+  "      Trades depth vs speed. Overrides per-seat config. Precedence:\n" +
+  "      --effort flag > adapters.<seat>.effort in config > high\n" +
+  "      (the default). In an interactive terminal with no flag/config\n" +
+  "      pin, you are prompted once to choose. max is deepest/slowest;\n" +
+  "      off is minimal/fastest; high is the deep default.\n" +
   "  --no-push\n" +
   "      Don't push round commits to the remote.\n" +
   "  --remote <name>\n" +
@@ -332,6 +523,14 @@ interface NewArgs {
    * refusal is bypassed because the protocol IS the non-TTY driver.
    */
   readonly interviewProtocol?: "jsonl";
+  /**
+   * Global `--effort <max|high|medium|low|off>` knob. When set, it
+   * OVERRIDES every seat's effort uniformly (lead + reviewer_a +
+   * reviewer_b), winning over per-seat config. Validated against the
+   * EffortLevel enum at parse time (bad value -> exit 2). When omitted,
+   * effort resolves from per-seat config, else the unified `high`.
+   */
+  readonly effort?: EffortLevel;
 }
 
 interface ResumeArgs {
@@ -381,7 +580,7 @@ function parseSkipList(raw: string): readonly string[] | string {
   return canonical;
 }
 
-function parseNewArgs(argv: readonly string[]): NewArgs | string {
+function parseNewArgs(argv: readonly string[]): NewArgs | string | ParseError {
   let slug: string | null = null;
   let idea: string | null = null;
   let explain = false;
@@ -393,6 +592,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let yes = false;
   let answersFile: string | undefined;
   let interviewProtocol: "jsonl" | undefined;
+  let effort: EffortLevel | undefined;
   let ideaFile: string | undefined;
   let ideaSeen = false;
   for (let i = 0; i < argv.length; i += 1) {
@@ -459,6 +659,21 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
         );
       }
       interviewProtocol = "jsonl";
+      continue;
+    }
+    if (token === "--effort") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parseEffortArg("new", raw);
+      if (isParseError(parsed)) return parsed;
+      effort = parsed;
+      continue;
+    }
+    if (token.startsWith("--effort=")) {
+      const raw = token.slice("--effort=".length);
+      const parsed = parseEffortArg("new", raw);
+      if (isParseError(parsed)) return parsed;
+      effort = parsed;
       continue;
     }
     if (token === "--idea-file") {
@@ -546,6 +761,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
     ...(answersFile !== undefined ? { answersFile } : {}),
     ...(interviewProtocol !== undefined ? { interviewProtocol } : {}),
+    ...(effort !== undefined ? { effort } : {}),
     ...(ideaFile !== undefined ? { ideaFile } : {}),
   };
 }
@@ -596,8 +812,10 @@ function parseResumeArgs(argv: readonly string[]): ResumeArgs | string {
 
 // ---------- adapter + resolver wiring ----------
 
-function leadAdapter(): Adapter {
-  return new ClaudeAdapter();
+function leadAdapter(cwd: string): Adapter {
+  // Config-driven (FIX 1): honor `adapters.lead.{model_id,fallback_chain}`
+  // from `.samo/config.json`; fall back to the pinned default when absent.
+  return buildLeadAdapter(cwd);
 }
 
 /**
@@ -666,6 +884,13 @@ function interactiveResolvers(): ChoiceResolvers {
 
 async function runNewCommand(rest: readonly string[], deps: RunCliDeps = {}) {
   const parsed = parseNewArgs(rest);
+  if (isParseError(parsed)) {
+    return {
+      exitCode: parsed.exitCode,
+      stdout: "",
+      stderr: `${parsed.message}\n\n${USAGE}`,
+    };
+  }
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
@@ -691,11 +916,26 @@ async function runNewCommand(rest: readonly string[], deps: RunCliDeps = {}) {
     }
     effectiveIdea = loaded.idea;
   }
-  const adapter = deps.newAdapter ?? leadAdapter();
+  // Config-driven lead adapter (PR #180), with the PR #179 test-seam
+  // override taking precedence when injected.
+  const effectiveCwd = deps.cwd ?? process.cwd();
+  const adapter = deps.newAdapter ?? leadAdapter(effectiveCwd);
   const jsonlMode = parsed.interviewProtocol === "jsonl";
+  // Resolve the lead effort: `--effort` flag > per-seat config > high.
+  // In a TTY without a flag/config pin (and not in a non-interactive
+  // run), prompt the user once with a depth/speed tradeoff explanation.
+  const stdinIsTty = process.stdin.isTTY === true;
+  const nonInteractive = deriveNewNonInteractive(parsed, stdinIsTty);
+  const seatEfforts = await resolveSeatEffortsWithPrompt({
+    cwd: effectiveCwd,
+    ...(parsed.effort !== undefined ? { flagEffort: parsed.effort } : {}),
+    stdinIsTty,
+    nonInteractive,
+    ...(nonInteractive ? {} : { promptFn: makeEffortPromptFn() }),
+  });
   const result = await runNew(
     {
-      cwd: deps.cwd ?? process.cwd(),
+      cwd: effectiveCwd,
       slug: parsed.slug,
       idea: effectiveIdea,
       explain: parsed.explain,
@@ -703,6 +943,7 @@ async function runNewCommand(rest: readonly string[], deps: RunCliDeps = {}) {
       verbose: parsed.verbose,
       resolvers: resolversOrErr,
       now: new Date().toISOString(),
+      leadEffort: seatEfforts.lead,
       ...(jsonlMode ? { suppressStdout: true } : {}),
       ...(parsed.skipSections !== undefined
         ? { skipSections: [...parsed.skipSections] }
@@ -833,7 +1074,7 @@ async function runResumeCommand(rest: readonly string[]) {
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
-  const adapter = leadAdapter();
+  const adapter = leadAdapter(process.cwd());
   return runResume(
     {
       cwd: process.cwd(),
@@ -874,6 +1115,13 @@ interface IterateArgs {
    * here too (mirrors the `new` precedent).
    */
   readonly yes: boolean;
+  /**
+   * Global `--effort <max|high|medium|low|off>` knob. When set, it
+   * OVERRIDES every seat's effort uniformly (lead + reviewer_a +
+   * reviewer_b), winning over per-seat config. Bad value -> exit 2.
+   * When omitted, effort resolves from per-seat config, else `high`.
+   */
+  readonly effort?: EffortLevel;
 }
 
 const ON_DIRTY_CHOICES: readonly ManualEditChoice[] = [
@@ -938,9 +1186,13 @@ const ITERATE_ALLOWED_FLAGS: ReadonlySet<string> = new Set([
   // #136: non-TTY automation for first-push consent.
   "--push-consent",
   "--yes",
+  // Unified effort knob — overrides every seat's effort uniformly.
+  "--effort",
 ]);
 
-function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
+function parseIterateArgs(
+  argv: readonly string[],
+): IterateArgs | string | ParseError {
   let slug: string | null = null;
   let rounds: number | undefined;
   let noPush = false;
@@ -950,6 +1202,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let onDirty: ManualEditChoice | undefined;
   let pushConsent: "yes" | "no" | undefined;
   let yes = false;
+  let effort: EffortLevel | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) continue;
@@ -1019,6 +1272,21 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
       yes = true;
       continue;
     }
+    if (t === "--effort") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parseEffortArg("iterate", raw);
+      if (isParseError(parsed)) return parsed;
+      effort = parsed;
+      continue;
+    }
+    if (t.startsWith("--effort=")) {
+      const raw = t.slice("--effort=".length);
+      const parsed = parseEffortArg("iterate", raw);
+      if (isParseError(parsed)) return parsed;
+      effort = parsed;
+      continue;
+    }
     if (t === "--remote") {
       const v = argv[i + 1];
       i += 1;
@@ -1075,6 +1343,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
     ...(onDirty !== undefined ? { onDirty } : {}),
     ...(pushConsent !== undefined ? { pushConsent } : {}),
+    ...(effort !== undefined ? { effort } : {}),
   };
 }
 
@@ -1090,18 +1359,17 @@ function parseStatusArgs(argv: readonly string[]): { slug: string } | string {
   return { slug };
 }
 
-function buildReviewLoopAdapters(): {
+function buildReviewLoopAdapters(cwd: string): {
   readonly lead: Adapter;
   readonly reviewerA: Adapter;
   readonly reviewerB: Adapter;
 } {
-  // Share one ClaudeResolver between lead + reviewer B to express the
-  // SPEC §11 coupled-fallback linkage.
-  const resolver = new ClaudeResolver();
-  const lead = new ClaudeAdapter({ resolver });
-  const reviewerA = new CodexAdapter();
-  const reviewerB = new ClaudeReviewerBAdapter({ resolver });
-  return { lead, reviewerA, reviewerB };
+  // Config-driven (FIX 1): build lead / reviewer-A / reviewer-B from
+  // `adapters.{lead,reviewer_a,reviewer_b}.{model_id,fallback_chain}` in
+  // `.samo/config.json`. The lead + reviewer-B still share ONE
+  // ClaudeResolver (built from the configured lead chain) to express the
+  // SPEC §11 coupled-fallback linkage. Absent config -> pinned defaults.
+  return buildReviewLoopAdaptersFromConfig(cwd);
 }
 
 /**
@@ -1118,6 +1386,7 @@ function buildReviewLoopAdapters(): {
 function buildManualEditResolver(
   rl: readline.Interface,
   onDirty: ManualEditChoice | undefined,
+  slugDirRelPosix: string,
 ): ManualEditResolver {
   if (onDirty !== undefined) {
     return (_files) => Promise.resolve(onDirty);
@@ -1125,6 +1394,16 @@ function buildManualEditResolver(
   const stdinIsTty = process.stdin.isTTY === true;
   if (!stdinIsTty) {
     return (files) => {
+      // FIX 5 — non-TTY robustness: between rounds, the only dirty paths
+      // are frequently samospec's OWN artifact churn (the post-commit
+      // `state.json` head_sha rewrite, freshly-written `reviews/rNN/`
+      // files). That is not a user edit, so auto-`incorporate` it
+      // (commits the churn) rather than dead-ending on "Pass --on-dirty".
+      // A genuine SPEC.md edit or any foreign file still triggers the
+      // refusal so real user work is never silently committed.
+      if (allFilesAreSamospecManaged(files, slugDirRelPosix)) {
+        return Promise.resolve<ManualEditChoice>("incorporate");
+      }
       const detail =
         files.length === 0 ? "(0 files)" : `(${String(files.length)} file(s))`;
       return Promise.reject(
@@ -1207,13 +1486,14 @@ function buildPushConsentResolver(
 function interactiveIterateResolvers(
   onDirty: ManualEditChoice | undefined,
   pushConsent: "yes" | "no" | undefined,
+  slugDirRelPosix: string,
 ): IterateResolvers {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
   return {
-    onManualEdit: buildManualEditResolver(rl, onDirty),
+    onManualEdit: buildManualEditResolver(rl, onDirty, slugDirRelPosix),
     onDegraded: async (summary) => {
       process.stdout.write(`\n${summary}\n`);
       const ans = (await rl.question("[A]ccept / [B]bort [Enter=accept]: "))
@@ -1337,6 +1617,13 @@ function resolveRemoteUrlForPreflight(
 
 async function runIterateCommand(rest: readonly string[]) {
   const parsed = parseIterateArgs(rest);
+  if (isParseError(parsed)) {
+    return {
+      exitCode: parsed.exitCode,
+      stdout: "",
+      stderr: `${parsed.message}\n\n${USAGE}`,
+    };
+  }
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
@@ -1346,11 +1633,24 @@ async function runIterateCommand(rest: readonly string[]) {
   if (refusal !== null) {
     return { exitCode: 1, stdout: "", stderr: `${refusal}\n` };
   }
-  const adapters = buildReviewLoopAdapters();
+  const adapters = buildReviewLoopAdapters(process.cwd());
   const pushOptions: PushOptions = {
     remote: parsed.remote,
     noPush: parsed.noPush,
   };
+  // Resolve per-seat effort: `--effort` flag > per-seat config > high.
+  // In a TTY without a flag/config pin (and not under `--yes`), prompt
+  // the user once with a depth/speed tradeoff explanation; the choice
+  // overrides every seat uniformly.
+  const stdinIsTty = process.stdin.isTTY === true;
+  const nonInteractive = deriveIterateNonInteractive(parsed, stdinIsTty);
+  const seatEfforts = await resolveSeatEffortsWithPrompt({
+    cwd: process.cwd(),
+    ...(parsed.effort !== undefined ? { flagEffort: parsed.effort } : {}),
+    stdinIsTty,
+    nonInteractive,
+    ...(nonInteractive ? {} : { promptFn: makeEffortPromptFn() }),
+  });
   try {
     const result = await runIterate({
       cwd: process.cwd(),
@@ -1359,10 +1659,12 @@ async function runIterateCommand(rest: readonly string[]) {
       resolvers: interactiveIterateResolvers(
         parsed.onDirty,
         effectivePushConsent(parsed),
+        specSlugDirRelPosix(process.cwd(), parsed.slug),
       ),
       adapters,
       pushOptions,
       quiet: parsed.quiet,
+      seatEfforts,
       ...(parsed.rounds !== undefined ? { maxRounds: parsed.rounds } : {}),
       ...(parsed.maxSessionWallClockMs !== undefined
         ? { maxSessionWallClockMs: parsed.maxSessionWallClockMs }
@@ -1391,7 +1693,7 @@ async function runStatusCommand(rest: readonly string[]) {
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
-  const adapters = buildReviewLoopAdapters();
+  const adapters = buildReviewLoopAdapters(process.cwd());
   const bindings: readonly StatusAdapterBinding[] = [
     { role: "lead", adapter: adapters.lead },
     { role: "reviewer_a", adapter: adapters.reviewerA },
@@ -1529,8 +1831,13 @@ async function runBriefCommand(rest: readonly string[]) {
   // injectable (tests pass fakes via runBrief directly).
   const aiAdapters = parsed.ai
     ? {
-        leadAdapter: new ClaudeAdapter(),
-        verifierAdapter: parsed.noVerify ? null : new CodexAdapter(),
+        // Config-driven (FIX 1): the brief lead + verifier honor the
+        // configured model pins (lead = Claude, verifier = reviewer-A's
+        // codex pin) instead of the hardcoded adapter defaults.
+        leadAdapter: buildLeadAdapter(process.cwd()),
+        verifierAdapter: parsed.noVerify
+          ? null
+          : buildReviewLoopAdaptersFromConfig(process.cwd()).reviewerA,
       }
     : {};
   return runBrief({

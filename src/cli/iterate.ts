@@ -34,7 +34,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { Adapter, Finding } from "../adapter/types.ts";
+import type {
+  Adapter,
+  CritiqueOutput,
+  EffortLevel,
+  Finding,
+} from "../adapter/types.ts";
 import { specSlugDir } from "../paths.ts";
 import { currentBranch } from "../git/branch.ts";
 import { specCommit } from "../git/commit.ts";
@@ -89,6 +94,7 @@ import {
   REVISE_TIMEOUT_MS,
   countDiffLines,
   countNonSummaryCategoriesWithFindings,
+  loadPersistedCritiques,
   roundDirsFor,
   runRound,
   type SeatErrorDetail,
@@ -117,8 +123,14 @@ import {
 // ---------- constants ----------
 
 const DEFAULT_MAX_ROUNDS = 10 as const;
-const DEFAULT_WALL_CLOCK_MS = 240 * 60 * 1000; // 240 minutes
-const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
+// Default session wall-clock budget (samospec #180 FIX 1). Bumped from
+// 240 min: with the raised SPEC §7 per-call timeouts (critique 900s,
+// revise 1800s) a realistic round costs ~54 min through the
+// `shouldStartNextRound` gate, so 240 min only admitted ~4 rounds. 600
+// min lets a default session run up to DEFAULT_MAX_ROUNDS (10) realistic
+// rounds before wall-clock — not the gate — becomes the binding limit.
+const DEFAULT_MAX_WALL_CLOCK_MIN = 600;
+const DEFAULT_WALL_CLOCK_MS = DEFAULT_MAX_WALL_CLOCK_MIN * 60 * 1000;
 // NOTE: the session wall-clock cap (#91 /
 // DEFAULT_SESSION_WALL_CLOCK_MS) was removed per Rule 10 ("nothing
 // kills a dev LLM run on the wall clock"). It produced exit code 4 +
@@ -197,6 +209,17 @@ export interface IterateInput {
     readonly lead: Adapter;
     readonly reviewerA: Adapter;
     readonly reviewerB: Adapter;
+  };
+  /**
+   * Unified per-seat effort, resolved by the CLI (`--effort` flag >
+   * per-seat `adapters.<seat>.effort` config > unified `high`). Threaded
+   * into every round's `runRound`. Omitted seats fall back to the unified
+   * `high` default inside `runRound`.
+   */
+  readonly seatEfforts?: {
+    readonly lead?: EffortLevel;
+    readonly reviewer_a?: EffortLevel;
+    readonly reviewer_b?: EffortLevel;
   };
   /** Optional per-call timeouts override (tests tweak). */
   readonly callTimeouts?: Partial<CallTimeoutsMs>;
@@ -307,17 +330,56 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
   }
   const state: State = parsedState.data;
 
+  // Resumable reviews (samospec robustness pass). A `lead_terminal` round
+  // means the lead's revise() timed out AFTER the reviewers had already
+  // produced (and persisted) their critiques. Rather than dead-ending and
+  // forcing `--force` (which discards the collected critiques and re-runs
+  // the whole round), retry the lead revise REUSING the saved critiques —
+  // but only when they are recoverable from disk. The failed round number
+  // is `state.round_index + 1` (the lead_terminal write decremented
+  // round_index by one). When critiques are present, clear the terminal
+  // state so the normal loop below re-runs that exact round with
+  // `reusedCritiques` and does NOT re-invoke the reviewers.
+  let resumeReusedCritiques: {
+    roundNumber: number;
+    reviewer_a?: CritiqueOutput;
+    reviewer_b?: CritiqueOutput;
+  } | null = null;
   if (state.round_state === "lead_terminal") {
-    error(
-      `samospec: spec '${input.slug}' is at lead_terminal. ` +
-        `Edit .samo/spec/${input.slug}/ manually to continue.`,
+    const failedRound = state.round_index + 1;
+    const failedDirs = roundDirsFor(
+      specSlugDir(input.cwd, input.slug),
+      failedRound,
     );
-    return {
-      exitCode: 4,
-      stdout: "",
-      stderr: `${errLines.join("\n")}\n`,
-      roundsRun: 0,
-    };
+    const persisted = loadPersistedCritiques(failedDirs);
+    if (persisted !== null) {
+      notice(
+        `samospec: spec '${input.slug}' is at lead_terminal but round ` +
+          `r${String(failedRound).padStart(2, "0")} has saved reviewer ` +
+          `critiques — retrying the lead revise without re-running reviewers.`,
+      );
+      resumeReusedCritiques = {
+        roundNumber: failedRound,
+        ...(persisted.reviewer_a !== null
+          ? { reviewer_a: persisted.reviewer_a }
+          : {}),
+        ...(persisted.reviewer_b !== null
+          ? { reviewer_b: persisted.reviewer_b }
+          : {}),
+      };
+    } else {
+      // No recoverable critiques — fall back to the absorbing terminal.
+      error(
+        `samospec: spec '${input.slug}' is at lead_terminal. ` +
+          `Edit .samo/spec/${input.slug}/ manually to continue.`,
+      );
+      return {
+        exitCode: 4,
+        stdout: "",
+        stderr: `${errLines.join("\n")}\n`,
+        roundsRun: 0,
+      };
+    }
   }
 
   if (!existsSync(paths.specPath)) {
@@ -363,7 +425,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
     const maxRounds = input.maxRounds ?? DEFAULT_MAX_ROUNDS;
     // Issue #92: revise timeout precedence: explicit callTimeouts.revise_ms
     // (test injection / caller override) > budget.max_revise_call_ms in
-    // .samo/config.json > SPEC §7 default (REVISE_TIMEOUT_MS, 600s).
+    // .samo/config.json > SPEC §7 default (REVISE_TIMEOUT_MS, 1800s).
     // The per-call cap applies to BOTH the first revise attempt and the
     // whole-round retry (see src/loop/round.ts).
     const configuredReviseMs = readReviseTimeoutFromConfig(input.cwd);
@@ -599,6 +661,26 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         // threaded because there is no session budget to clamp
         // against; `resolveEffectiveReviseTimeout` in
         // `src/loop/round.ts` falls back to the configured value.
+        // Resumable reviews: for the exact round that previously hit
+        // `lead_terminal`, reuse the persisted critiques so runRound skips
+        // the reviewer fan-out and only retries the lead revise. Consumed
+        // once — later rounds run reviewers normally.
+        const reuseForThisRound =
+          resumeReusedCritiques !== null &&
+          resumeReusedCritiques.roundNumber === roundIndex
+            ? {
+                ...(resumeReusedCritiques.reviewer_a !== undefined
+                  ? { reviewer_a: resumeReusedCritiques.reviewer_a }
+                  : {}),
+                ...(resumeReusedCritiques.reviewer_b !== undefined
+                  ? { reviewer_b: resumeReusedCritiques.reviewer_b }
+                  : {}),
+              }
+            : undefined;
+        if (reuseForThisRound !== undefined) {
+          resumeReusedCritiques = null;
+        }
+
         const roundOutcome: Awaited<ReturnType<typeof runRound>> =
           await runRound({
             now: input.now,
@@ -610,11 +692,17 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             adapters: wrappedAdapters,
             critiqueTimeoutMs: callTimeouts.criticA_ms,
             reviseTimeoutMs: callTimeouts.revise_ms,
+            ...(input.seatEfforts !== undefined
+              ? { seatEfforts: input.seatEfforts }
+              : {}),
             ...(manualEditDirective !== undefined
               ? { manualEditDirective }
               : {}),
             ...(ideaForRound !== undefined
               ? { idea: ideaForRound, slug: input.slug }
+              : {}),
+            ...(reuseForThisRound !== undefined
+              ? { reusedCritiques: reuseForThisRound }
               : {}),
           });
 

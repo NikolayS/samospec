@@ -30,8 +30,8 @@ import path from "node:path";
 import { archiveSlugDir } from "./archive.ts";
 import { specSlugDir } from "../paths.ts";
 
-import { CodexAdapter } from "../adapter/codex.ts";
-import type { Adapter } from "../adapter/types.ts";
+import { buildReviewLoopAdaptersFromConfig } from "../adapter/from-config.ts";
+import type { Adapter, EffortLevel } from "../adapter/types.ts";
 import { discoverContext } from "../context/discover.ts";
 import { contextJsonPath } from "../context/provenance.ts";
 import {
@@ -96,7 +96,9 @@ import {
   type PersonaProposal,
 } from "./persona.ts";
 
-const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
+// samospec #180 FIX 1: 600 min, in lockstep with iterate's default
+// session budget so the lock-staleness buffer matches the round gate.
+const DEFAULT_MAX_WALL_CLOCK_MIN = 600;
 
 // NOTE: the session wall-clock cap (#81 / DEFAULT_SESSION_WALL_CLOCK_MS)
 // was removed per Rule 10 ("nothing kills a dev LLM run on the wall
@@ -170,8 +172,8 @@ export interface RunNewInput {
   /**
    * Test seam: inject a pre-built reviewer_a adapter so that
    * resolveSubscriptionAuth can be controlled in tests without spawning
-   * a real codex binary. Production code omits this and uses
-   * `new CodexAdapter()`.
+   * a real codex binary. Production code omits this and uses the
+   * config-driven reviewer-A adapter (`adapters.reviewer_a` pin).
    */
   readonly reviewerAAdapter?: Adapter;
   /**
@@ -190,6 +192,13 @@ export interface RunNewInput {
    * Default (false/omitted) preserves the legacy stdout-as-summary shape.
    */
   readonly suppressStdout?: boolean;
+  /**
+   * Unified effort for the LEAD seat across persona / interview / draft.
+   * Resolved by the CLI (`--effort` flag > per-seat config > unified
+   * `high` default) and threaded down. When omitted, each phase falls
+   * back to the unified `high` default internally.
+   */
+  readonly leadEffort?: EffortLevel;
 }
 
 // ---------- CLI entry ----------
@@ -296,8 +305,11 @@ export async function runNew(
 
   try {
     // Preflight cost estimate (SPEC §5 Phase 1 + §11).
+    // Config-driven (FIX 1): the preflight reviewer-A estimate uses the
+    // configured `adapters.reviewer_a` pin, not the hardcoded codex default.
     const reviewerAAdapter: Adapter =
-      input.reviewerAAdapter ?? new CodexAdapter();
+      input.reviewerAAdapter ??
+      buildReviewLoopAdaptersFromConfig(input.cwd).reviewerA;
     const [leadSubAuth, reviewerASubAuth] = await Promise.all([
       resolveSubscriptionAuth(adapter),
       resolveSubscriptionAuth(reviewerAAdapter),
@@ -478,6 +490,9 @@ export async function runNew(
           subscriptionAuth: subAuth,
           onNotice: notice,
           resolver: input.resolvers.persona,
+          ...(input.leadEffort !== undefined
+            ? { effort: input.leadEffort }
+            : {}),
         },
         adapter,
       );
@@ -569,6 +584,9 @@ export async function runNew(
           outputPath: interviewPath,
           now: input.now,
           idea: input.idea,
+          ...(input.leadEffort !== undefined
+            ? { effort: input.leadEffort }
+            : {}),
         },
         adapter,
       );
@@ -622,6 +640,9 @@ export async function runNew(
           explain: input.explain,
           ...(input.skipSections !== undefined
             ? { skipSections: input.skipSections }
+            : {}),
+          ...(input.leadEffort !== undefined
+            ? { effort: input.leadEffort }
             : {}),
         },
         adapter,
@@ -984,6 +1005,7 @@ interface PersonaInteractiveInput {
   readonly subscriptionAuth: boolean;
   readonly onNotice: (line: string) => void;
   readonly resolver: (p: PersonaProposal) => Promise<PersonaChoice>;
+  readonly effort?: EffortLevel;
 }
 
 async function proposePersonaInteractive(
@@ -997,6 +1019,7 @@ async function proposePersonaInteractive(
       subscriptionAuth: input.subscriptionAuth,
       onNotice: input.onNotice,
       choice: { kind: "accept" },
+      ...(input.effort !== undefined ? { effort: input.effort } : {}),
     },
     adapter,
   );

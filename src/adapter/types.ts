@@ -143,6 +143,18 @@ export const CritiqueInputSchema = z.object({
    */
   idea: z.string().optional(),
   autonomy_policy: autonomyPolicySnapshotSchema.optional(),
+  /**
+   * Reviewer context preservation: a pre-rendered block carrying THIS
+   * seat's own prior-round findings + the lead's per-finding decisions, so
+   * a reviewer "remembers" what it noticed before and drives toward
+   * convergence instead of re-litigating. Reconstructed from persisted
+   * artifacts (`reviews/rNN/{codex,claude}.md` + `decisions.md`) on every
+   * round N>1 — see `src/loop/prior-context.ts`. Absent on round 1 and
+   * whenever no prior artifacts are recoverable (so the contract stays
+   * backward-compatible). When present, the critique prompt builders
+   * inject it with an explicit convergence instruction.
+   */
+  prior_context: z.string().optional(),
 });
 export type CritiqueInput = z.infer<typeof CritiqueInputSchema>;
 

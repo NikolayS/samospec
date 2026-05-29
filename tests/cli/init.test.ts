@@ -57,29 +57,38 @@ describe("samospec init — fresh directory", () => {
     const adapters = parsed["adapters"] as Record<string, unknown>;
     const lead = adapters["lead"] as Record<string, unknown>;
     expect(lead["adapter"]).toBe("claude");
-    expect(lead["model_id"]).toBe("claude-opus-4-7");
-    expect(lead["effort"]).toBe("max");
+    expect(lead["model_id"]).toBe("claude-opus-4-8");
+    expect(lead["effort"]).toBe("high");
+    // Latest-model default prepends the new model ahead of the prior pin.
+    const leadFallback = lead["fallback_chain"] as string[];
+    expect(leadFallback[0]).toBe("claude-opus-4-8");
+    expect(leadFallback).toContain("claude-opus-4-7");
 
     const reviewerA = adapters["reviewer_a"] as Record<string, unknown>;
     expect(reviewerA["adapter"]).toBe("codex");
-    expect(reviewerA["model_id"]).toBe("gpt-5.4");
-    expect(reviewerA["effort"]).toBe("max");
+    expect(reviewerA["model_id"]).toBe("gpt-5.5");
+    expect(reviewerA["effort"]).toBe("high");
     // Regression guard: stale 5.1-codex-max must NOT appear (#130).
     expect(reviewerA["model_id"]).not.toContain("5.1-codex");
     const fallback = reviewerA["fallback_chain"] as string[];
-    expect(fallback[0]).toBe("gpt-5.4");
-    expect(fallback).toContain("gpt-5.3-codex");
+    expect(fallback[0]).toBe("gpt-5.5");
+    expect(fallback).toContain("gpt-5.4");
 
     const reviewerB = adapters["reviewer_b"] as Record<string, unknown>;
     expect(reviewerB["adapter"]).toBe("claude");
-    expect(reviewerB["model_id"]).toBe("claude-opus-4-7");
-    expect(reviewerB["effort"]).toBe("max");
+    expect(reviewerB["model_id"]).toBe("claude-opus-4-8");
+    expect(reviewerB["effort"]).toBe("high");
+    const reviewerBFallback = reviewerB["fallback_chain"] as string[];
+    expect(reviewerBFallback[0]).toBe("claude-opus-4-8");
+    expect(reviewerBFallback).toContain("claude-opus-4-7");
 
     // Budget defaults per SPEC §11.
     const budget = parsed["budget"] as Record<string, unknown>;
     expect(budget["max_tokens_per_round"]).toBe(250_000);
     expect(budget["max_total_tokens_per_session"]).toBe(2_000_000);
-    expect(budget["max_wall_clock_minutes"]).toBe(240);
+    // samospec #180 FIX 1: bumped from 240 so a default session can run
+    // a healthy number of rounds at the raised SPEC §7 per-call timeouts.
+    expect(budget["max_wall_clock_minutes"]).toBe(600);
     expect(budget["preflight_confirm_usd"]).toBe(20);
 
     // Git remote probe disabled by default (§14).
@@ -104,7 +113,7 @@ describe("samospec init — fresh directory", () => {
 
   test("DEFAULT_CONFIG exports a pinned-defaults constant for reuse", () => {
     expect(DEFAULT_CONFIG.schema_version).toBe(CONFIG_SCHEMA_VERSION);
-    expect(DEFAULT_CONFIG.adapters.lead.model_id).toBe("claude-opus-4-7");
+    expect(DEFAULT_CONFIG.adapters.lead.model_id).toBe("claude-opus-4-8");
   });
 });
 

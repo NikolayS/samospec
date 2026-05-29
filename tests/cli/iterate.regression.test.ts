@@ -137,6 +137,13 @@ const TIME = {
   sessionStartedAtMs: 0,
   nowMs: 0,
   maxWallClockMs: 60 * 60 * 1000,
+  // Pin per-call timeouts so the worst-case round fits the 60-min budget
+  // above, independent of the raised SPEC §7 defaults.
+  callTimeouts: {
+    criticA_ms: 300_000,
+    criticB_ms: 300_000,
+    revise_ms: 600_000,
+  },
 };
 
 // ---------- Blocking #1: semantic convergence must require 2 rounds ----------

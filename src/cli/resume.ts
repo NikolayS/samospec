@@ -23,7 +23,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { Adapter } from "../adapter/types.ts";
+import type { Adapter, EffortLevel } from "../adapter/types.ts";
 import { discoverContext } from "../context/discover.ts";
 import { contextJsonPath, writeContextJson } from "../context/provenance.ts";
 import { specCommit } from "../git/commit.ts";
@@ -32,6 +32,8 @@ import {
   formatProtectedBranchError,
   protectedBranchSource,
 } from "../git/protected.ts";
+import { loadPersistedCritiques, roundDirsFor } from "../loop/round.ts";
+import { specSlugDir } from "../paths.ts";
 import { writeCalibrationSample } from "../policy/calibration.ts";
 import { injectArchitectureBlock } from "../render/architecture-spec.ts";
 import { renderTldr } from "../render/tldr.ts";
@@ -64,7 +66,9 @@ import {
 import { inspectSpec, specPaths, type ChoiceResolvers } from "./new.ts";
 import { PERSONA_FORM_RE, formatPersonaString } from "./persona.ts";
 
-const DEFAULT_MAX_WALL_CLOCK_MIN = 240;
+// samospec #180 FIX 1: 600 min, in lockstep with iterate's default
+// session budget so the lock-staleness buffer matches the round gate.
+const DEFAULT_MAX_WALL_CLOCK_MIN = 600;
 const V01_VERSION = "0.1.0" as const;
 
 export interface RunResumeInput {
@@ -75,6 +79,14 @@ export interface RunResumeInput {
   readonly pid?: number;
   readonly maxWallClockMinutes?: number;
   readonly explain?: boolean;
+  /**
+   * Unified effort for the LEAD seat (interview / draft on resume).
+   * Caller-injected — useful for programmatic callers and tests. The
+   * `resume` CLI command does NOT expose `--effort` (`runResumeCommand`
+   * never parses it), so from the CLI this is always omitted and each
+   * phase falls back to the safe unified `high` default internally.
+   */
+  readonly leadEffort?: EffortLevel;
 }
 
 export interface RunResumeResult {
@@ -120,8 +132,34 @@ export async function runResume(
     };
   }
 
-  // lead_terminal is absorbing (SPEC §7). Exit 4 with context.
+  // lead_terminal is absorbing (SPEC §7) UNLESS the round's reviewer
+  // critiques are persisted on disk. In that case the lead revise can be
+  // retried reusing the saved critiques (samospec robustness pass), so
+  // point the user at `iterate`, which auto-resumes that round without
+  // re-running the reviewers. Otherwise keep the absorbing exit-4 copy.
   if (state.round_state === "lead_terminal") {
+    const failedRound = state.round_index + 1;
+    const failedDirs = roundDirsFor(
+      specSlugDir(input.cwd, input.slug),
+      failedRound,
+    );
+    const persisted = loadPersistedCritiques(failedDirs);
+    if (persisted !== null) {
+      notice(
+        `samospec: spec '${input.slug}' is at lead_terminal, but round ` +
+          `r${String(failedRound).padStart(2, "0")} has saved reviewer ` +
+          `critiques.`,
+      );
+      notice(
+        `next: samospec iterate ${input.slug} ` +
+          `(retries the lead revise reusing the saved critiques)`,
+      );
+      return {
+        exitCode: 0,
+        stdout: `${lines.join("\n")}\n`,
+        stderr: "",
+      };
+    }
     errors.push(
       `samospec: spec '${input.slug}' is at lead_terminal. ` +
         `Edit .samo/spec/${input.slug}/ manually or rerun with --force.`,
@@ -237,6 +275,9 @@ export async function runResume(
             ...(state.input?.idea !== undefined
               ? { idea: state.input.idea }
               : {}),
+            ...(input.leadEffort !== undefined
+              ? { effort: input.leadEffort }
+              : {}),
           },
           adapter,
         );
@@ -342,6 +383,9 @@ export async function runResume(
             interview,
             contextChunks: chunks,
             explain: input.explain ?? false,
+            ...(input.leadEffort !== undefined
+              ? { effort: input.leadEffort }
+              : {}),
           },
           adapter,
         );

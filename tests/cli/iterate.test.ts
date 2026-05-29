@@ -121,6 +121,14 @@ const DEFAULT_TIME_INPUTS = {
   nowMs: 0,
   // Plenty larger than the worst-case one-round duration (~52.5 min).
   maxWallClockMs: 60 * 60 * 1000,
+  // Pin per-call timeouts to the legacy values so the worst-case round
+  // (~52.5 min) still fits the 60-min budget after the SPEC §7 defaults
+  // were raised for max-effort robustness.
+  callTimeouts: {
+    criticA_ms: 300_000,
+    criticB_ms: 300_000,
+    revise_ms: 600_000,
+  },
 };
 
 const SAMPLE_CRITIQUE: CritiqueOutput = {

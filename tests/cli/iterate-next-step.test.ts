@@ -122,6 +122,13 @@ const FAST_TIME = {
   sessionStartedAtMs: 0,
   nowMs: 0,
   maxWallClockMs: 60 * 60 * 1000,
+  // Legacy per-call timeouts so the worst-case round fits the 60-min
+  // budget after the SPEC §7 defaults were raised.
+  callTimeouts: {
+    criticA_ms: 300_000,
+    criticB_ms: 300_000,
+    revise_ms: 600_000,
+  },
 };
 
 // A critique that returns ready=true so iterate exits with "ready".

@@ -84,7 +84,8 @@ describe("cli/status — healthy run", () => {
     expect(res.stdout).toContain("next:");
     expect(res.stdout).toContain("running cost");
     expect(res.stdout).toContain("wall-clock");
-    expect(res.stdout).toContain("worst-case one more round");
+    expect(res.stdout).toContain("one more round estimate");
+    expect(res.stdout).toContain("worst-case");
   });
 });
 
