@@ -7,6 +7,103 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-29
+
+### Added
+
+- **Unified `--effort` knob for `new` and `iterate`.** One global
+  `--effort <max|high|medium|low|off>` flag sets the reasoning effort for
+  ALL seats at once (lead + reviewer_a + reviewer_b), trading depth vs
+  speed. It OVERRIDES every seat's per-adapter config effort uniformly.
+  Bad values exit 2 with a usage error naming the valid set. Effort now
+  resolves through ONE documented precedence everywhere
+  (persona/interview/draft + every review-round critique/revise):
+  `--effort` flag > per-seat `adapters.<seat>.effort` in
+  `.samo/config.json` > a NEW unified default of **`high`** (deep, strong
+  review out of the box; previously the scattered default was `max`). In
+  an interactive terminal with no flag and no config pin, samospec
+  prompts once at startup to pick a level, explaining the speed/depth
+  tradeoff with a rough per-level ETA (max ~20-40, high ~15-30, medium
+  ~5-12, low ~2-5, off ~1-2 min/round) and a caveat that the ETAs are
+  rough and scale with spec size + provider speed. The prompt is skipped
+  under `--yes`, `--no-interactive`, the jsonl interview protocol, and any
+  non-TTY (piped/CI) context, which fall back to the flag/config/high
+  default.
+  New module: `src/adapter/effort.ts`.
+- **`samospec new --idea-file <path>` — read the idea from a file.**
+  Preferred input channel for long, structured ideas from AI agents and
+  CI: no fragile shell-quoting of a multi-paragraph `--idea` argument.
+  Surrounding whitespace is trimmed, internal markdown preserved.
+  Mutually exclusive with `--idea`; empty or unreadable files are clear,
+  tagged-union errors (`loadIdeaFile` in `src/cli/non-interactive.ts`).
+- **`samospec brief <slug>` — summarized HTML brief (heuristic mode).**
+  Generates a single self-contained `BRIEF.html` from a published spec
+  — a derivative summary, not a 1:1 conversion of `SPEC.md`. Pure
+  heuristic renderer (no model call, deterministic, regenerable).
+  Walks H2 sections in spec order; each section captures up to three
+  leading paragraphs, the first bullet list (with a "(N more)"
+  indicator), `###` subsection names, and fenced code blocks
+  preserved verbatim (so ASCII diagrams, mermaid, SQL, schemas
+  survive). Inline `**bold**`, `*italic*`, `` `code` `` are
+  rendered as `<strong>`/`<em>`/`<code>`. Sections classify by
+  heading name into `scope-out`, `risks`, `open-questions`,
+  `decisions`, `architecture`, `thesis`, or `generic` so layout
+  adapts. Provenance (rounds, lead/reviewer adapters) is one
+  compact footer line; coupled-fallback warning surfaces near the
+  top when recorded.
+- **`samospec brief --ai` — AI-generated rich HTML brief.**
+  Routes through the lead adapter (`claude-opus-4-7`, effort `max`)
+  to produce the rich visual artifact Thariq's "unreasonable
+  effectiveness of HTML" post describes: SVG architecture diagrams
+  synthesized from `architecture.json`, side-by-side scope tables,
+  decision matrices, callouts for risks/open questions,
+  mobile-responsive layout. A cross-vendor verifier pass
+  (`codex/gpt-5.4`) compares the generated brief against `SPEC.md`
+  and flags any claims that don't trace back; up to two
+  regeneration retries with the verifier's findings as guidance.
+  Output is sanitized (`<script>`, `<iframe>`, `on*=` event
+  handlers, `javascript:` URLs scrubbed). Cached at
+  `.samo/cache/brief/<slug>-<spec-hash>.html` so re-runs return
+  cached HTML without spending more model calls.
+- **`samospec brief --out <path>`** to write the brief anywhere
+  (`docs/<slug>/index.html`, `public/<slug>/index.html`, etc.).
+- **Idempotent `.nojekyll`** marker at the repo root so committed
+  briefs render on GitHub Pages without a Jekyll round-trip.
+  `--no-nojekyll` opts out.
+- **`paths` section in `.samo/config.json`** with `spec_dir` and
+  `blueprints_dir` keys. Both repo-relative; absolute paths and
+  `..`-escapes are rejected. Defaults preserve current behavior
+  (`.samo/spec`, `blueprints`); a forthcoming release will flip these
+  to `samospec/spec` and `samospec/blueprints` (configuration is the
+  opt-out).
+- New `src/paths.ts` config-aware path resolver underpins the brief
+  command and prepares for the upcoming dir rename.
+
+### Changed
+
+- **Raised default per-call timeouts** so long-running lead revises and
+  reviewer critiques are not preempted mid-flight at any effort level:
+  revise `600s -> 1800s`, critique `300s -> 900s` (round loop, `draft`,
+  and `status` defaults). Per-call overrides
+  (`budget.max_revise_call_ms` / `budget.max_critique_call_ms` /
+  `input.callTimeouts`) still take precedence.
+- **Real Claude `--effort`.** The Claude adapter now passes
+  `--effort <level>` (mapping samospec's `EffortLevel` onto the CLI's
+  `low|medium|high|max`, with `max -> max`) so effort is a genuine knob
+  rather than advisory.
+- **Latest-model defaults.** `samospec init` and the adapter / resolver
+  pinned defaults now lead with `claude-opus-4-8` (lead + reviewer B) and
+  `gpt-5.5` (reviewer A), each prepended ahead of the prior pin in its
+  fallback chain.
+- **Unified effort default is now `high` (was `max`).** The previously
+  scattered `effort ?? "max"` fallbacks (persona, interview, draft) and
+  the hardcoded `effort: "max"` in the review-round runner are replaced
+  by a single unified `high` default (deep, strong review out of the box)
+  applied consistently across all seats. `samospec init` now writes
+  `effort: "high"` for each seat instead of `effort: "max"`. For the
+  deepest review pass `--effort max`; to trade depth for speed pass a
+  lower level or pin `adapters.<seat>.effort` in `.samo/config.json`.
+
 ### Fixed
 
 - **Wall-clock between-round gate no longer collapses a default session
@@ -103,104 +200,6 @@ decisions]` with decisions LAST and truncated by keeping the head, so
   files). When the only dirty paths are samospec-managed artifacts, the
   non-TTY dirty guard auto-incorporates them; a genuine `SPEC.md` edit or
   any foreign file still triggers the `--on-dirty` refusal.
-
-### Changed
-
-- **Raised default per-call timeouts** so long-running lead revises and
-  reviewer critiques are not preempted mid-flight at any effort level:
-  revise `600s -> 1800s`, critique `300s -> 900s` (round loop, `draft`,
-  and `status` defaults). Per-call overrides
-  (`budget.max_revise_call_ms` / `budget.max_critique_call_ms` /
-  `input.callTimeouts`) still take precedence.
-- **Real Claude `--effort`.** The Claude adapter now passes
-  `--effort <level>` (mapping samospec's `EffortLevel` onto the CLI's
-  `low|medium|high|max`, with `max -> max`) so effort is a genuine knob
-  rather than advisory.
-- **Latest-model defaults.** `samospec init` and the adapter / resolver
-  pinned defaults now lead with `claude-opus-4-8` (lead + reviewer B) and
-  `gpt-5.5` (reviewer A), each prepended ahead of the prior pin in its
-  fallback chain.
-- **Unified effort default is now `high` (was `max`).** The previously
-  scattered `effort ?? "max"` fallbacks (persona, interview, draft) and
-  the hardcoded `effort: "max"` in the review-round runner are replaced
-  by a single unified `high` default (deep, strong review out of the box)
-  applied consistently across all seats. `samospec init` now writes
-  `effort: "high"` for each seat instead of `effort: "max"`. For the
-  deepest review pass `--effort max`; to trade depth for speed pass a
-  lower level or pin `adapters.<seat>.effort` in `.samo/config.json`.
-
-### Added
-
-- **Unified `--effort` knob for `new` and `iterate`.** One global
-  `--effort <max|high|medium|low|off>` flag sets the reasoning effort for
-  ALL seats at once (lead + reviewer_a + reviewer_b), trading depth vs
-  speed. It OVERRIDES every seat's per-adapter config effort uniformly.
-  Bad values exit 2 with a usage error naming the valid set. Effort now
-  resolves through ONE documented precedence everywhere
-  (persona/interview/draft + every review-round critique/revise):
-  `--effort` flag > per-seat `adapters.<seat>.effort` in
-  `.samo/config.json` > a NEW unified default of **`high`** (deep, strong
-  review out of the box; previously the scattered default was `max`). In
-  an interactive terminal with no flag and no config pin, samospec
-  prompts once at startup to pick a level, explaining the speed/depth
-  tradeoff with a rough per-level ETA (max ~20-40, high ~15-30, medium
-  ~5-12, low ~2-5, off ~1-2 min/round) and a caveat that the ETAs are
-  rough and scale with spec size + provider speed. The prompt is skipped
-  under `--yes`, `--no-interactive`, the jsonl interview protocol, and any
-  non-TTY (piped/CI) context, which fall back to the flag/config/high
-  default.
-  New module: `src/adapter/effort.ts`.
-- **`samospec new --idea-file <path>` — read the idea from a file.**
-  Preferred input channel for long, structured ideas from AI agents and
-  CI: no fragile shell-quoting of a multi-paragraph `--idea` argument.
-  Surrounding whitespace is trimmed, internal markdown preserved.
-  Mutually exclusive with `--idea`; empty or unreadable files are clear,
-  tagged-union errors (`loadIdeaFile` in `src/cli/non-interactive.ts`).
-- **`samospec brief <slug>` — summarized HTML brief (heuristic mode).**
-  Generates a single self-contained `BRIEF.html` from a published spec
-  — a derivative summary, not a 1:1 conversion of `SPEC.md`. Pure
-  heuristic renderer (no model call, deterministic, regenerable).
-  Walks H2 sections in spec order; each section captures up to three
-  leading paragraphs, the first bullet list (with a "(N more)"
-  indicator), `###` subsection names, and fenced code blocks
-  preserved verbatim (so ASCII diagrams, mermaid, SQL, schemas
-  survive). Inline `**bold**`, `*italic*`, `` `code` `` are
-  rendered as `<strong>`/`<em>`/`<code>`. Sections classify by
-  heading name into `scope-out`, `risks`, `open-questions`,
-  `decisions`, `architecture`, `thesis`, or `generic` so layout
-  adapts. Provenance (rounds, lead/reviewer adapters) is one
-  compact footer line; coupled-fallback warning surfaces near the
-  top when recorded.
-- **`samospec brief --ai` — AI-generated rich HTML brief.**
-  Routes through the lead adapter (`claude-opus-4-7`, effort `max`)
-  to produce the rich visual artifact Thariq's "unreasonable
-  effectiveness of HTML" post describes: SVG architecture diagrams
-  synthesized from `architecture.json`, side-by-side scope tables,
-  decision matrices, callouts for risks/open questions,
-  mobile-responsive layout. A cross-vendor verifier pass
-  (`codex/gpt-5.4`) compares the generated brief against `SPEC.md`
-  and flags any claims that don't trace back; up to two
-  regeneration retries with the verifier's findings as guidance.
-  Output is sanitized (`<script>`, `<iframe>`, `on*=` event
-  handlers, `javascript:` URLs scrubbed). Cached at
-  `.samo/cache/brief/<slug>-<spec-hash>.html` so re-runs return
-  cached HTML without spending more model calls.
-- **`samospec brief --out <path>`** to write the brief anywhere
-  (`docs/<slug>/index.html`, `public/<slug>/index.html`, etc.).
-- **Idempotent `.nojekyll`** marker at the repo root so committed
-  briefs render on GitHub Pages without a Jekyll round-trip.
-  `--no-nojekyll` opts out.
-- **`paths` section in `.samo/config.json`** with `spec_dir` and
-  `blueprints_dir` keys. Both repo-relative; absolute paths and
-  `..`-escapes are rejected. Defaults preserve current behavior
-  (`.samo/spec`, `blueprints`); a forthcoming release will flip these
-  to `samospec/spec` and `samospec/blueprints` (configuration is the
-  opt-out).
-- New `src/paths.ts` config-aware path resolver underpins the brief
-  command and prepares for the upcoming dir rename.
-
-### Fixed
-
 - **Dedupe interview questions (samo.team #435, blocks #433).** The lead
   was observed emitting two interview questions with identical text
   (Q5 = Q6), which then hung the downstream persona/spec pipeline
