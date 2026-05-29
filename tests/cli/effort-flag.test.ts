@@ -27,10 +27,10 @@ describe("samospec --effort flag — USAGE", () => {
     expect(occurrences).toBeGreaterThanOrEqual(3); // 2 doc blocks => 3 splits
   });
 
-  test("USAGE states medium is the default and explains the precedence", async () => {
+  test("USAGE states high is the default and explains the precedence", async () => {
     const res = await runCli([]);
     expect(res.stderr).toContain(
-      "--effort flag > adapters.<seat>.effort in config > medium",
+      "--effort flag > adapters.<seat>.effort in config > high",
     );
   });
 });

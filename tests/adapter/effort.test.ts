@@ -4,10 +4,11 @@
 //
 // Locks down the documented precedence and the NEW unified default:
 //
-//   --effort flag  >  per-seat adapters.<seat>.effort  >  medium
+//   --effort flag  >  per-seat adapters.<seat>.effort  >  high
 //
-// The default MUST be "medium" (a balanced average), NOT the historical
-// "max" — that's the headline behavior change these tests guard.
+// The default MUST be "high" (deep, strong review by default), NOT the
+// historical "max" — that's the headline behavior change these tests
+// guard.
 
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
@@ -41,8 +42,8 @@ function writeConfig(cwd: string, config: unknown): void {
 }
 
 describe("UNIFIED_DEFAULT_EFFORT", () => {
-  test("is medium (NOT max)", () => {
-    expect(UNIFIED_DEFAULT_EFFORT).toBe("medium");
+  test("is high (NOT max)", () => {
+    expect(UNIFIED_DEFAULT_EFFORT).toBe("high");
     expect(UNIFIED_DEFAULT_EFFORT).not.toBe("max");
   });
 });
@@ -112,8 +113,8 @@ describe("resolveSeatEffort — precedence", () => {
     expect(resolveSeatEffort(undefined, "high")).toBe("high");
   });
 
-  test("falls back to medium default when neither flag nor config", () => {
-    expect(resolveSeatEffort(undefined, undefined)).toBe("medium");
+  test("falls back to high default when neither flag nor config", () => {
+    expect(resolveSeatEffort(undefined, undefined)).toBe("high");
   });
 });
 
@@ -172,25 +173,25 @@ describe("resolveAllSeatEfforts — unified knob", () => {
     });
   });
 
-  test("without flag, each seat uses its config value, else medium", () => {
+  test("without flag, each seat uses its config value, else high", () => {
     const cwd = tmpRepo();
     writeConfig(cwd, {
-      adapters: { lead: { effort: "high" } },
+      adapters: { lead: { effort: "low" } },
     });
     const efforts = resolveAllSeatEfforts({ cwd });
     expect(efforts).toEqual({
-      lead: "high",
-      reviewer_a: "medium",
-      reviewer_b: "medium",
+      lead: "low",
+      reviewer_a: "high",
+      reviewer_b: "high",
     });
   });
 
-  test("no flag + no config -> medium everywhere", () => {
+  test("no flag + no config -> high everywhere", () => {
     const efforts = resolveAllSeatEfforts({ cwd: tmpRepo() });
     expect(efforts).toEqual({
-      lead: "medium",
-      reviewer_a: "medium",
-      reviewer_b: "medium",
+      lead: "high",
+      reviewer_a: "high",
+      reviewer_b: "high",
     });
   });
 });
@@ -216,7 +217,8 @@ describe("interactive prompt copy", () => {
     expect(EFFORT_PROMPT_INTRO).toContain("Reasoning effort — depth vs speed");
     expect(EFFORT_PROMPT_INTRO).toContain("max");
     expect(EFFORT_PROMPT_INTRO).toContain("deepest review");
-    expect(EFFORT_PROMPT_INTRO).toContain("medium — balanced (default)");
+    expect(EFFORT_PROMPT_INTRO).toContain("high   — deep (default)");
+    expect(EFFORT_PROMPT_INTRO).toContain("medium — balanced");
     expect(EFFORT_PROMPT_INTRO).toContain("minimal");
   });
 
@@ -233,21 +235,21 @@ describe("interactive prompt copy", () => {
     expect(EFFORT_PROMPT_INTRO).toContain("scale with spec size");
   });
 
-  test("choose line advertises medium as default", () => {
-    expect(EFFORT_PROMPT_CHOOSE).toContain("default medium");
+  test("choose line advertises high as default", () => {
+    expect(EFFORT_PROMPT_CHOOSE).toContain("default high");
     expect(EFFORT_PROMPT_CHOOSE).toContain("max/high/medium/low/off");
   });
 
-  test("resolvePromptedEffort: empty -> medium default", () => {
-    expect(resolvePromptedEffort("")).toBe("medium");
+  test("resolvePromptedEffort: empty -> high default", () => {
+    expect(resolvePromptedEffort("")).toBe("high");
   });
 
   test("resolvePromptedEffort: valid value honored", () => {
-    expect(resolvePromptedEffort("high")).toBe("high");
+    expect(resolvePromptedEffort("medium")).toBe("medium");
   });
 
-  test("resolvePromptedEffort: unknown -> medium default (lenient)", () => {
-    expect(resolvePromptedEffort("turbo")).toBe("medium");
+  test("resolvePromptedEffort: unknown -> high default (lenient)", () => {
+    expect(resolvePromptedEffort("turbo")).toBe("high");
   });
 });
 

@@ -6,9 +6,9 @@
 // Before the unified-effort knob, the round runner hardcoded
 // `effort: "max"` for every reviewer critique() and lead revise() call.
 // Now `runRound` accepts `seatEfforts` (resolved by the CLI:
-// `--effort` flag > per-seat config > unified medium) and threads each
+// `--effort` flag > per-seat config > unified high) and threads each
 // seat's effort into the matching adapter call. Omitted seats fall back
-// to the unified `medium` default (NOT "max").
+// to the unified `high` default (NOT "max").
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -93,7 +93,7 @@ function makeCapturingAdapters(cap: Captured): {
 }
 
 describe("runRound — per-seat effort threading", () => {
-  test("defaults to medium for every seat when seatEfforts omitted (was max)", async () => {
+  test("defaults to high for every seat when seatEfforts omitted (was max)", async () => {
     const cap: Captured = {};
     const adapters = makeCapturingAdapters(cap);
     await runRound({
@@ -104,9 +104,9 @@ describe("runRound — per-seat effort threading", () => {
       decisionsHistory: [],
       adapters,
     });
-    expect(cap.leadRevise).toBe("medium");
-    expect(cap.reviewerA).toBe("medium");
-    expect(cap.reviewerB).toBe("medium");
+    expect(cap.leadRevise).toBe("high");
+    expect(cap.reviewerA).toBe("high");
+    expect(cap.reviewerB).toBe("high");
   });
 
   test("threads each seat's resolved effort into its adapter call", async () => {

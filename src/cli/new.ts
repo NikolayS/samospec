@@ -193,8 +193,8 @@ export interface RunNewInput {
   /**
    * Unified effort for the LEAD seat across persona / interview / draft.
    * Resolved by the CLI (`--effort` flag > per-seat config > unified
-   * `medium` default) and threaded down. When omitted, each phase falls
-   * back to the unified `medium` default internally.
+   * `high` default) and threaded down. When omitted, each phase falls
+   * back to the unified `high` default internally.
    */
   readonly leadEffort?: EffortLevel;
 }

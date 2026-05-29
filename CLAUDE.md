@@ -76,7 +76,7 @@ All new code lands as: **failing test → minimum green → refactor**. Specific
 
 ## Model policy (reminder)
 
-Lead and reviewers run on the **strongest, latest model from each vendor at `effort: max`** — this is the product thesis, not a tunable to dial down by default. Downshifting is a conscious per-invocation flag (`--effort`), never a silent default. See SPEC §11.
+Lead and reviewers run on the **strongest, latest model from each vendor** — that part of the thesis is fixed. Reasoning **effort defaults to `high`** (deep, strong review out of the box). Change it explicitly with **`--effort <max|high|medium|low|off>`** (or per-seat `adapters.<seat>.effort` in config): `--effort max` for the deepest review, lower levels to trade depth for speed. In an interactive terminal with no flag/config pin, samospec prompts once for the level with per-level ETAs. See SPEC §11.
 
 ## PR workflow
 

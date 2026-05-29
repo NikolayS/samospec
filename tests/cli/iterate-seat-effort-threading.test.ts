@@ -208,7 +208,7 @@ describe("runIterate — seatEfforts threads through to the round seats", () => 
     expect(res.roundsRun).toBe(1);
     // Each seat's effort must land on ITS OWN adapter call — not a
     // neighbour's. If iterate dropped seatEfforts these would be
-    // "medium"; if it crossed wires the values would be swapped.
+    // "high"; if it crossed wires the values would be swapped.
     expect(cap.leadRevise).toBe("high");
     expect(cap.reviewerA).toBe("low");
     expect(cap.reviewerB).toBe("off");
@@ -234,7 +234,7 @@ describe("runIterate — seatEfforts threads through to the round seats", () => 
     expect(cap.reviewerB).toBe("low");
   });
 
-  test("omitting seatEfforts defaults every seat to medium (NOT max) for a real round", async () => {
+  test("omitting seatEfforts defaults every seat to high (NOT max) for a real round", async () => {
     const slug = "refunds";
     seedSpec(tmp, slug);
     const cap: Captured = {};
@@ -248,8 +248,8 @@ describe("runIterate — seatEfforts threads through to the round seats", () => 
       ...DEFAULT_TIME_INPUTS,
     });
     expect(res.exitCode).toBe(0);
-    expect(cap.leadRevise).toBe("medium");
-    expect(cap.reviewerA).toBe("medium");
-    expect(cap.reviewerB).toBe("medium");
+    expect(cap.leadRevise).toBe("high");
+    expect(cap.reviewerA).toBe("high");
+    expect(cap.reviewerB).toBe("high");
   });
 });

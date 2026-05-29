@@ -77,8 +77,8 @@ export interface ProposePersonaInput {
   readonly onNotice?: (line: string) => void;
   /**
    * Effort for the lead's persona call. Resolved up in the CLI
-   * (`--effort` flag > per-seat config > unified `medium`) and threaded
-   * down via the caller. Defaults to the unified `medium` level when the
+   * (`--effort` flag > per-seat config > unified `high`) and threaded
+   * down via the caller. Defaults to the unified `high` level when the
    * caller passes nothing (previously defaulted to `max`).
    */
   readonly effort?: EffortLevel;

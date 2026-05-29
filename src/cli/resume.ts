@@ -79,9 +79,10 @@ export interface RunResumeInput {
   readonly explain?: boolean;
   /**
    * Unified effort for the LEAD seat (interview / draft on resume).
-   * Resolved by the CLI (`--effort` flag > per-seat config > unified
-   * `medium`). When omitted, each phase falls back to the unified
-   * `medium` default internally.
+   * Caller-injected — useful for programmatic callers and tests. The
+   * `resume` CLI command does NOT expose `--effort` (`runResumeCommand`
+   * never parses it), so from the CLI this is always omitted and each
+   * phase falls back to the safe unified `high` default internally.
    */
   readonly leadEffort?: EffortLevel;
 }

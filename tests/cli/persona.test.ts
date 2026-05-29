@@ -148,8 +148,8 @@ describe("proposePersona — happy path", () => {
     expect(first.prompt).toContain("Veteran");
     expect(first.prompt).toContain("expert");
     expect(first.idea).toBe(idea);
-    // Unified default: medium (was "max" before the unified-effort knob).
-    expect(first.opts.effort).toBe("medium");
+    // Unified default: high (was "max" before the unified-effort knob).
+    expect(first.opts.effort).toBe("high");
   });
 });
 
@@ -533,7 +533,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
 // ---------- effort policy (unified default) ----------
 
 describe("proposePersona — lead effort policy", () => {
-  test("defaults to effort=medium (unified default, not max)", async () => {
+  test("defaults to effort=high (unified default, not max)", async () => {
     const adapter = makeScriptedAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
@@ -547,7 +547,7 @@ describe("proposePersona — lead effort policy", () => {
       choice: { kind: "accept" as const },
     };
     await proposePersona(opts, adapter);
-    expect(adapter.asks[0].opts.effort).toBe("medium");
+    expect(adapter.asks[0].opts.effort).toBe("high");
   });
 
   test("honors an explicit effort override", async () => {
@@ -646,8 +646,9 @@ describe("proposePersona — lead timeout policy (SPEC §7)", () => {
 
   test("effort AND timeout are BOTH correct on the same ask (no regression from the timeout raise)", async () => {
     // Combined assertion: bumping the timeout default must not regress
-    // effort threading, and vice versa. effort defaults to the unified
-    // `medium`; timeout defaults to 900_000.
+    // effort threading, and vice versa. Here effort is set explicitly
+    // (`high`, which also happens to be the unified default); timeout
+    // defaults to 900_000.
     const adapter = makeScriptedAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',

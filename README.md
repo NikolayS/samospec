@@ -26,7 +26,7 @@ SamoSpec treats spec authoring like code review:
 - **Panel, not monologue.** One lead drafts; two reviewers with deliberately different personas critique in parallel. Disagreement is surfaced, not averaged away.
 - **Every round is a commit.** Each revision lives on a `samospec/<slug>` branch. `git log` tells the story. `decisions.md` records what was accepted, rejected, or deferred — and why.
 - **Convergence is defined, not vibes.** Eight explicit stopping conditions — lead-ready, semantic convergence, repeat-findings halt via trigram Jaccard, wall-clock cap, budget cap, max rounds, reviewers-exhausted, user SIGINT — mean the loop _ends_ on its own.
-- **Strongest model, max effort, by default.** No silent downshifting. The thesis is that great specs come from the top of each vendor's ladder running hard, not from the cheapest model running often.
+- **Strongest model, deep reasoning by default.** Every seat runs the top of each vendor's ladder at effort `high` out of the box; `--effort max` dials it to the deepest review and lower levels trade depth for speed. The level is an explicit knob, never a silent downshift. The thesis is that great specs come from the strongest models running deep, not from the cheapest model running often.
 
 ---
 
@@ -85,7 +85,7 @@ At every step: `bunx samospec status <slug>` prints phase, current version, next
              └──────────────────────┘
 ```
 
-- **Lead** = `claude` CLI, pinned `claude-opus-4-7`, effort `max`.
+- **Lead** = `claude` CLI, pinned `claude-opus-4-7`, default effort `high`.
 - **Reviewer A** = `codex` CLI with a **security/ops** persona: missing risks, weak implementation, unnecessary scope.
 - **Reviewer B** = second `claude` session with a **QA / testability** persona: ambiguity, contradiction, weak-testing. Also checks the spec's mandatory baseline sections and verifies it stays faithful to your original idea.
 - Adapters share a coupled-fallback rule (lead and Reviewer B use the same vendor, so a Claude outage fails them together rather than running an uneven panel).

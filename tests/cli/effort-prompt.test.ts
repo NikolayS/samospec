@@ -9,7 +9,7 @@
 //   - we are NOT in a non-interactive context (`--yes` / `--no-interactive`
 //     / jsonl / piped stdin).
 //
-// Otherwise the prompt is skipped and per-seat config / unified medium
+// Otherwise the prompt is skipped and per-seat config / unified high
 // default apply. The chosen level overrides every seat uniformly.
 
 import { describe, expect, test } from "bun:test";
@@ -51,7 +51,7 @@ describe("resolveSeatEffortsWithPrompt — interactive gate", () => {
     });
   });
 
-  test("empty prompt answer -> medium default for all seats", async () => {
+  test("empty prompt answer -> high default for all seats", async () => {
     const efforts = await resolveSeatEffortsWithPrompt({
       cwd: tmpRepo(),
       stdinIsTty: true,
@@ -59,9 +59,9 @@ describe("resolveSeatEffortsWithPrompt — interactive gate", () => {
       promptFn: () => Promise.resolve(""),
     });
     expect(efforts).toEqual({
-      lead: "medium",
-      reviewer_a: "medium",
-      reviewer_b: "medium",
+      lead: "high",
+      reviewer_a: "high",
+      reviewer_b: "high",
     });
   });
 
@@ -87,7 +87,7 @@ describe("resolveSeatEffortsWithPrompt — interactive gate", () => {
 
   test("does NOT prompt when config pins a seat's effort", async () => {
     const cwd = tmpRepo();
-    writeConfig(cwd, { adapters: { lead: { effort: "high" } } });
+    writeConfig(cwd, { adapters: { lead: { effort: "low" } } });
     let prompted = 0;
     const efforts = await resolveSeatEffortsWithPrompt({
       cwd,
@@ -99,15 +99,15 @@ describe("resolveSeatEffortsWithPrompt — interactive gate", () => {
       },
     });
     expect(prompted).toBe(0);
-    // Config value for lead, medium for the unpinned seats.
+    // Config value for lead, high for the unpinned seats.
     expect(efforts).toEqual({
-      lead: "high",
-      reviewer_a: "medium",
-      reviewer_b: "medium",
+      lead: "low",
+      reviewer_a: "high",
+      reviewer_b: "high",
     });
   });
 
-  test("does NOT prompt under --yes / non-interactive (uses medium default)", async () => {
+  test("does NOT prompt under --yes / non-interactive (uses high default)", async () => {
     let prompted = 0;
     const efforts = await resolveSeatEffortsWithPrompt({
       cwd: tmpRepo(),
@@ -120,9 +120,9 @@ describe("resolveSeatEffortsWithPrompt — interactive gate", () => {
     });
     expect(prompted).toBe(0);
     expect(efforts).toEqual({
-      lead: "medium",
-      reviewer_a: "medium",
-      reviewer_b: "medium",
+      lead: "high",
+      reviewer_a: "high",
+      reviewer_b: "high",
     });
   });
 
@@ -138,7 +138,7 @@ describe("resolveSeatEffortsWithPrompt — interactive gate", () => {
       },
     });
     expect(prompted).toBe(0);
-    expect(efforts.lead).toBe("medium");
+    expect(efforts.lead).toBe("high");
   });
 
   test("does NOT prompt when no promptFn is provided", async () => {
@@ -147,6 +147,6 @@ describe("resolveSeatEffortsWithPrompt — interactive gate", () => {
       stdinIsTty: true,
       nonInteractive: false,
     });
-    expect(efforts.lead).toBe("medium");
+    expect(efforts.lead).toBe("high");
   });
 });

@@ -9,9 +9,11 @@
 //   - `reviews: []` and `decisions_history: []` (there has been no
 //     review round yet)
 //   - `effort` resolved by the caller (`--effort` flag > per-seat
-//     config > unified `medium` default); falls back to
-//     DRAFT_DEFAULT_EFFORT (`medium`) when the caller passes nothing
-//   - `timeout: 1_800_000` (SPEC §7 revise default, raised for max effort)
+//     config > unified `high` default); falls back to
+//     DRAFT_DEFAULT_EFFORT (`high`) when the caller passes nothing
+//   - `timeout: 1_800_000` (SPEC §7 revise default, raised from 600s so a
+//     long-running lead draft/revise is not preempted mid-flight at any
+//     effort level)
 //
 // Failure classification per SPEC §7 exit-4 messaging:
 //   - refusal       -> sub-reason "refusal"
@@ -39,18 +41,18 @@ import {
 /**
  * SPEC §7: `revise()` default timeout.
  *
- * Raised from 600s to 1800s (samospec robustness pass) so the v0.1 draft
- * write at max effort does not get preempted mid-flight. Callers can still
- * override via `input.timeoutMs`.
+ * Raised from 600s to 1800s (samospec robustness pass) so a long-running
+ * lead draft/revise is not preempted mid-flight at any effort level.
+ * Callers can still override via `input.timeoutMs`.
  */
 export const DRAFT_REVISE_TIMEOUT_MS = 1_800_000 as const;
 
 /**
  * Unified effort default for the v0.1 draft when the caller does not
  * pass an explicit `effort`. The lead's effort is resolved up in the
- * CLI (`--effort` flag > per-seat config > medium) and threaded down via
- * `input.effort`; this constant is the last-resort fallback and now
- * matches the unified `medium` default (previously `"max"`).
+ * CLI (`--effort` flag > per-seat config > high) and threaded down via
+ * `input.effort`; this constant is the last-resort fallback and matches
+ * the unified `high` default (previously `"max"`).
  */
 export const DRAFT_DEFAULT_EFFORT: EffortLevel = UNIFIED_DEFAULT_EFFORT;
 

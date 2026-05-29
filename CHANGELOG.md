@@ -57,10 +57,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 
-- **Raised default per-call timeouts** so max-effort lead revises and
-  reviewer critiques are not preempted mid-flight: revise
-  `600s -> 1800s`, critique `300s -> 900s` (round loop, `draft`, and
-  `status` defaults). Per-call overrides
+- **Raised default per-call timeouts** so long-running lead revises and
+  reviewer critiques are not preempted mid-flight at any effort level:
+  revise `600s -> 1800s`, critique `300s -> 900s` (round loop, `draft`,
+  and `status` defaults). Per-call overrides
   (`budget.max_revise_call_ms` / `budget.max_critique_call_ms` /
   `input.callTimeouts`) still take precedence.
 - **Real Claude `--effort`.** The Claude adapter now passes
@@ -71,13 +71,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   pinned defaults now lead with `claude-opus-4-8` (lead + reviewer B) and
   `gpt-5.5` (reviewer A), each prepended ahead of the prior pin in its
   fallback chain.
-- **Unified effort default is now `medium` (was `max`).** The previously
+- **Unified effort default is now `high` (was `max`).** The previously
   scattered `effort ?? "max"` fallbacks (persona, interview, draft) and
   the hardcoded `effort: "max"` in the review-round runner are replaced
-  by a single unified `medium` default applied consistently across all
-  seats. `samospec init` now writes `effort: "medium"` for each seat
-  instead of `effort: "max"`. To run at the old depth, pass
-  `--effort max` or pin `adapters.<seat>.effort` in `.samo/config.json`.
+  by a single unified `high` default (deep, strong review out of the box)
+  applied consistently across all seats. `samospec init` now writes
+  `effort: "high"` for each seat instead of `effort: "max"`. For the
+  deepest review pass `--effort max`; to trade depth for speed pass a
+  lower level or pin `adapters.<seat>.effort` in `.samo/config.json`.
 
 ### Added
 
@@ -89,15 +90,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   resolves through ONE documented precedence everywhere
   (persona/interview/draft + every review-round critique/revise):
   `--effort` flag > per-seat `adapters.<seat>.effort` in
-  `.samo/config.json` > a NEW unified default of **`medium`** (a balanced
-  average; previously the scattered default was `max`). In an interactive
-  terminal with no flag and no config pin, samospec prompts once at
-  startup to pick a level, explaining the speed/depth tradeoff with a
-  rough per-level ETA (max ~20-40, high ~15-30, medium ~5-12, low ~2-5,
-  off ~1-2 min/round) and a caveat that the ETAs are rough and scale with
-  spec size + provider speed. The prompt is skipped under `--yes`,
-  `--no-interactive`, the jsonl interview protocol, and any non-TTY
-  (piped/CI) context, which fall back to the flag/config/medium default.
+  `.samo/config.json` > a NEW unified default of **`high`** (deep, strong
+  review out of the box; previously the scattered default was `max`). In
+  an interactive terminal with no flag and no config pin, samospec
+  prompts once at startup to pick a level, explaining the speed/depth
+  tradeoff with a rough per-level ETA (max ~20-40, high ~15-30, medium
+  ~5-12, low ~2-5, off ~1-2 min/round) and a caveat that the ETAs are
+  rough and scale with spec size + provider speed. The prompt is skipped
+  under `--yes`, `--no-interactive`, the jsonl interview protocol, and any
+  non-TTY (piped/CI) context, which fall back to the flag/config/high
+  default.
   New module: `src/adapter/effort.ts`.
 - **`samospec brief <slug>` — summarized HTML brief (heuristic mode).**
   Generates a single self-contained `BRIEF.html` from a published spec

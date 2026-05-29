@@ -32,21 +32,21 @@ export const CONFIG_SCHEMA_VERSION = 1 as const;
 export interface LeadAdapterDefaults {
   readonly adapter: "claude";
   readonly model_id: "claude-opus-4-8";
-  readonly effort: "medium";
+  readonly effort: "high";
   readonly fallback_chain: readonly string[];
 }
 
 export interface ReviewerAAdapterDefaults {
   readonly adapter: "codex";
   readonly model_id: "gpt-5.5";
-  readonly effort: "medium";
+  readonly effort: "high";
   readonly fallback_chain: readonly string[];
 }
 
 export interface ReviewerBAdapterDefaults {
   readonly adapter: "claude";
   readonly model_id: "claude-opus-4-8";
-  readonly effort: "medium";
+  readonly effort: "high";
   readonly fallback_chain: readonly string[];
 }
 
@@ -105,15 +105,16 @@ export interface DefaultConfig {
 
 /**
  * Pinned v1 defaults. SPEC §11.
- * - Lead: claude / claude-opus-4-8 / medium
- * - Reviewer A: codex / gpt-5.5 / medium
- * - Reviewer B: claude / claude-opus-4-8 / medium (same family as lead)
+ * - Lead: claude / claude-opus-4-8 / high
+ * - Reviewer A: codex / gpt-5.5 / high
+ * - Reviewer B: claude / claude-opus-4-8 / high (same family as lead)
  * - Budget: generous defaults (SPEC §11 Budget guardrails).
  * - Git: remote_probe off by default (SPEC §14 threat model).
  *
- * Effort: every seat defaults to the UNIFIED `medium` level (a balanced
- * average of depth vs speed). Bump any seat to `high`/`max` here, or use
- * the global `--effort` flag to override every seat at once for a run.
+ * Effort: every seat defaults to the UNIFIED `high` level (deep, strong
+ * review out of the box). Bump any seat to `max` for the deepest review,
+ * or down to `medium`/`low` for speed; the global `--effort` flag
+ * overrides every seat at once for a run.
  *
  * Latest-model refresh: the new top models are prepended ahead of the
  * prior pins in each fallback chain, so a freshly-`init`ed project picks
@@ -125,7 +126,7 @@ export const DEFAULT_CONFIG: DefaultConfig = {
     lead: {
       adapter: "claude",
       model_id: "claude-opus-4-8",
-      effort: "medium",
+      effort: "high",
       fallback_chain: [
         "claude-opus-4-8",
         "claude-opus-4-7",
@@ -136,13 +137,13 @@ export const DEFAULT_CONFIG: DefaultConfig = {
     reviewer_a: {
       adapter: "codex",
       model_id: "gpt-5.5",
-      effort: "medium",
+      effort: "high",
       fallback_chain: ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "terminal"],
     },
     reviewer_b: {
       adapter: "claude",
       model_id: "claude-opus-4-8",
-      effort: "medium",
+      effort: "high",
       fallback_chain: [
         "claude-opus-4-8",
         "claude-opus-4-7",

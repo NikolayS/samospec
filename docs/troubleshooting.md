@@ -69,7 +69,7 @@ Codex under ChatGPT-account auth (browser login via `codex auth`) does not
 support the pinned models `gpt-5.4` and `gpt-5.3-codex`. The
 adapter tries a three-tier fallback chain:
 
-- `gpt-5.4` (default pin — flagship model, effort xhigh)
+- `gpt-5.4` (default pin — flagship model, default effort high)
 - `gpt-5.3-codex` (explicit fallback)
 - account-default: no `--model` flag, letting codex pick the account's
   supported model

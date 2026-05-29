@@ -112,13 +112,13 @@ function parseEffortArg(
  * the user interactively.
  *
  * Precedence (documented): `--effort` flag > per-seat
- * `adapters.<seat>.effort` config > unified `medium` default.
+ * `adapters.<seat>.effort` config > unified `high` default.
  *
  * Interactive prompt: when stdin IS a TTY, no `--effort` flag was passed,
  * config doesn't pin any seat's effort, and we are NOT in a
  * non-interactive context (`--yes` / `--no-interactive` / jsonl), prompt
  * the user once at startup with a concise depth/speed tradeoff
- * explanation. The chosen level (default `medium` on empty input)
+ * explanation. The chosen level (default `high` on empty input)
  * overrides all seats uniformly — exactly as the `--effort` flag would.
  *
  * In any non-interactive context (piped stdin, `--yes`, jsonl) the prompt
@@ -164,7 +164,7 @@ export async function resolveSeatEffortsWithPrompt(input: {
 /**
  * Build the readline-backed effort prompt function for interactive runs.
  * Prints the tradeoff explanation to stdout, then asks for a choice.
- * Returns the raw answer (caller maps empty/unknown to the medium
+ * Returns the raw answer (caller maps empty/unknown to the high
  * default via {@link resolvePromptedEffort}). The interface is closed
  * after the single question.
  */
@@ -286,10 +286,10 @@ const USAGE =
   "  --effort <max|high|medium|low|off>\n" +
   "      Unified reasoning effort for ALL seats (lead + both reviewers).\n" +
   "      Trades depth vs speed. Overrides per-seat config. Precedence:\n" +
-  "      --effort flag > adapters.<seat>.effort in config > medium\n" +
+  "      --effort flag > adapters.<seat>.effort in config > high\n" +
   "      (the default). In an interactive terminal with no flag/config\n" +
   "      pin, you are prompted once to choose. max is deepest/slowest;\n" +
-  "      off is minimal/fastest; medium is the balanced default.\n" +
+  "      off is minimal/fastest; high is the deep default.\n" +
   "  --force\n" +
   "      Archive any existing run, then start fresh.\n" +
   "  --skip <sections>\n" +
@@ -326,10 +326,10 @@ const USAGE =
   "  --effort <max|high|medium|low|off>\n" +
   "      Unified reasoning effort for ALL seats (lead + both reviewers).\n" +
   "      Trades depth vs speed. Overrides per-seat config. Precedence:\n" +
-  "      --effort flag > adapters.<seat>.effort in config > medium\n" +
+  "      --effort flag > adapters.<seat>.effort in config > high\n" +
   "      (the default). In an interactive terminal with no flag/config\n" +
   "      pin, you are prompted once to choose. max is deepest/slowest;\n" +
-  "      off is minimal/fastest; medium is the balanced default.\n" +
+  "      off is minimal/fastest; high is the deep default.\n" +
   "  --no-push\n" +
   "      Don't push round commits to the remote.\n" +
   "  --remote <name>\n" +
@@ -494,7 +494,7 @@ interface NewArgs {
    * OVERRIDES every seat's effort uniformly (lead + reviewer_a +
    * reviewer_b), winning over per-seat config. Validated against the
    * EffortLevel enum at parse time (bad value -> exit 2). When omitted,
-   * effort resolves from per-seat config, else the unified `medium`.
+   * effort resolves from per-seat config, else the unified `high`.
    */
   readonly effort?: EffortLevel;
 }
@@ -849,7 +849,7 @@ async function runNewCommand(rest: readonly string[]) {
   }
   const adapter = leadAdapter(process.cwd());
   const jsonlMode = parsed.interviewProtocol === "jsonl";
-  // Resolve the lead effort: `--effort` flag > per-seat config > medium.
+  // Resolve the lead effort: `--effort` flag > per-seat config > high.
   // In a TTY without a flag/config pin (and not in a non-interactive
   // run), prompt the user once with a depth/speed tradeoff explanation.
   const stdinIsTty = process.stdin.isTTY === true;
@@ -1047,7 +1047,7 @@ interface IterateArgs {
    * Global `--effort <max|high|medium|low|off>` knob. When set, it
    * OVERRIDES every seat's effort uniformly (lead + reviewer_a +
    * reviewer_b), winning over per-seat config. Bad value -> exit 2.
-   * When omitted, effort resolves from per-seat config, else `medium`.
+   * When omitted, effort resolves from per-seat config, else `high`.
    */
   readonly effort?: EffortLevel;
 }
@@ -1566,7 +1566,7 @@ async function runIterateCommand(rest: readonly string[]) {
     remote: parsed.remote,
     noPush: parsed.noPush,
   };
-  // Resolve per-seat effort: `--effort` flag > per-seat config > medium.
+  // Resolve per-seat effort: `--effort` flag > per-seat config > high.
   // In a TTY without a flag/config pin (and not under `--yes`), prompt
   // the user once with a depth/speed tradeoff explanation; the choice
   // overrides every seat uniformly.

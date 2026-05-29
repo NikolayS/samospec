@@ -206,9 +206,9 @@ export interface IterateInput {
   };
   /**
    * Unified per-seat effort, resolved by the CLI (`--effort` flag >
-   * per-seat `adapters.<seat>.effort` config > unified `medium`). Threaded
+   * per-seat `adapters.<seat>.effort` config > unified `high`). Threaded
    * into every round's `runRound`. Omitted seats fall back to the unified
-   * `medium` default inside `runRound`.
+   * `high` default inside `runRound`.
    */
   readonly seatEfforts?: {
     readonly lead?: EffortLevel;

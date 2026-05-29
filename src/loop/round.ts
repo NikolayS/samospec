@@ -214,9 +214,9 @@ export interface RunRoundInput {
   readonly reviseTimeoutMs?: number;
   /**
    * Unified per-seat effort. Resolved by the CLI (`--effort` flag >
-   * per-seat `adapters.<seat>.effort` config > unified `medium`). The
+   * per-seat `adapters.<seat>.effort` config > unified `high`). The
    * lead's effort drives `revise()`; reviewer_a / reviewer_b drive their
-   * own `critique()`. Any omitted seat falls back to the unified `medium`
+   * own `critique()`. Any omitted seat falls back to the unified `high`
    * default so legacy callers / unit tests are unaffected (previously the
    * round runner hardcoded `effort: "max"` for every seat).
    */
@@ -549,8 +549,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
   const reviseTimeout = input.reviseTimeoutMs ?? REVISE_TIMEOUT_MS;
 
   // Unified per-seat effort. The CLI resolves `--effort` > per-seat
-  // config > unified `medium` and threads the result here; any omitted
-  // seat falls back to the unified `medium` default (previously every
+  // config > unified `high` and threads the result here; any omitted
+  // seat falls back to the unified `high` default (previously every
   // seat was hardcoded at `effort: "max"`).
   const leadEffort = input.seatEfforts?.lead ?? UNIFIED_DEFAULT_EFFORT;
   const reviewerAEffort =
