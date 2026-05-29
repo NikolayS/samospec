@@ -50,6 +50,7 @@ import {
 } from "./spawn.ts";
 import { computeAttemptTimeouts } from "./timeout.ts";
 import { renderAutonomyPolicySnapshotPromptBlock } from "../policy/autonomy.ts";
+import { renderPriorContextPromptBlock } from "../loop/prior-context.ts";
 
 // Internal fail reason covering the Codex fallback sentinel plus the
 // standard failure classes. The adapter-level CodexAdapterError
@@ -673,13 +674,19 @@ function buildAskPrompt(input: AskInput): string {
   );
 }
 
-function buildCritiquePrompt(input: CritiqueInput): string {
+/**
+ * Build Reviewer A's (Codex) critique prompt. Exported so tests can
+ * assert the prior-context / convergence framing without spawning the CLI
+ * (parity with `claude.ts`'s exported `buildCritiquePrompt`).
+ */
+export function buildCritiquePrompt(input: CritiqueInput): string {
   // Persona prefix + taxonomy weighting (SPEC §7 Model roles).
   // Advisory, not a hard filter — reviewer may still surface other
   // categories.
   const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
     input.autonomy_policy,
   );
+  const priorContextBlock = renderPriorContextPromptBlock(input.prior_context);
   return (
     `${CODEX_CRITIQUE_PERSONA_PREFIX}\n\n` +
     "You are the samospec reviewer. Return ONLY a JSON object matching " +
@@ -688,6 +695,7 @@ function buildCritiquePrompt(input: CritiqueInput): string {
     ' string, "suggested_next_version": string, "usage": null, ' +
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code fences.` +
     autonomyBlock +
+    priorContextBlock +
     `\n\nGuidelines:\n${input.guidelines}\n\nSpec:\n${input.spec}\n`
   );
 }

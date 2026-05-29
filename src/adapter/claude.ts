@@ -41,6 +41,7 @@ import {
 } from "./spawn.ts";
 import { runWithCappedRetry, type AttemptResult } from "./timeout.ts";
 import { renderAutonomyPolicySnapshotPromptBlock } from "../policy/autonomy.ts";
+import { renderPriorContextPromptBlock } from "../loop/prior-context.ts";
 import {
   type Adapter,
   type AskInput,
@@ -697,6 +698,7 @@ export function buildCritiquePrompt(input: CritiqueInput): string {
   const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
     input.autonomy_policy,
   );
+  const priorContextBlock = renderPriorContextPromptBlock(input.prior_context);
   return (
     "You are the samospec reviewer. Return ONLY a JSON object matching " +
     'the review-taxonomy schema: { "findings": Array<{ "category": ' +
@@ -704,6 +706,7 @@ export function buildCritiquePrompt(input: CritiqueInput): string {
     ' string, "suggested_next_version": string, "usage": null, ' +
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code fences.` +
     autonomyBlock +
+    priorContextBlock +
     `\n\nGuidelines:\n${input.guidelines}\n\nSpec:\n${input.spec}\n`
   );
 }

@@ -50,6 +50,7 @@ import type { Adapter, CritiqueOutput, Finding } from "../adapter/types.ts";
 import type { ReviewDecision } from "./decisions.ts";
 import { reviseDecisionsToReviewDecisions } from "./decisions.ts";
 import type { DegradedResult } from "./degradation.ts";
+import { buildPriorContext } from "./prior-context.ts";
 
 // ---------- constants ----------
 
@@ -528,6 +529,27 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
   const critiqueTimeout = input.critiqueTimeoutMs ?? CRITIQUE_TIMEOUT_MS;
   const reviseTimeout = input.reviseTimeoutMs ?? REVISE_TIMEOUT_MS;
 
+  // Reviewer context preservation: reconstruct each seat's prior context
+  // from PERSISTED artifacts (its own prior critique files + decisions.md)
+  // so a reviewer remembers what it raised before and drives toward
+  // convergence instead of re-litigating. Built once per round and reused
+  // across any whole-round retry. On round 1 (or when nothing is
+  // recoverable) `buildPriorContext` returns undefined and the reviewers
+  // are called exactly as before (backward-compatible).
+  //
+  // The slug dir is the round dir's grandparent: `<slugDir>/reviews/rNN`.
+  const slugDir = path.dirname(path.dirname(dirs.roundDir));
+  const priorContextA = buildPriorContext({
+    slugDir,
+    currentRound: roundNumber,
+    seat: "reviewer_a",
+  });
+  const priorContextB = buildPriorContext({
+    slugDir,
+    currentRound: roundNumber,
+    seat: "reviewer_b",
+  });
+
   // #100: capture wall-clock timestamps for round.json. `startedAt` is
   // taken once here (right before the adapter fan-out begins); each
   // terminal write below calls `clock()` again to stamp a truthful
@@ -591,6 +613,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
           ...(input.signal !== undefined ? { signal: input.signal } : {}),
           // #85: thread idea to Reviewer B for contradiction detection.
           ...(input.idea !== undefined ? { idea: input.idea } : {}),
+          // Reviewer context preservation: per-seat prior context.
+          ...(priorContextA !== undefined ? { priorContextA } : {}),
+          ...(priorContextB !== undefined ? { priorContextB } : {}),
         });
 
   // Persist seats + critique files atomically.
@@ -623,6 +648,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       ...(input.signal !== undefined ? { signal: input.signal } : {}),
       // #85: thread idea to Reviewer B for contradiction detection.
       ...(input.idea !== undefined ? { idea: input.idea } : {}),
+      // Reviewer context preservation: per-seat prior context.
+      ...(priorContextA !== undefined ? { priorContextA } : {}),
+      ...(priorContextB !== undefined ? { priorContextB } : {}),
     });
     // Overwrite disk with the retry results.
     persistSeatResults(dirs, attempt2);
@@ -791,6 +819,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
         guidelinesB: input.guidelinesB ?? "",
         ...(input.signal !== undefined ? { signal: input.signal } : {}),
         ...(input.idea !== undefined ? { idea: input.idea } : {}),
+        // Reviewer context preservation: per-seat prior context.
+        ...(priorContextA !== undefined ? { priorContextA } : {}),
+        ...(priorContextB !== undefined ? { priorContextB } : {}),
       });
       persistSeatResults(dirs, retryReviewers);
       seatA = retryReviewers.reviewerA;
@@ -933,6 +964,18 @@ interface ReviewerParallelInput {
   readonly signal?: AbortSignal;
   /** #85: idea string threaded into Reviewer B's critique() call. */
   readonly idea?: string;
+  /**
+   * Reviewer context preservation: pre-rendered prior context for
+   * Reviewer A (codex), built from its OWN prior critiques + the lead's
+   * decisions. Absent on round 1.
+   */
+  readonly priorContextA?: string;
+  /**
+   * Reviewer context preservation: pre-rendered prior context for
+   * Reviewer B (claude), built from its OWN prior critiques + the lead's
+   * decisions. Absent on round 1.
+   */
+  readonly priorContextB?: string;
 }
 
 async function runReviewersParallel(
@@ -943,6 +986,11 @@ async function runReviewersParallel(
       spec: input.specText,
       guidelines: input.guidelinesA,
       opts: { effort: "max", timeout: input.critiqueTimeoutMs },
+      // Reviewer context preservation: Reviewer A sees ONLY its own
+      // (codex) prior findings + the lead's decisions.
+      ...(input.priorContextA !== undefined
+        ? { prior_context: input.priorContextA }
+        : {}),
     })
     .then<SeatOutcome>((critique) => ({
       seat: "reviewer_a",
@@ -964,6 +1012,11 @@ async function runReviewersParallel(
       // #85: thread the original idea so Reviewer B can detect
       // idea-contradictions against disclaimed classes.
       ...(input.idea !== undefined ? { idea: input.idea } : {}),
+      // Reviewer context preservation: Reviewer B sees ONLY its own
+      // (claude) prior findings + the lead's decisions.
+      ...(input.priorContextB !== undefined
+        ? { prior_context: input.priorContextB }
+        : {}),
     })
     .then<SeatOutcome>((critique) => ({
       seat: "reviewer_b",

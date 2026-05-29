@@ -9,6 +9,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Reviewer context preservation across rounds (convergence fix).** Each
+  reviewer now "remembers what it noticed on previous rounds" so the
+  review loop converges instead of re-litigating. Previously every seat
+  was called each round with ONLY the current spec — the one-shot
+  `claude --print` / `codex exec` subprocesses carry no session memory and
+  the lead's `decisions.md` was fed to the LEAD's `revise()`, never to the
+  reviewers — so each reviewer reviewed cold, re-raising consciously
+  deferred/rejected findings and re-discovering issues, making the major
+  count oscillate. On round N>1 the round runner now reconstructs each
+  seat's prior context from PERSISTED artifacts (its OWN prior critique
+  files — `reviews/rNN/codex.md` for Reviewer A, `reviews/rNN/claude.md`
+  for Reviewer B — plus the lead's per-finding rulings from
+  `decisions.md`) and passes it as `CritiqueInput.prior_context`. Each
+  reviewer sees ONLY its own history (never the other seat's), framed by
+  an explicit convergence instruction (verify whether each prior finding
+  is now resolved; do not re-raise a finding the lead consciously
+  deferred/rejected with a rationale unless it regressed; concentrate on
+  new or still-unresolved issues). Because the context is rebuilt from
+  on-disk artifacts it survives `resume` automatically, and missing /
+  partial / unparseable files degrade gracefully to round-1 behavior.
+  Bounded to the last 3 rounds and capped at 8000 chars so the prompt
+  cannot grow unboundedly. New module: `src/loop/prior-context.ts`.
 - **Config-driven models (headline fix).** `samospec` now honors
   `adapters.{lead,reviewer_a,reviewer_b}.{model_id,fallback_chain}` from
   `.samo/config.json` everywhere adapters are built (`new`, `resume`,
