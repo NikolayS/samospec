@@ -9,6 +9,55 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Wall-clock between-round gate no longer collapses a default session
+  (#180).** `shouldStartNextRound` gated on the 3.5× capped-retry
+  worst-case round duration, which assumes every round exhausts every
+  retry tier. With the raised SPEC §7 per-call timeouts (critique 900s,
+  revise 1800s) that worst case is ≈157.5 min, so the 240-min default
+  budget admitted only ~2 rounds before halting with `wall-clock` — far
+  short of `DEFAULT_MAX_ROUNDS` (10). The between-round gate now estimates
+  a _realistic_ round (one critique pass + one revise) via the new
+  `typicalRoundDurationMs` (a small ~1.2× safety factor, not the 3.5×
+  retry inflation), and the default session budget is bumped from 240 to
+  600 min so wall-clock is no longer the binding limit before max-rounds.
+  The 3.5× `worstCaseRoundDuration` is retained for the per-call cap and
+  shown in `samospec status` as the worst-case ceiling. A regression test
+  pins ≥5 startable rounds at the default budget and that the gate still
+  halts when a realistic round genuinely cannot fit, so a future timeout
+  bump cannot silently re-collapse the budget.
+- **Prior-context truncation keeps the lead-decisions section (#180).**
+  The reviewer prior-context block assembled `[your prior findings, lead
+decisions]` with decisions LAST and truncated by keeping the head, so
+  once a seat's own findings filled the 8000-char budget in later rounds
+  the "Lead decisions on prior findings" section (the deferred/rejected
+  rulings convergence depends on) was sliced off entirely. Decisions are
+  now emitted FIRST, capped to a reserved sub-budget that keeps the TAIL
+  (most-recent rulings), so a reviewer always sees the lead's recent
+  rulings even when its own prior findings are long. Fixed the misleading
+  `capBlock` comment that claimed the head carried the convergence
+  instruction (it is added later by `renderPriorContextPromptBlock`).
+- **`reviewer_b` divergent model config now warns instead of silently
+  ignored (#180).** SPEC §11 couples reviewer-B to the lead's shared
+  Claude resolver, so an `adapters.reviewer_b.{model_id,fallback_chain}`
+  that differs from the lead is inert by design — but silently. When the
+  resolved reviewer_b chain differs from lead's,
+  `buildReviewLoopAdaptersFromConfig` now emits a one-line stderr warning
+  explaining the config is ignored per SPEC §11. The coupling behavior is
+  unchanged.
+- **`round.json` no longer records a misleading "failed" for a reused
+  seat whose critique file is present (#180).** On the resumable-reuse
+  path a seat that could not be recovered (its `codex.md`/`claude.md`
+  exists on disk but, e.g., is unparseable) was mapped to a `failed`
+  seat and written to `round.json` as `failed` even though the artifact
+  was still on disk. Such a seat is now recorded as `pending` (artifact
+  present, not completed this round) rather than `failed`; a genuinely
+  absent file is still recorded `failed`.
+- **`samospec doctor` warns when `claude` lacks `--effort` (#180).**
+  samospec appends `--effort` to every `claude` work-call spawn, so a
+  CLI older than v2.1.0 (when `--effort` was added) would fail every
+  call. A new doctor check probes the installed `claude` version and
+  WARNs (never FAILs) when it predates the minimum, naming the required
+  version. Minimum version documented in README and CLAUDE.md.
 - **Reviewer context preservation across rounds (convergence fix).** Each
   reviewer now "remembers what it noticed on previous rounds" so the
   review loop converges instead of re-litigating. Previously every seat
