@@ -59,6 +59,18 @@ export const PRIOR_CONTEXT_MAX_ROUNDS = 3 as const;
 export const PRIOR_CONTEXT_MAX_CHARS = 8_000 as const;
 
 /**
+ * Sub-budget (chars) reserved for the lead-decisions section so it
+ * SURVIVES truncation. Convergence depends on each reviewer seeing the
+ * lead's recent deferred/rejected rulings; before samospec #180 FIX 2 the
+ * decisions section was appended LAST and the head-only cap sliced it off
+ * the moment a seat's own prior findings filled the budget. We now cap
+ * findings to `PRIOR_CONTEXT_MAX_CHARS - PRIOR_CONTEXT_DECISIONS_RESERVE`
+ * and the decisions section to this reserve (keeping its TAIL, where the
+ * most-recent rulings live), and emit decisions BEFORE findings.
+ */
+export const PRIOR_CONTEXT_DECISIONS_RESERVE = 3_000 as const;
+
+/**
  * The convergence instruction the reviewer critique prompt builders
  * prepend to a present prior-context block. Kept here (not in the
  * adapters) so the wording lives next to the context reconstruction it
@@ -162,18 +174,50 @@ export function buildPriorContext(
     return undefined;
   }
 
+  // FIX 2 (samospec #180): the lead's recent rulings drive convergence,
+  // so guarantee the decisions section survives truncation. We cap the
+  // decisions section to a reserved sub-budget (keeping its TAIL — the
+  // most-recent rulings) and the findings section to whatever remains,
+  // then emit DECISIONS FIRST so head-truncation can never drop them.
   const parts: string[] = [];
+
+  let decisionsReserve = 0;
+  if (decisionsExcerpt.length > 0) {
+    const decisionsSection = capDecisionsSection(
+      `### Lead decisions on prior findings\n${decisionsExcerpt}`,
+    );
+    parts.push(decisionsSection);
+    decisionsReserve = decisionsSection.length;
+  }
 
   if (roundSections.length > 0) {
     parts.push(`### Your prior findings\n${roundSections.join("\n\n")}`);
   }
 
-  if (decisionsExcerpt.length > 0) {
-    parts.push(`### Lead decisions on prior findings\n${decisionsExcerpt}`);
-  }
-
   const block = parts.join("\n\n");
-  return capBlock(block);
+  // The findings tail (everything after the reserved decisions section)
+  // absorbs any remaining truncation. Reserve the decisions length so the
+  // head cap never eats into it.
+  return capBlock(block, decisionsReserve);
+}
+
+/**
+ * Cap the lead-decisions section to {@link PRIOR_CONTEXT_DECISIONS_RESERVE}
+ * chars, keeping the TAIL (most-recent rulings — decisions.md appends
+ * newest last) and re-prefixing the section heading so the reviewer can
+ * still find it. Returns the section unchanged when it already fits.
+ */
+function capDecisionsSection(section: string): string {
+  if (section.length <= PRIOR_CONTEXT_DECISIONS_RESERVE) return section;
+  const heading = "### Lead decisions on prior findings\n";
+  const notice = "[older lead decisions truncated; most recent kept]\n";
+  const tailBudget = Math.max(
+    0,
+    PRIOR_CONTEXT_DECISIONS_RESERVE - heading.length - notice.length,
+  );
+  const body = section.slice(heading.length);
+  const tail = body.slice(Math.max(0, body.length - tailBudget));
+  return `${heading}${notice}${tail}`;
 }
 
 /**
@@ -199,13 +243,24 @@ export function renderPriorContextPromptBlock(
 
 /**
  * Truncate the rendered block to PRIOR_CONTEXT_MAX_CHARS, keeping the head
- * (which carries the convergence instruction + the most recent findings)
  * and appending an explicit truncation notice. The notice is itself
  * counted so the returned string never exceeds the cap.
+ *
+ * The convergence instruction is NOT in this block — it is prepended later
+ * by {@link renderPriorContextPromptBlock}, so it is never at risk of
+ * truncation here. The head of `block` is the lead-decisions section
+ * (emitted first by {@link buildPriorContext}); `reservedHead` is its
+ * length, and truncation only ever trims the findings tail beyond it, so
+ * the decisions section always survives (samospec #180 FIX 2).
  */
-function capBlock(block: string): string {
+function capBlock(block: string, reservedHead = 0): string {
   if (block.length <= PRIOR_CONTEXT_MAX_CHARS) return block;
   const notice = "\n\n[prior context truncated to fit the prompt budget]";
-  const headBudget = Math.max(0, PRIOR_CONTEXT_MAX_CHARS - notice.length);
+  // Never cut into the reserved (decisions) head; the findings tail
+  // absorbs the truncation.
+  const headBudget = Math.max(
+    reservedHead,
+    PRIOR_CONTEXT_MAX_CHARS - notice.length,
+  );
   return block.slice(0, headBudget) + notice;
 }

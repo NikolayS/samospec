@@ -194,6 +194,47 @@ describe("buildPriorContext — per-reviewer artifact-reconstructed memory", () 
     expect((ctx ?? "").length).toBeLessThanOrEqual(PRIOR_CONTEXT_MAX_CHARS);
   });
 
+  test("FIX 2: decisions section survives truncation even when prior findings are huge", () => {
+    // Seed a round whose OWN findings alone overflow the cap.
+    const dirs = roundDirsFor(slugDir, 1);
+    mkdirSync(dirs.roundDir, { recursive: true });
+    const huge: CritiqueOutput = {
+      ...CRIT_A,
+      findings: [
+        {
+          category: "ambiguity",
+          text: "FINDINGS-FILLER " + "X".repeat(PRIOR_CONTEXT_MAX_CHARS * 4),
+          severity: "minor",
+        },
+      ],
+    };
+    writeFileSync(dirs.codexPath, renderCritiqueMarkdown(huge, "reviewer_a"));
+
+    // And a decisions.md whose most-recent ruling is the LAST line — the
+    // convergence-critical ruling that the old head-only cap sliced off.
+    const olderRuling = "DECISION-OLD: deferred the rate-limit finding.";
+    const recentRuling =
+      "DECISION-RECENT: rejected the admin-auth finding with rationale.";
+    seedDecisions(
+      `# Decisions\n\n${olderRuling}\n` +
+        "filler ".repeat(2000) +
+        `\n${recentRuling}\n`,
+    );
+
+    const ctx = buildPriorContext({
+      slugDir,
+      currentRound: 2,
+      seat: "reviewer_a",
+    });
+    expect(ctx).toBeDefined();
+    expect((ctx ?? "").length).toBeLessThanOrEqual(PRIOR_CONTEXT_MAX_CHARS);
+    // The reviewer MUST still see the lead's most-recent ruling even when
+    // its own prior findings are enormous. Pre-fix the decisions section
+    // (appended last, head-truncated away) vanished entirely.
+    expect(ctx).toContain("Lead decisions on prior findings");
+    expect(ctx).toContain("DECISION-RECENT");
+  });
+
   test("missing prior files degrade gracefully (undefined, no throw)", () => {
     // currentRound=3 but nothing on disk.
     expect(() =>
