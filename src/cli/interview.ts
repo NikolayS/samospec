@@ -319,7 +319,7 @@ export async function runInterview(
   }
 
   const effort: EffortLevel = input.effort ?? "max";
-  const timeoutMs = input.timeoutMs ?? 120_000;
+  const timeoutMs = input.timeoutMs ?? 900_000;
   const prompt = buildInterviewPrompt({
     persona: input.persona,
     explain: input.explain,

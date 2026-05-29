@@ -76,7 +76,7 @@ export interface ProposePersonaInput {
   readonly onNotice?: (line: string) => void;
   /** Effort override; defaults to `max`. */
   readonly effort?: EffortLevel;
-  /** Timeout override in ms; defaults to 120_000 (AskInput default). */
+  /** Timeout override in ms; defaults to 900_000 (15m, for slow max-effort models). */
   readonly timeoutMs?: number;
 }
 
@@ -225,7 +225,7 @@ export async function proposePersona(
   }
 
   const effort: EffortLevel = input.effort ?? "max";
-  const timeoutMs = input.timeoutMs ?? 120_000;
+  const timeoutMs = input.timeoutMs ?? 900_000;
   const prompt = buildPersonaPrompt({
     idea: input.idea,
     explain: input.explain,
