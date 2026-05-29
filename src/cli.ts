@@ -45,6 +45,7 @@ import {
   buildNonInteractiveResolvers,
   emitProtocolComplete,
   loadAnswersFile,
+  loadIdeaFile,
 } from "./cli/non-interactive.ts";
 import { runBrief } from "./cli/brief.ts";
 import { runPublish } from "./cli/publish.ts";
@@ -228,6 +229,24 @@ export function deriveIterateNonInteractive(
   return parsed.yes || !stdinIsTty;
 }
 
+/**
+ * Test-only dependency injection seam for `runCli`. Production callers
+ * (`src/main.ts`) pass nothing, so every field falls back to the real
+ * implementation (live `ClaudeAdapter`, `process.cwd()`) and behaviour
+ * is byte-for-byte identical to before this seam existed.
+ *
+ * Tests use it to drive `samospec new` end-to-end against a scripted
+ * fake adapter inside a throwaway git repo, so the full
+ * argv → parse → idea resolution → `runNew` → on-disk spec path can be
+ * asserted without contacting the real Claude CLI.
+ */
+export interface RunCliDeps {
+  /** Adapter used by `samospec new`. Defaults to the live lead adapter. */
+  readonly newAdapter?: Adapter;
+  /** Working directory for `samospec new`. Defaults to `process.cwd()`. */
+  readonly cwd?: string;
+}
+
 const VERSION_FLAGS: ReadonlySet<string> = new Set([
   "version",
   "-v",
@@ -283,6 +302,10 @@ const USAGE =
   "Options for `new`:\n" +
   "  --idea <text>\n" +
   "      Initial idea text (default: the <slug>).\n" +
+  "  --idea-file <path>\n" +
+  "      Read the idea from a file instead of --idea. Preferred for long,\n" +
+  "      structured ideas (AI agents, CI): avoids fragile shell-quoting.\n" +
+  "      Mutually exclusive with --idea.\n" +
   "  --effort <max|high|medium|low|off>\n" +
   "      Unified reasoning effort for ALL seats (lead + both reviewers).\n" +
   "      Trades depth vs speed. Overrides per-seat config. Precedence:\n" +
@@ -399,7 +422,10 @@ function defaultAdapterBindings(): readonly DoctorAdapterBinding[] {
  * Dispatch subcommands. Returns a Promise so async subcommands (doctor)
  * can resolve; synchronous subcommands (version, init) are wrapped.
  */
-export async function runCli(argv: readonly string[]): Promise<CliResult> {
+export async function runCli(
+  argv: readonly string[],
+  deps: RunCliDeps = {},
+): Promise<CliResult> {
   const [command, ...rest] = argv;
 
   if (command !== undefined && VERSION_FLAGS.has(command)) {
@@ -429,7 +455,7 @@ export async function runCli(argv: readonly string[]): Promise<CliResult> {
   }
 
   if (command === "new") {
-    return runNewCommand(rest);
+    return runNewCommand(rest, deps);
   }
 
   if (command === "resume") {
@@ -480,6 +506,14 @@ interface NewArgs {
   readonly acceptPersona: boolean;
   readonly yes: boolean;
   readonly answersFile?: string;
+  /**
+   * Read the idea from a file instead of `--idea <text>`. Preferred for
+   * long, structured ideas (AI agents, CI) that are awkward to quote as a
+   * single shell argument. Mutually exclusive with `--idea`. The file is
+   * read in `runNewCommand` (kept out of `parseNewArgs` so parsing stays
+   * free of filesystem I/O and remains unit-testable).
+   */
+  readonly ideaFile?: string;
   /**
    * v0.7.0: `--interview-protocol jsonl` — machine-driven interview.
    * When set, samospec emits one JSON event per line on stdout
@@ -559,6 +593,8 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string | ParseError {
   let answersFile: string | undefined;
   let interviewProtocol: "jsonl" | undefined;
   let effort: EffortLevel | undefined;
+  let ideaFile: string | undefined;
+  let ideaSeen = false;
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === undefined) continue;
@@ -640,13 +676,32 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string | ParseError {
       effort = parsed;
       continue;
     }
+    if (token === "--idea-file") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      if (raw.length === 0 || raw.startsWith("--")) {
+        return "samospec new: --idea-file requires a path";
+      }
+      ideaFile = raw;
+      continue;
+    }
+    if (token.startsWith("--idea-file=")) {
+      const raw = token.slice("--idea-file=".length);
+      if (raw.length === 0) {
+        return "samospec new: --idea-file requires a path";
+      }
+      ideaFile = raw;
+      continue;
+    }
     if (token === "--idea") {
       idea = argv[i + 1] ?? "";
+      ideaSeen = true;
       i += 1;
       continue;
     }
     if (token.startsWith("--idea=")) {
       idea = token.slice("--idea=".length);
+      ideaSeen = true;
       continue;
     }
     if (token === "--skip") {
@@ -691,6 +746,9 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string | ParseError {
   if (slug === null || slug.length === 0) {
     return "samospec new: missing <slug>";
   }
+  if (ideaSeen && ideaFile !== undefined) {
+    return "samospec new: --idea and --idea-file are mutually exclusive";
+  }
   return {
     slug,
     idea: idea ?? slug,
@@ -704,6 +762,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string | ParseError {
     ...(answersFile !== undefined ? { answersFile } : {}),
     ...(interviewProtocol !== undefined ? { interviewProtocol } : {}),
     ...(effort !== undefined ? { effort } : {}),
+    ...(ideaFile !== undefined ? { ideaFile } : {}),
   };
 }
 
@@ -823,7 +882,7 @@ function interactiveResolvers(): ChoiceResolvers {
   };
 }
 
-async function runNewCommand(rest: readonly string[]) {
+async function runNewCommand(rest: readonly string[], deps: RunCliDeps = {}) {
   const parsed = parseNewArgs(rest);
   if (isParseError(parsed)) {
     return {
@@ -847,7 +906,20 @@ async function runNewCommand(rest: readonly string[]) {
       stderr: `${resolversOrErr}\n\n${USAGE}`,
     };
   }
-  const adapter = leadAdapter(process.cwd());
+  // Resolve --idea-file → idea text here (kept out of parseNewArgs so
+  // parsing stays free of filesystem I/O and remains unit-testable).
+  let effectiveIdea = parsed.idea;
+  if (parsed.ideaFile !== undefined) {
+    const loaded = loadIdeaFile(parsed.ideaFile);
+    if (!loaded.ok) {
+      return { exitCode: 1, stdout: "", stderr: `${loaded.error}\n\n${USAGE}` };
+    }
+    effectiveIdea = loaded.idea;
+  }
+  // Config-driven lead adapter (PR #180), with the PR #179 test-seam
+  // override taking precedence when injected.
+  const effectiveCwd = deps.cwd ?? process.cwd();
+  const adapter = deps.newAdapter ?? leadAdapter(effectiveCwd);
   const jsonlMode = parsed.interviewProtocol === "jsonl";
   // Resolve the lead effort: `--effort` flag > per-seat config > high.
   // In a TTY without a flag/config pin (and not in a non-interactive
@@ -855,7 +927,7 @@ async function runNewCommand(rest: readonly string[]) {
   const stdinIsTty = process.stdin.isTTY === true;
   const nonInteractive = deriveNewNonInteractive(parsed, stdinIsTty);
   const seatEfforts = await resolveSeatEffortsWithPrompt({
-    cwd: process.cwd(),
+    cwd: effectiveCwd,
     ...(parsed.effort !== undefined ? { flagEffort: parsed.effort } : {}),
     stdinIsTty,
     nonInteractive,
@@ -863,9 +935,9 @@ async function runNewCommand(rest: readonly string[]) {
   });
   const result = await runNew(
     {
-      cwd: process.cwd(),
+      cwd: effectiveCwd,
       slug: parsed.slug,
-      idea: parsed.idea,
+      idea: effectiveIdea,
       explain: parsed.explain,
       force: parsed.force,
       verbose: parsed.verbose,

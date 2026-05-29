@@ -112,6 +112,45 @@ export function loadAnswersFile(filePath: string): LoadAnswersResult {
   return { ok: true, answers: answersRaw as readonly string[] };
 }
 
+// ---------- idea-file loader ----------
+
+export type LoadIdeaResult =
+  | { readonly ok: true; readonly idea: string }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * Parse a `--idea-file <path>`: read the file and use its contents as the
+ * idea text. AI agents and CI pipelines pass long, structured ideas that
+ * are awkward and error-prone to quote as a single shell argument; a file
+ * is the UNIX-friendly input channel the CLI design principles call for
+ * (accept input through flags, stdin, files, or environment variables).
+ *
+ * The file must be readable and contain at least one non-whitespace
+ * character. Leading/trailing whitespace is trimmed so an accidental
+ * trailing newline never changes the idea, but internal formatting
+ * (paragraphs, lists, markdown) is preserved verbatim.
+ */
+export function loadIdeaFile(filePath: string): LoadIdeaResult {
+  let raw: string;
+  try {
+    raw = readFileSync(filePath, "utf8");
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return {
+      ok: false,
+      error: `samospec new: --idea-file could not be read: ${filePath} (${reason})`,
+    };
+  }
+  const idea = raw.trim();
+  if (idea.length === 0) {
+    return {
+      ok: false,
+      error: `samospec new: --idea-file is empty (no non-whitespace content): ${filePath}`,
+    };
+  }
+  return { ok: true, idea };
+}
+
 /**
  * Best-effort line extractor for JSON.parse errors. V8 messages look
  * like `... in JSON at position 42 (line 3 column 5)`; older runtimes

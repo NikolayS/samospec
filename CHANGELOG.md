@@ -150,6 +150,12 @@ decisions]` with decisions LAST and truncated by keeping the head, so
   non-TTY (piped/CI) context, which fall back to the flag/config/high
   default.
   New module: `src/adapter/effort.ts`.
+- **`samospec new --idea-file <path>` — read the idea from a file.**
+  Preferred input channel for long, structured ideas from AI agents and
+  CI: no fragile shell-quoting of a multi-paragraph `--idea` argument.
+  Surrounding whitespace is trimmed, internal markdown preserved.
+  Mutually exclusive with `--idea`; empty or unreadable files are clear,
+  tagged-union errors (`loadIdeaFile` in `src/cli/non-interactive.ts`).
 - **`samospec brief <slug>` — summarized HTML brief (heuristic mode).**
   Generates a single self-contained `BRIEF.html` from a published spec
   — a derivative summary, not a 1:1 conversion of `SPEC.md`. Pure
