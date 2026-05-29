@@ -184,6 +184,50 @@ function makeEffortPromptFn(): () => Promise<string> {
   };
 }
 
+/**
+ * Compute whether `samospec new` runs non-interactively (so the effort
+ * prompt — and any other readline prompt — is skipped). The prompt MUST
+ * be skipped under `--interview-protocol jsonl`, `--yes`,
+ * `--accept-persona`, or when stdin is not a TTY (piped / CI). Missing
+ * any one of these (e.g. forgetting jsonl) would reintroduce the #114
+ * class of readline-on-non-TTY crash, so the derivation is extracted and
+ * pinned here. Behaviour-preserving extraction of the inline expression
+ * in {@link runNewCommand}.
+ *
+ * Exported for unit testing the non-interactive seam.
+ */
+export function deriveNewNonInteractive(
+  parsed: {
+    readonly yes: boolean;
+    readonly acceptPersona: boolean;
+    readonly interviewProtocol?: "jsonl";
+  },
+  stdinIsTty: boolean,
+): boolean {
+  const jsonlMode = parsed.interviewProtocol === "jsonl";
+  return jsonlMode || parsed.yes || parsed.acceptPersona || !stdinIsTty;
+}
+
+/**
+ * Compute whether `samospec iterate` runs non-interactively. Unlike
+ * `new`, iterate has NO persona/jsonl interview surface, so its
+ * non-interactive set is intentionally narrower: only `--yes` or a
+ * non-TTY stdin suppress the effort prompt. This asymmetry with
+ * {@link deriveNewNonInteractive} is deliberate; the function is
+ * extracted so a future drift (e.g. accidentally folding in
+ * `acceptPersona`, which iterate doesn't even parse) is caught by a
+ * test. Behaviour-preserving extraction of the inline expression in
+ * {@link runIterateCommand}.
+ *
+ * Exported for unit testing the non-interactive seam.
+ */
+export function deriveIterateNonInteractive(
+  parsed: { readonly yes: boolean },
+  stdinIsTty: boolean,
+): boolean {
+  return parsed.yes || !stdinIsTty;
+}
+
 const VERSION_FLAGS: ReadonlySet<string> = new Set([
   "version",
   "-v",
@@ -809,8 +853,7 @@ async function runNewCommand(rest: readonly string[]) {
   // In a TTY without a flag/config pin (and not in a non-interactive
   // run), prompt the user once with a depth/speed tradeoff explanation.
   const stdinIsTty = process.stdin.isTTY === true;
-  const nonInteractive =
-    jsonlMode || parsed.yes || parsed.acceptPersona || !stdinIsTty;
+  const nonInteractive = deriveNewNonInteractive(parsed, stdinIsTty);
   const seatEfforts = await resolveSeatEffortsWithPrompt({
     cwd: process.cwd(),
     ...(parsed.effort !== undefined ? { flagEffort: parsed.effort } : {}),
@@ -1528,7 +1571,7 @@ async function runIterateCommand(rest: readonly string[]) {
   // the user once with a depth/speed tradeoff explanation; the choice
   // overrides every seat uniformly.
   const stdinIsTty = process.stdin.isTTY === true;
-  const nonInteractive = parsed.yes || !stdinIsTty;
+  const nonInteractive = deriveIterateNonInteractive(parsed, stdinIsTty);
   const seatEfforts = await resolveSeatEffortsWithPrompt({
     cwd: process.cwd(),
     ...(parsed.effort !== undefined ? { flagEffort: parsed.effort } : {}),

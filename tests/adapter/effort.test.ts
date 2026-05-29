@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  EFFORT_LADDER,
   EFFORT_PROMPT_CHOOSE,
   EFFORT_PROMPT_INTRO,
   UNIFIED_DEFAULT_EFFORT,
@@ -25,6 +26,7 @@ import {
   resolvePromptedEffort,
   resolveSeatEffort,
 } from "../../src/adapter/effort.ts";
+import { EffortLevelSchema } from "../../src/adapter/types.ts";
 
 function tmpRepo(): string {
   return mkdtempSync(join(tmpdir(), "samospec-effort-"));
@@ -73,6 +75,25 @@ describe("parseEffortFlag", () => {
 
   test("rejects empty value", () => {
     const r = parseEffortFlag("");
+    expect(r.ok).toBe(false);
+  });
+
+  test("rejects an all-whitespace value (distinct from truly empty)", () => {
+    // trim() is the only normalization, so an all-spaces value collapses
+    // to "" and must be rejected just like the empty string — but with
+    // the ORIGINAL raw echoed back in the message, not the trimmed form.
+    const r = parseEffortFlag("   ");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain("--effort must be one of");
+  });
+
+  test("rejects a newline-only value", () => {
+    const r = parseEffortFlag("\n");
+    expect(r.ok).toBe(false);
+  });
+
+  test("rejects a tab-only value", () => {
+    const r = parseEffortFlag("\t");
     expect(r.ok).toBe(false);
   });
 
@@ -227,5 +248,52 @@ describe("interactive prompt copy", () => {
 
   test("resolvePromptedEffort: unknown -> medium default (lenient)", () => {
     expect(resolvePromptedEffort("turbo")).toBe("medium");
+  });
+});
+
+describe("EFFORT_LADDER / prompt copy ↔ EffortLevelSchema consistency", () => {
+  const ENUM_LEVELS = EffortLevelSchema.options;
+
+  test("EFFORT_LADDER contains exactly the EffortLevelSchema levels (no drift)", () => {
+    // If a level were added to / removed from the schema, the ladder
+    // (which drives the usage message + parse-error text) must move with
+    // it. Compare as sets so ordering — deepest→fastest — is free to
+    // differ from the schema's declaration order.
+    expect([...EFFORT_LADDER].sort()).toEqual([...ENUM_LEVELS].sort());
+  });
+
+  test("EFFORT_PROMPT_INTRO lists a line for EVERY schema level", () => {
+    // Iterate the enum rather than hard-coding literals, so a new level
+    // missing from the prompt copy is caught here.
+    for (const level of ENUM_LEVELS) {
+      expect(EFFORT_PROMPT_INTRO).toContain(level);
+    }
+  });
+
+  test("EFFORT_PROMPT_INTRO carries a rough ETA line for EVERY schema level", () => {
+    // Each level's intro line ends with a `~<n>-<m> min/round` ETA. Pin
+    // the shape per level so adding a level without an ETA fails.
+    for (const level of ENUM_LEVELS) {
+      const re = new RegExp(`${level}\\b.*~\\d+-\\d+ min/round`);
+      expect(EFFORT_PROMPT_INTRO).toMatch(re);
+    }
+  });
+
+  test("EFFORT_PROMPT_CHOOSE advertises every schema level in its choose list", () => {
+    for (const level of ENUM_LEVELS) {
+      expect(EFFORT_PROMPT_CHOOSE).toContain(level);
+    }
+  });
+
+  test("the parse-error message names every schema level", () => {
+    // The error text is built from EFFORT_LADDER.join("|"); assert each
+    // schema level shows up so the user always sees the full valid set.
+    const r = parseEffortFlag("definitely-not-a-level");
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      for (const level of ENUM_LEVELS) {
+        expect(r.error).toContain(level);
+      }
+    }
   });
 });
