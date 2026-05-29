@@ -76,7 +76,7 @@ All new code lands as: **failing test → minimum green → refactor**. Specific
 
 ## Model policy (reminder)
 
-Lead and reviewers run on the **strongest, latest model from each vendor** — that part of the thesis is fixed. Reasoning **effort defaults to `high`** (deep, strong review out of the box). Change it explicitly with **`--effort <max|high|medium|low|off>`** (or per-seat `adapters.<seat>.effort` in config): `--effort max` for the deepest review, lower levels to trade depth for speed. In an interactive terminal with no flag/config pin, samospec prompts once for the level with per-level ETAs. See SPEC §11.
+Lead and reviewers run on the **strongest, latest model from each vendor** — that part of the thesis is fixed. Reasoning **effort defaults to `high`** (deep, strong review out of the box). Change it explicitly with **`--effort <max|high|medium|low|off>`** (or per-seat `adapters.<seat>.effort` in config): `--effort max` for the deepest review, lower levels to trade depth for speed. In an interactive terminal with no flag/config pin, samospec prompts once for the level with per-level ETAs. See SPEC §11. The `--effort` flag is passed to every `claude` work-call spawn, so the Claude CLI must be **≥ v2.1.0** (`CLAUDE_MIN_EFFORT_VERSION`); `samospec doctor` WARNs when the installed `claude` predates it.
 
 ## PR workflow
 

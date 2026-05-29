@@ -94,6 +94,40 @@ const EFFORT_TO_CLAUDE_FLAG: Readonly<Record<EffortLevel, string>> = {
   off: "low",
 };
 
+/**
+ * Minimum Claude CLI version that supports the `--effort` flag (added in
+ * v2.1.x — confirmed via `claude --help`). Older CLIs reject the flag and
+ * every spawned call fails. samospec appends `--effort` on every work
+ * call, so `samospec doctor` warns when the installed CLI predates this
+ * (samospec #180 FIX 5). Single source of truth shared with the doctor
+ * check.
+ */
+export const CLAUDE_MIN_EFFORT_VERSION = "2.1.0" as const;
+
+/**
+ * Returns true when `version` (a parsed `claude --version` string such as
+ * "2.1.156") is at or above {@link CLAUDE_MIN_EFFORT_VERSION}. Unknown /
+ * unparseable versions return `true` (don't cry wolf on odd output — the
+ * availability check already surfaces an unrecognized CLI).
+ */
+export function claudeSupportsEffortFlag(version: string): boolean {
+  const parse = (v: string): number[] | null => {
+    const m = /(\d+)\.(\d+)(?:\.(\d+))?/.exec(v);
+    if (m === null) return null;
+    return [Number(m[1]), Number(m[2]), Number(m[3] ?? "0")];
+  };
+  const have = parse(version);
+  const min = parse(CLAUDE_MIN_EFFORT_VERSION);
+  if (have === null || min === null) return true; // unknown → don't warn.
+  for (let i = 0; i < 3; i += 1) {
+    const h = have[i] ?? 0;
+    const m = min[i] ?? 0;
+    if (h > m) return true;
+    if (h < m) return false;
+  }
+  return true; // equal.
+}
+
 // ---------- adapter options / dependency injection ----------
 
 export type SpawnFn = typeof spawnCli;

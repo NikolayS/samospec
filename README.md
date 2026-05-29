@@ -100,7 +100,7 @@ Every spec also ships a machine-readable `.samo/spec/<slug>/architecture.json` (
 
 The CLI shells out to the vendor CLIs you already use. OAuth-based sessions are the **primary** auth mode — API keys are an alternative:
 
-- **Claude Code** — `claude /login` once in a terminal; samospec inherits the session for `claude --print` calls. Or `export ANTHROPIC_API_KEY=sk-ant-...`.
+- **Claude Code** — `claude /login` once in a terminal; samospec inherits the session for `claude --print` calls. Or `export ANTHROPIC_API_KEY=sk-ant-...`. **Requires `claude` ≥ v2.1.0** (samospec passes `--effort` on every call; older CLIs reject the flag). `samospec doctor` WARNs if your `claude` predates it.
 - **Codex** — `codex auth` (ChatGPT subscription account works); samospec handles the pinned-model fallback when your account default differs. Or `export OPENAI_API_KEY=sk-...`.
 
 ```bash
