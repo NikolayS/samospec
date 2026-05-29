@@ -327,6 +327,70 @@ describe("loop/round — helpers", () => {
     expect(recovered?.summary).toBe("two findings in total");
   });
 
+  // recoverCritiqueFromFile negative paths. These feed a PAID lead revise
+  // on the resumable-reviews resume path, so a silent mis-parse (e.g.
+  // returning a partial object) would be costly. The round-trip test above
+  // only proves the happy path; these lock down the failure modes that
+  // MUST return null rather than a partial/garbage CritiqueOutput.
+  test("recoverCritiqueFromFile returns null for a missing file", () => {
+    expect(recoverCritiqueFromFile(path.join(tmp, "does-not-exist.md"))).toBe(
+      null,
+    );
+  });
+
+  test("recoverCritiqueFromFile returns null when the v1 trailer is absent", () => {
+    const file = path.join(tmp, "no-trailer.md");
+    // Plausible critique prose, but no `<!-- samospec:critique v1 -->`.
+    writeFileSync(
+      file,
+      "# Reviewer A — Codex\n\n## summary\n\nlooks fine\n",
+      "utf8",
+    );
+    expect(recoverCritiqueFromFile(file)).toBe(null);
+  });
+
+  test("recoverCritiqueFromFile returns null when the end marker is missing (truncated)", () => {
+    const file = path.join(tmp, "truncated.md");
+    // Start marker present + valid JSON, but the run was killed before the
+    // closing `<!-- samospec:critique end -->` marker was written.
+    writeFileSync(
+      file,
+      "# Reviewer A — Codex\n\n<!-- samospec:critique v1 -->\n" +
+        JSON.stringify({
+          findings: [],
+          summary: "partial write",
+          suggested_next_version: "0.2",
+          usage: null,
+          effort_used: "max",
+        }),
+      "utf8",
+    );
+    expect(recoverCritiqueFromFile(file)).toBe(null);
+  });
+
+  test("recoverCritiqueFromFile returns null when JSON between the markers is malformed", () => {
+    const file = path.join(tmp, "malformed-json.md");
+    writeFileSync(
+      file,
+      "# Reviewer A — Codex\n\n<!-- samospec:critique v1 -->\n" +
+        "{ findings: [ this is not valid json ,,, \n" +
+        "<!-- samospec:critique end -->\n",
+      "utf8",
+    );
+    expect(recoverCritiqueFromFile(file)).toBe(null);
+  });
+
+  test("recoverCritiqueFromFile returns null when end marker precedes start marker", () => {
+    const file = path.join(tmp, "reversed-markers.md");
+    // `end` appears before `v1` — `end <= start` guard must reject it.
+    writeFileSync(
+      file,
+      "<!-- samospec:critique end -->\n{}\n<!-- samospec:critique v1 -->\n",
+      "utf8",
+    );
+    expect(recoverCritiqueFromFile(file)).toBe(null);
+  });
+
   test("extractDecisions reads JSON rationale", () => {
     const ds = extractDecisions(
       JSON.stringify([

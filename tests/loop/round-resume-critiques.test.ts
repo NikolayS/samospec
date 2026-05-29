@@ -16,7 +16,13 @@
 //      lead's revise() reviews argument.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -211,5 +217,158 @@ describe("resumable reviews — reuse persisted critiques without re-running rev
       adapters: { lead, reviewerA: revA, reviewerB: revB },
     });
     expect(outcome.roundStopReason).toBe("ok");
+  });
+});
+
+// ---------- partial-seat reuse ----------
+
+// loadPersistedCritiques explicitly supports one recoverable seat + one
+// absent (returns the absent seat as null). On the reuse path, runRound's
+// reuseCritique() maps an `undefined` seat to a 'failed' SeatOutcome with
+// errorDetail reason 'unknown'. The existing reuse test only covers
+// both-seats-present; these lock down the partial path end-to-end.
+
+function seedOnlySeatA(dir: ReturnType<typeof roundDirsFor>): void {
+  mkdirSync(dir.roundDir, { recursive: true });
+  writeFileSync(
+    dir.codexPath,
+    renderCritiqueMarkdown(CRIT_A, "reviewer_a"),
+    "utf8",
+  );
+  // NOTE: claude.md intentionally NOT written.
+}
+
+/** Lead that succeeds on the first revise() and records what it saw. */
+function recordingLead(): {
+  adapter: Adapter;
+  reviseCalls: () => number;
+  lastReviews: () => readonly CritiqueOutput[];
+} {
+  let calls = 0;
+  let captured: readonly CritiqueOutput[] = [];
+  const adapter: Adapter = {
+    ...createFakeAdapter({}),
+    revise: (input: ReviseInput): Promise<ReviseOutput> => {
+      calls += 1;
+      captured = input.reviews;
+      return Promise.resolve(READY_REVISE);
+    },
+  };
+  return {
+    adapter,
+    reviseCalls: () => calls,
+    lastReviews: () => captured,
+  };
+}
+
+describe("resumable reviews — partial-seat reuse (one seat absent)", () => {
+  test("loadPersistedCritiques returns {reviewer_a: <crit>, reviewer_b: null} when only codex.md present", () => {
+    const dirs = roundDirsFor(tmp, 5);
+    seedOnlySeatA(dirs);
+    const loaded = loadPersistedCritiques(dirs);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.reviewer_a?.summary).toBe("reviewer A summary");
+    expect(loaded?.reviewer_b).toBeNull();
+  });
+
+  test("runRound revises with one reused critique, marks round 'partial', missing seat 'failed', reviewers SKIPPED", async () => {
+    const dirs = roundDirsFor(tmp, 6);
+    seedOnlySeatA(dirs);
+    const reused = loadPersistedCritiques(dirs);
+    expect(reused).not.toBeNull();
+    if (reused === null) return;
+
+    const { adapter: lead, reviseCalls, lastReviews } = recordingLead();
+    // BOTH reviewers explode: the reuse path must not invoke either, even
+    // though reviewer_b is absent (a failed seat would normally trigger
+    // the whole-round reviewer retry — that retry must be skipped here).
+    const revA = explodingReviewer();
+    const revB = explodingReviewer();
+
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 6,
+      dirs,
+      specText: "# SPEC v0.1\n\noriginal",
+      decisionsHistory: [],
+      adapters: { lead, reviewerA: revA, reviewerB: revB },
+      reusedCritiques: {
+        ...(reused.reviewer_a !== null
+          ? { reviewer_a: reused.reviewer_a }
+          : {}),
+        // reviewer_b deliberately omitted (absent on disk).
+      },
+    });
+
+    // Lead revised exactly once with ONLY the surviving critique.
+    expect(outcome.roundStopReason).toBe("ok");
+    expect(reviseCalls()).toBe(1);
+    expect(lastReviews().length).toBe(1);
+    expect(lastReviews()[0]?.summary).toBe("reviewer A summary");
+
+    // Surviving seat ok; missing seat failed with the reuse reason.
+    expect(outcome.seats.reviewer_a.state).toBe("ok");
+    expect(outcome.seats.reviewer_b.state).toBe("failed");
+    expect(outcome.seats.reviewer_b.errorDetail?.reason).toBe("unknown");
+    expect(outcome.seats.reviewer_b.errorDetail?.message).toContain(
+      "no persisted critique to reuse",
+    );
+
+    // The reviewer whole-round retry must NOT have run on the reuse path.
+    expect(outcome.reviewersRetried).toBe(false);
+
+    // round.json is 'partial' (one seat ok, one failed) — not 'complete'.
+    const sidecar = readRoundJson(dirs.roundJson);
+    expect(sidecar?.status).toBe("partial");
+    expect(sidecar?.seats.reviewer_a).toBe("ok");
+    expect(sidecar?.seats.reviewer_b).not.toBe("ok");
+  });
+});
+
+// ---------- persisted-artifact idempotency on the reuse path ----------
+
+// On the reuse path a reused 'ok' seat still carries its critique, so
+// persistSeatResults re-writes codex.md / claude.md. Because
+// renderCritiqueMarkdown is deterministic the rewrite is byte-identical;
+// this test locks that idempotency down so a future change to the writer
+// can't silently corrupt the very artifacts the resume depends on.
+describe("resumable reviews — persisted critique files are byte-identical after a reuse-resume", () => {
+  test("codex.md / claude.md are unchanged on disk after a successful reuse", async () => {
+    const dirs = roundDirsFor(tmp, 7);
+    seedPersistedCritiques(dirs);
+    const beforeCodex = readFileSync(dirs.codexPath, "utf8");
+    const beforeClaude = readFileSync(dirs.claudePath, "utf8");
+
+    const reused = loadPersistedCritiques(dirs);
+    expect(reused).not.toBeNull();
+    if (reused === null) return;
+
+    const { adapter: lead } = recordingLead();
+    const outcome = await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 7,
+      dirs,
+      specText: "# SPEC v0.1\n\noriginal",
+      decisionsHistory: [],
+      // Reviewers must never run on reuse.
+      adapters: {
+        lead,
+        reviewerA: explodingReviewer(),
+        reviewerB: explodingReviewer(),
+      },
+      reusedCritiques: {
+        ...(reused.reviewer_a !== null
+          ? { reviewer_a: reused.reviewer_a }
+          : {}),
+        ...(reused.reviewer_b !== null
+          ? { reviewer_b: reused.reviewer_b }
+          : {}),
+      },
+    });
+    expect(outcome.roundStopReason).toBe("ok");
+
+    // The on-disk artifacts are byte-for-byte unchanged.
+    expect(readFileSync(dirs.codexPath, "utf8")).toBe(beforeCodex);
+    expect(readFileSync(dirs.claudePath, "utf8")).toBe(beforeClaude);
   });
 });
