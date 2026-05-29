@@ -95,13 +95,16 @@ const CODEX_BINARY_NAME = "codex";
 const CODEX_AUTH_ENV_KEYS: readonly string[] = ["OPENAI_API_KEY"];
 
 // SPEC §11 pinned model + fallback chain. First entry is the default;
-// subsequent entries form the ordered fallback chain.
+// subsequent entries form the ordered fallback chain. Latest-model
+// refresh (samospec robustness pass): gpt-5.5 is the newest top model,
+// prepended ahead of the prior gpt-5.4 pin.
 const DEFAULT_MODELS: readonly ModelInfo[] = [
+  { id: "gpt-5.5", family: "codex" },
   { id: "gpt-5.4", family: "codex" },
   { id: "gpt-5.3-codex", family: "codex" },
 ];
 
-const DEFAULT_MODEL_ID = "gpt-5.4";
+const DEFAULT_MODEL_ID = "gpt-5.5";
 
 // Sentinel value appended to the runtime fallback chain to represent
 // the account-default tier: codex is invoked with --model omitted so
@@ -222,8 +225,24 @@ export class CodexAdapter implements Adapter {
       opts.host ?? (process.env as Record<string, string | undefined>);
     this.spawnFn = opts.spawn ?? spawnCli;
     this.modelList = opts.models ?? DEFAULT_MODELS;
-    this.defaultModel = opts.defaultModel ?? DEFAULT_MODEL_ID;
+    // `defaultModel` precedence: explicit opt > head of the supplied
+    // `models` list > pinned DEFAULT_MODEL_ID. Deriving from the supplied
+    // list (rather than the global default) keeps a caller-injected
+    // single-model list from getting the global pin prepended ahead of
+    // it — which would silently add an extra fallback spawn.
+    this.defaultModel =
+      opts.defaultModel ?? opts.models?.[0]?.id ?? DEFAULT_MODEL_ID;
     this.accountDefaultFallback = opts.accountDefaultFallback ?? true;
+  }
+
+  /**
+   * The model id this adapter pins first (the head of its runtime
+   * fallback chain). Mirrors {@link ClaudeAdapter.currentModelId} so the
+   * config-driven factory can assert which model a configured adapter
+   * resolved. Exposed for tests + state snapshotting.
+   */
+  currentModelId(): string {
+    return this.defaultModel;
   }
 
   // ---------- lifecycle ----------

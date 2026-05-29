@@ -48,6 +48,65 @@ import { specSlugDirRelPosix } from "../paths.ts";
 /** The single canonical committed-spec filename we special-case. */
 export const SPEC_FILE_BASENAME = "SPEC.md";
 
+/**
+ * Basenames of the bookkeeping artifacts samospec writes itself during a
+ * run (state, tldr, decisions, changelog, architecture, interview). These
+ * are NOT user content: between rounds samospec churns them (e.g. the
+ * post-commit `state.json` head_sha rewrite), which is not a "manual
+ * edit". Used by the non-TTY iterate guard (FIX 5) to auto-incorporate
+ * samospec's own artifact churn instead of dead-ending on
+ * "Pass --on-dirty". Comparison is case-insensitive (`TLDR.md`/`tldr.md`).
+ */
+const SAMOSPEC_MANAGED_BASENAMES: ReadonlySet<string> = new Set(
+  [
+    "state.json",
+    "tldr.md",
+    "decisions.md",
+    "changelog.md",
+    "architecture.json",
+    "interview.json",
+  ].map((n) => n.toLowerCase()),
+);
+
+/**
+ * True when `relPath` (repo-relative, POSIX, as emitted by
+ * `git status --porcelain`) is one of samospec's own managed artifacts
+ * for `slug`: a known bookkeeping basename directly under the spec dir,
+ * or anything under the spec dir's `reviews/` subtree (round.json,
+ * codex.md, claude.md, …). `SPEC.md` is deliberately NOT managed — it is
+ * the user-facing artifact and always counts as a manual edit.
+ */
+export function isSamospecManagedArtifact(
+  relPath: string,
+  slugDirRelPosix: string,
+): boolean {
+  const prefix = slugDirRelPosix.endsWith("/")
+    ? slugDirRelPosix
+    : `${slugDirRelPosix}/`;
+  if (!relPath.startsWith(prefix)) return false;
+  const within = relPath.slice(prefix.length);
+  if (within.length === 0) return false;
+  // Anything under the round-artifact subtree is samospec-managed.
+  if (within.startsWith("reviews/")) return true;
+  // Top-level bookkeeping files (no nested dir) by basename.
+  if (within.includes("/")) return false;
+  return SAMOSPEC_MANAGED_BASENAMES.has(within.toLowerCase());
+}
+
+/**
+ * True when EVERY path in `files` is a samospec-managed artifact for
+ * `slug` (and there is at least one). The non-TTY iterate guard uses this
+ * to decide it can safely auto-incorporate samospec's own round-artifact
+ * churn without prompting — there is no genuine user edit to protect.
+ */
+export function allFilesAreSamospecManaged(
+  files: readonly string[],
+  slugDirRelPosix: string,
+): boolean {
+  if (files.length === 0) return false;
+  return files.every((f) => isSamospecManagedArtifact(f, slugDirRelPosix));
+}
+
 /** The lead-directive preamble and suffix — verbatim per SPEC §7. */
 export const LEAD_DIRECTIVE_PREAMBLE = "The user has manually edited sections";
 export const LEAD_DIRECTIVE_SUFFIX =

@@ -276,6 +276,13 @@ describe("CLI wall-clock kill removed (samo.team #415 + #424)", () => {
       sessionStartedAtMs: 0,
       nowMs: 0,
       maxWallClockMs: 60 * 60 * 1000,
+      // Pin per-call timeouts so the pre-round budget gate lets the round
+      // start (the hanging call is what this test observes).
+      callTimeouts: {
+        criticA_ms: 300_000,
+        criticB_ms: 300_000,
+        revise_ms: 600_000,
+      },
     });
 
     const outcome = await raceDeadline(runPromise, capMs * 3 + 500);

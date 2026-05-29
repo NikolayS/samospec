@@ -111,17 +111,18 @@ describe("CodexAdapter effort-level mapping (SPEC §11 table)", () => {
 });
 
 describe("CodexAdapter fallback-chain ordering (SPEC §11)", () => {
-  test("default chain is gpt-5.4 first, gpt-5.3-codex second", async () => {
+  test("default chain is gpt-5.5 first, gpt-5.4 second, gpt-5.3-codex third", async () => {
     // Rejecting every attempt with model-not-available forces the
     // adapter to walk the chain; the spawn cmds capture the order.
-    // accountDefaultFallback: false so we isolate the two-model chain.
+    // accountDefaultFallback: false so we isolate the explicit chain.
+    // Latest-model refresh: chain is now gpt-5.5 -> gpt-5.4 -> gpt-5.3-codex.
     const reject: SpawnCliResult = {
       ok: true,
       exitCode: 2,
       stdout: "",
       stderr: "error: model is not available for this account\n",
     };
-    const spy = scriptedSpy([reject, reject]);
+    const spy = scriptedSpy([reject, reject, reject]);
     const { dir } = makeFakeBinaryDir();
     const adapter = new CodexAdapter({
       host: { PATH: dir, HOME: "/tmp", ...FAKE_API_HOST },
@@ -133,12 +134,15 @@ describe("CodexAdapter fallback-chain ordering (SPEC §11)", () => {
       /* expected terminal */
     });
 
-    expect(spy.calls.length).toBe(2);
+    expect(spy.calls.length).toBe(3);
     const first = spy.calls[0]?.cmd ?? [];
     const second = spy.calls[1]?.cmd ?? [];
-    expect(first).toContain("gpt-5.4");
-    expect(second).toContain("gpt-5.3-codex");
-    expect(second).not.toContain("gpt-5.4");
+    const third = spy.calls[2]?.cmd ?? [];
+    expect(first).toContain("gpt-5.5");
+    expect(second).toContain("gpt-5.4");
+    expect(second).not.toContain("gpt-5.5");
+    expect(third).toContain("gpt-5.3-codex");
+    expect(third).not.toContain("gpt-5.4");
   });
 
   test("custom model list is respected in order, default still leads", async () => {

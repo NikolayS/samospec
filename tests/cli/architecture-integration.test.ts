@@ -282,6 +282,11 @@ describe("samospec iterate — architecture block re-render (#107)", () => {
       sessionStartedAtMs: 0,
       nowMs: 0,
       maxWallClockMs: 60 * 60 * 1000,
+      callTimeouts: {
+        criticA_ms: 300_000,
+        criticB_ms: 300_000,
+        revise_ms: 600_000,
+      },
     });
     const spec = readFileSync(path.join(slugDir, "SPEC.md"), "utf8");
     expect(spec).toContain("<!-- architecture:begin -->");

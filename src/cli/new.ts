@@ -30,7 +30,7 @@ import path from "node:path";
 import { archiveSlugDir } from "./archive.ts";
 import { specSlugDir } from "../paths.ts";
 
-import { CodexAdapter } from "../adapter/codex.ts";
+import { buildReviewLoopAdaptersFromConfig } from "../adapter/from-config.ts";
 import type { Adapter } from "../adapter/types.ts";
 import { discoverContext } from "../context/discover.ts";
 import { contextJsonPath } from "../context/provenance.ts";
@@ -170,8 +170,8 @@ export interface RunNewInput {
   /**
    * Test seam: inject a pre-built reviewer_a adapter so that
    * resolveSubscriptionAuth can be controlled in tests without spawning
-   * a real codex binary. Production code omits this and uses
-   * `new CodexAdapter()`.
+   * a real codex binary. Production code omits this and uses the
+   * config-driven reviewer-A adapter (`adapters.reviewer_a` pin).
    */
   readonly reviewerAAdapter?: Adapter;
   /**
@@ -296,8 +296,11 @@ export async function runNew(
 
   try {
     // Preflight cost estimate (SPEC §5 Phase 1 + §11).
+    // Config-driven (FIX 1): the preflight reviewer-A estimate uses the
+    // configured `adapters.reviewer_a` pin, not the hardcoded codex default.
     const reviewerAAdapter: Adapter =
-      input.reviewerAAdapter ?? new CodexAdapter();
+      input.reviewerAAdapter ??
+      buildReviewLoopAdaptersFromConfig(input.cwd).reviewerA;
     const [leadSubAuth, reviewerASubAuth] = await Promise.all([
       resolveSubscriptionAuth(adapter),
       resolveSubscriptionAuth(reviewerAAdapter),

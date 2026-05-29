@@ -53,9 +53,19 @@ import type { DegradedResult } from "./degradation.ts";
 
 // ---------- constants ----------
 
-/** SPEC §7 per-call default timeouts. */
-export const CRITIQUE_TIMEOUT_MS = 300_000 as const;
-export const REVISE_TIMEOUT_MS = 600_000 as const;
+/**
+ * SPEC §7 per-call default timeouts.
+ *
+ * Raised (samospec robustness pass): the previous defaults (300s critique /
+ * 600s revise) routinely preempted active lead revises and reviewer
+ * critiques mid-flight at max effort, dead-ending the round at
+ * `lead_terminal`. The new defaults (900s critique / 1800s revise) give a
+ * max-effort lead enough wall-clock to finish. Per-call overrides
+ * (`budget.max_critique_call_ms` / `budget.max_revise_call_ms` in
+ * `.samo/config.json`, or `input.callTimeouts`) still take precedence.
+ */
+export const CRITIQUE_TIMEOUT_MS = 900_000 as const;
+export const REVISE_TIMEOUT_MS = 1_800_000 as const;
 
 /**
  * Issue #92 — terminal error thrown when the lead's `revise()` call
@@ -227,6 +237,19 @@ export interface RunRoundInput {
    * which use the configured timeout directly.
    */
   readonly remainingSessionMsFn?: () => number;
+  /**
+   * Resumable reviews (samospec robustness pass). When supplied, the
+   * reviewer fan-out is SKIPPED entirely and these pre-collected
+   * critiques (recovered from a prior round's persisted `codex.md` /
+   * `claude.md` via {@link loadPersistedCritiques}) are fed straight into
+   * the lead's revise(). Used to retry a `lead_terminal` round's revise
+   * without re-running — and re-paying for — the reviewers. A seat whose
+   * value is `undefined` is treated as failed/absent for that round.
+   */
+  readonly reusedCritiques?: {
+    readonly reviewer_a?: CritiqueOutput;
+    readonly reviewer_b?: CritiqueOutput;
+  };
 }
 
 export type RoundStopReason =
@@ -405,6 +428,37 @@ export function recoverCritiqueFromFile(file: string): CritiqueOutput | null {
   }
 }
 
+/**
+ * Critiques recovered from a round's persisted `codex.md` (reviewer A)
+ * and `claude.md` (reviewer B). Either seat may be absent if its file is
+ * missing or unparseable.
+ */
+export interface PersistedCritiques {
+  readonly reviewer_a: CritiqueOutput | null;
+  readonly reviewer_b: CritiqueOutput | null;
+}
+
+/**
+ * Resumable reviews (samospec robustness pass).
+ *
+ * When a round previously reached `lead_terminal` (the lead's revise()
+ * timed out) the reviewer critiques are already on disk. Recover them so
+ * the round can RETRY the lead revise WITHOUT re-invoking the reviewers.
+ *
+ * Returns `null` when NEITHER seat's critique can be recovered — the
+ * caller should then fall back to a fresh round (run the reviewers
+ * again). When at least one seat is recoverable, returns an object whose
+ * absent seats are `null`.
+ */
+export function loadPersistedCritiques(
+  dirs: RoundDirs,
+): PersistedCritiques | null {
+  const a = recoverCritiqueFromFile(dirs.codexPath);
+  const b = recoverCritiqueFromFile(dirs.claudePath);
+  if (a === null && b === null) return null;
+  return { reviewer_a: a, reviewer_b: b };
+}
+
 // ---------- round.json helpers ----------
 
 /**
@@ -495,17 +549,49 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
   // Transition to running.
   writeRoundJson(dirs.roundJson, { ...initial, status: "running" });
 
+  // Resumable reviews (samospec robustness pass): when pre-collected
+  // critiques are supplied, SKIP the reviewer fan-out entirely and build
+  // the seat outcomes directly. This retries a `lead_terminal` round's
+  // revise without re-running — or re-paying for — the reviewers.
+  const reuseCritique = (
+    seat: ReviewerSeat,
+    critique: CritiqueOutput | undefined,
+  ): SeatOutcome =>
+    critique !== undefined
+      ? { seat, state: "ok", critique }
+      : {
+          seat,
+          state: "failed",
+          error: "no persisted critique to reuse",
+          errorDetail: {
+            reason: "unknown",
+            message: "no persisted critique to reuse",
+          },
+        };
+
   // First attempt.
-  const attempt1 = await runReviewersParallel({
-    specText: input.specText,
-    adapters,
-    critiqueTimeoutMs: critiqueTimeout,
-    guidelinesA: input.guidelinesA ?? "",
-    guidelinesB: input.guidelinesB ?? "",
-    ...(input.signal !== undefined ? { signal: input.signal } : {}),
-    // #85: thread idea to Reviewer B for contradiction detection.
-    ...(input.idea !== undefined ? { idea: input.idea } : {}),
-  });
+  const attempt1 =
+    input.reusedCritiques !== undefined
+      ? {
+          reviewerA: reuseCritique(
+            "reviewer_a",
+            input.reusedCritiques.reviewer_a,
+          ),
+          reviewerB: reuseCritique(
+            "reviewer_b",
+            input.reusedCritiques.reviewer_b,
+          ),
+        }
+      : await runReviewersParallel({
+          specText: input.specText,
+          adapters,
+          critiqueTimeoutMs: critiqueTimeout,
+          guidelinesA: input.guidelinesA ?? "",
+          guidelinesB: input.guidelinesB ?? "",
+          ...(input.signal !== undefined ? { signal: input.signal } : {}),
+          // #85: thread idea to Reviewer B for contradiction detection.
+          ...(input.idea !== undefined ? { idea: input.idea } : {}),
+        });
 
   // Persist seats + critique files atomically.
   persistSeatResults(dirs, attempt1);
@@ -518,8 +604,15 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
   let reviseRetried = false;
   let seatA = attempt1.reviewerA;
   let seatB = attempt1.reviewerB;
-  if (seatA.state !== "ok" && seatB.state !== "ok") {
-    // Both failed — retry whole round once (SPEC §7).
+  if (
+    seatA.state !== "ok" &&
+    seatB.state !== "ok" &&
+    input.reusedCritiques === undefined
+  ) {
+    // Both failed — retry whole round once (SPEC §7). Skipped when reusing
+    // persisted critiques: there are no reviewers to re-run, so a fresh
+    // round is the caller's responsibility (loadPersistedCritiques already
+    // guarantees at least one recoverable seat for the reuse path).
     reviewersRetried = true;
     const attempt2 = await runReviewersParallel({
       specText: input.specText,
@@ -684,19 +777,25 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
     // Re-run reviewers + revise. On a retry attempt we re-use the
     // original spec text; critique outputs may differ vs. the first
     // attempt but the round semantics stay the same.
+    //
+    // Resumable reviews: when reusing persisted critiques, the retry must
+    // ALSO reuse them rather than re-invoking (and re-paying for) the
+    // reviewers — the whole point is to retry only the lead's revise.
     reviseRetried = true;
-    const retryReviewers = await runReviewersParallel({
-      specText: input.specText,
-      adapters,
-      critiqueTimeoutMs: critiqueTimeout,
-      guidelinesA: input.guidelinesA ?? "",
-      guidelinesB: input.guidelinesB ?? "",
-      ...(input.signal !== undefined ? { signal: input.signal } : {}),
-      ...(input.idea !== undefined ? { idea: input.idea } : {}),
-    });
-    persistSeatResults(dirs, retryReviewers);
-    seatA = retryReviewers.reviewerA;
-    seatB = retryReviewers.reviewerB;
+    if (input.reusedCritiques === undefined) {
+      const retryReviewers = await runReviewersParallel({
+        specText: input.specText,
+        adapters,
+        critiqueTimeoutMs: critiqueTimeout,
+        guidelinesA: input.guidelinesA ?? "",
+        guidelinesB: input.guidelinesB ?? "",
+        ...(input.signal !== undefined ? { signal: input.signal } : {}),
+        ...(input.idea !== undefined ? { idea: input.idea } : {}),
+      });
+      persistSeatResults(dirs, retryReviewers);
+      seatA = retryReviewers.reviewerA;
+      seatB = retryReviewers.reviewerB;
+    }
 
     // Rebuild reviews list after retry (seat status may have shifted).
     const retryReviewsForLead: CritiqueOutput[] = [];

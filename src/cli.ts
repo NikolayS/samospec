@@ -7,9 +7,11 @@ import * as readline from "node:readline/promises";
 import path from "node:path";
 
 import { ClaudeAdapter } from "./adapter/claude.ts";
-import { ClaudeResolver } from "./adapter/claude-resolver.ts";
-import { ClaudeReviewerBAdapter } from "./adapter/claude-reviewer-b.ts";
 import { CodexAdapter } from "./adapter/codex.ts";
+import {
+  buildLeadAdapter,
+  buildReviewLoopAdaptersFromConfig,
+} from "./adapter/from-config.ts";
 import { BASELINE_SECTION_NAMES, type Adapter } from "./adapter/types.ts";
 import { runInit } from "./cli/init.ts";
 import { runDoctor, type DoctorAdapterBinding } from "./cli/doctor.ts";
@@ -42,7 +44,11 @@ import {
 } from "./cli/persona.ts";
 import { runResume } from "./cli/resume.ts";
 import { runStatus, type StatusAdapterBinding } from "./cli/status.ts";
-import type { ManualEditChoice } from "./git/manual-edit.ts";
+import {
+  allFilesAreSamospecManaged,
+  type ManualEditChoice,
+} from "./git/manual-edit.ts";
+import { specSlugDirRelPosix } from "./paths.ts";
 import packageJson from "../package.json" with { type: "json" };
 
 export interface CliResult {
@@ -537,8 +543,10 @@ function parseResumeArgs(argv: readonly string[]): ResumeArgs | string {
 
 // ---------- adapter + resolver wiring ----------
 
-function leadAdapter(): Adapter {
-  return new ClaudeAdapter();
+function leadAdapter(cwd: string): Adapter {
+  // Config-driven (FIX 1): honor `adapters.lead.{model_id,fallback_chain}`
+  // from `.samo/config.json`; fall back to the pinned default when absent.
+  return buildLeadAdapter(cwd);
 }
 
 /**
@@ -622,7 +630,7 @@ async function runNewCommand(rest: readonly string[]) {
       stderr: `${resolversOrErr}\n\n${USAGE}`,
     };
   }
-  const adapter = leadAdapter();
+  const adapter = leadAdapter(process.cwd());
   const jsonlMode = parsed.interviewProtocol === "jsonl";
   const result = await runNew(
     {
@@ -764,7 +772,7 @@ async function runResumeCommand(rest: readonly string[]) {
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
-  const adapter = leadAdapter();
+  const adapter = leadAdapter(process.cwd());
   return runResume(
     {
       cwd: process.cwd(),
@@ -1021,18 +1029,17 @@ function parseStatusArgs(argv: readonly string[]): { slug: string } | string {
   return { slug };
 }
 
-function buildReviewLoopAdapters(): {
+function buildReviewLoopAdapters(cwd: string): {
   readonly lead: Adapter;
   readonly reviewerA: Adapter;
   readonly reviewerB: Adapter;
 } {
-  // Share one ClaudeResolver between lead + reviewer B to express the
-  // SPEC §11 coupled-fallback linkage.
-  const resolver = new ClaudeResolver();
-  const lead = new ClaudeAdapter({ resolver });
-  const reviewerA = new CodexAdapter();
-  const reviewerB = new ClaudeReviewerBAdapter({ resolver });
-  return { lead, reviewerA, reviewerB };
+  // Config-driven (FIX 1): build lead / reviewer-A / reviewer-B from
+  // `adapters.{lead,reviewer_a,reviewer_b}.{model_id,fallback_chain}` in
+  // `.samo/config.json`. The lead + reviewer-B still share ONE
+  // ClaudeResolver (built from the configured lead chain) to express the
+  // SPEC §11 coupled-fallback linkage. Absent config -> pinned defaults.
+  return buildReviewLoopAdaptersFromConfig(cwd);
 }
 
 /**
@@ -1049,6 +1056,7 @@ function buildReviewLoopAdapters(): {
 function buildManualEditResolver(
   rl: readline.Interface,
   onDirty: ManualEditChoice | undefined,
+  slugDirRelPosix: string,
 ): ManualEditResolver {
   if (onDirty !== undefined) {
     return (_files) => Promise.resolve(onDirty);
@@ -1056,6 +1064,16 @@ function buildManualEditResolver(
   const stdinIsTty = process.stdin.isTTY === true;
   if (!stdinIsTty) {
     return (files) => {
+      // FIX 5 — non-TTY robustness: between rounds, the only dirty paths
+      // are frequently samospec's OWN artifact churn (the post-commit
+      // `state.json` head_sha rewrite, freshly-written `reviews/rNN/`
+      // files). That is not a user edit, so auto-`incorporate` it
+      // (commits the churn) rather than dead-ending on "Pass --on-dirty".
+      // A genuine SPEC.md edit or any foreign file still triggers the
+      // refusal so real user work is never silently committed.
+      if (allFilesAreSamospecManaged(files, slugDirRelPosix)) {
+        return Promise.resolve<ManualEditChoice>("incorporate");
+      }
       const detail =
         files.length === 0 ? "(0 files)" : `(${String(files.length)} file(s))`;
       return Promise.reject(
@@ -1138,13 +1156,14 @@ function buildPushConsentResolver(
 function interactiveIterateResolvers(
   onDirty: ManualEditChoice | undefined,
   pushConsent: "yes" | "no" | undefined,
+  slugDirRelPosix: string,
 ): IterateResolvers {
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
   return {
-    onManualEdit: buildManualEditResolver(rl, onDirty),
+    onManualEdit: buildManualEditResolver(rl, onDirty, slugDirRelPosix),
     onDegraded: async (summary) => {
       process.stdout.write(`\n${summary}\n`);
       const ans = (await rl.question("[A]ccept / [B]bort [Enter=accept]: "))
@@ -1277,7 +1296,7 @@ async function runIterateCommand(rest: readonly string[]) {
   if (refusal !== null) {
     return { exitCode: 1, stdout: "", stderr: `${refusal}\n` };
   }
-  const adapters = buildReviewLoopAdapters();
+  const adapters = buildReviewLoopAdapters(process.cwd());
   const pushOptions: PushOptions = {
     remote: parsed.remote,
     noPush: parsed.noPush,
@@ -1290,6 +1309,7 @@ async function runIterateCommand(rest: readonly string[]) {
       resolvers: interactiveIterateResolvers(
         parsed.onDirty,
         effectivePushConsent(parsed),
+        specSlugDirRelPosix(process.cwd(), parsed.slug),
       ),
       adapters,
       pushOptions,
@@ -1322,7 +1342,7 @@ async function runStatusCommand(rest: readonly string[]) {
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
-  const adapters = buildReviewLoopAdapters();
+  const adapters = buildReviewLoopAdapters(process.cwd());
   const bindings: readonly StatusAdapterBinding[] = [
     { role: "lead", adapter: adapters.lead },
     { role: "reviewer_a", adapter: adapters.reviewerA },
@@ -1460,8 +1480,13 @@ async function runBriefCommand(rest: readonly string[]) {
   // injectable (tests pass fakes via runBrief directly).
   const aiAdapters = parsed.ai
     ? {
-        leadAdapter: new ClaudeAdapter(),
-        verifierAdapter: parsed.noVerify ? null : new CodexAdapter(),
+        // Config-driven (FIX 1): the brief lead + verifier honor the
+        // configured model pins (lead = Claude, verifier = reviewer-A's
+        // codex pin) instead of the hardcoded adapter defaults.
+        leadAdapter: buildLeadAdapter(process.cwd()),
+        verifierAdapter: parsed.noVerify
+          ? null
+          : buildReviewLoopAdaptersFromConfig(process.cwd()).reviewerA,
       }
     : {};
   return runBrief({

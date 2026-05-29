@@ -71,9 +71,9 @@ export interface StatusResult {
 
 const DEFAULT_WALL_CLOCK_MS = 240 * 60 * 1000;
 const DEFAULT_CALL_TIMEOUTS: CallTimeoutsMs = {
-  criticA_ms: 300_000,
-  criticB_ms: 300_000,
-  revise_ms: 600_000,
+  criticA_ms: 900_000,
+  criticB_ms: 900_000,
+  revise_ms: 1_800_000,
 };
 
 // ---------- main ----------
@@ -272,15 +272,15 @@ function inferStatusResolutions(
   return {
     lead: {
       adapter: roleOf("lead")?.adapter.vendor ?? "claude",
-      model_id: stateAdapters.lead?.model_id ?? "claude-opus-4-7",
+      model_id: stateAdapters.lead?.model_id ?? "claude-opus-4-8",
     },
     reviewer_a: {
       adapter: roleOf("reviewer_a")?.adapter.vendor ?? "codex",
-      model_id: stateAdapters.reviewer_a?.model_id ?? "gpt-5.4",
+      model_id: stateAdapters.reviewer_a?.model_id ?? "gpt-5.5",
     },
     reviewer_b: {
       adapter: roleOf("reviewer_b")?.adapter.vendor ?? "claude",
-      model_id: stateAdapters.reviewer_b?.model_id ?? "claude-opus-4-7",
+      model_id: stateAdapters.reviewer_b?.model_id ?? "claude-opus-4-8",
     },
     coupled_fallback: state.coupled_fallback,
   };

@@ -3,7 +3,7 @@
 // SPEC §5 Phase 5 + §7 — `authorDraft()` unit contract.
 // Red-first:
 //   1. Happy path: ReviseOutput forwarded as DraftResult.
-//   2. effort/timeout defaults: "max" / 600_000 ms.
+//   2. effort/timeout defaults: "max" / 1_800_000 ms.
 //   3. Scaffold contains persona, idea, each question + answer, and
 //      every context chunk.
 //   4. Adapter rejection with "refus" msg -> DraftTerminalError.refusal.
@@ -90,7 +90,7 @@ describe("authorDraft — happy path", () => {
     expect(res.effort_used).toBe("max");
   });
 
-  test("defaults to effort=max + timeout=600_000 ms (SPEC §7)", async () => {
+  test("defaults to effort=max + timeout=1_800_000 ms (SPEC §7)", async () => {
     let captured: ReviseInput | null = null;
     const base = createFakeAdapter({ revise: reviseOut() });
     const adapter: Adapter = {
@@ -105,7 +105,7 @@ describe("authorDraft — happy path", () => {
     expect(captured!.opts.effort).toBe(DRAFT_DEFAULT_EFFORT);
     expect(captured!.opts.effort).toBe("max");
     expect(captured!.opts.timeout).toBe(DRAFT_REVISE_TIMEOUT_MS);
-    expect(captured!.opts.timeout).toBe(600_000);
+    expect(captured!.opts.timeout).toBe(1_800_000);
     // First draft has no prior reviews / decisions.
     expect(captured!.reviews).toEqual([]);
     expect(captured!.decisions_history).toEqual([]);

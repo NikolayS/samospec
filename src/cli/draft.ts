@@ -10,7 +10,7 @@
 //     review round yet)
 //   - `effort: "max"` (SPEC §11 product thesis: lead runs at max
 //     effort; downshift is an explicit opt-in)
-//   - `timeout: 600_000` (SPEC §7 revise default)
+//   - `timeout: 1_800_000` (SPEC §7 revise default, raised for max effort)
 //
 // Failure classification per SPEC §7 exit-4 messaging:
 //   - refusal       -> sub-reason "refusal"
@@ -34,8 +34,14 @@ import {
 
 // ---------- constants ----------
 
-/** SPEC §7: `revise()` default timeout is 600s. */
-export const DRAFT_REVISE_TIMEOUT_MS = 600_000 as const;
+/**
+ * SPEC §7: `revise()` default timeout.
+ *
+ * Raised from 600s to 1800s (samospec robustness pass) so the v0.1 draft
+ * write at max effort does not get preempted mid-flight. Callers can still
+ * override via `input.timeoutMs`.
+ */
+export const DRAFT_REVISE_TIMEOUT_MS = 1_800_000 as const;
 
 /** SPEC §11: lead runs at max effort by default. */
 export const DRAFT_DEFAULT_EFFORT: EffortLevel = "max";

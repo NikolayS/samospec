@@ -257,7 +257,7 @@ describe("CodexAdapter spawn flags + minimal env (SPEC §7)", () => {
     if (workCall === undefined) return;
     expect(workCall.cmd).toContain("exec");
     expect(workCall.cmd).toContain("--model");
-    expect(workCall.cmd).toContain("gpt-5.4");
+    expect(workCall.cmd).toContain("gpt-5.5");
   });
 
   test("ask() passes reasoning_effort flag matching logical effort (SPEC §11 table)", async () => {
@@ -640,7 +640,7 @@ describe("CodexAdapter.critique (SPEC §7)", () => {
 // ---------- model fallback chain ----------
 
 describe("CodexAdapter model fallback (SPEC §11)", () => {
-  test("pinned model rejected -> falls back to gpt-5.3-codex and succeeds", async () => {
+  test("pinned model rejected -> falls back to the next chain model and succeeds", async () => {
     const stateDir = mkdtempSync(join(tmpdir(), "samospec-codex-fb-"));
     TMP.push(stateDir);
     const stateJson = join(stateDir, "call-state.json");
@@ -655,15 +655,16 @@ describe("CodexAdapter model fallback (SPEC §11)", () => {
 
     const out = await adapter.ask(sampleAsk());
     expect(out.answer).toBe("fallback-ok");
-    // Exactly two spawns: gpt-5.4 (rejected), then gpt-5.3-codex.
+    // Exactly two spawns: gpt-5.5 (rejected), then gpt-5.4 (the next
+    // model in the refreshed default chain).
     expect(spy.calls.length).toBe(2);
     // First call carried the pinned model.
     const firstCmd = spy.calls[0]?.cmd.join(" ") ?? "";
-    expect(firstCmd).toContain("gpt-5.4");
+    expect(firstCmd).toContain("gpt-5.5");
     // Second call carried the fallback model.
     const secondCmd = spy.calls[1]?.cmd.join(" ") ?? "";
-    expect(secondCmd).toContain("gpt-5.3-codex");
-    expect(secondCmd).not.toContain("gpt-5.4");
+    expect(secondCmd).toContain("gpt-5.4");
+    expect(secondCmd).not.toContain("gpt-5.5");
   });
 
   test("all models rejected -> terminal", async () => {
@@ -684,8 +685,9 @@ describe("CodexAdapter model fallback (SPEC §11)", () => {
       expect(err.payload.kind).toBe("terminal");
       expect(err.payload.reason).toBe("model_unavailable");
     }
-    // Both explicit models + the account-default tier were attempted
-    // (#54: account-default is the third tier after explicit pins fail).
-    expect(spy.calls.length).toBe(3);
+    // All three explicit models (gpt-5.5, gpt-5.4, gpt-5.3-codex) + the
+    // account-default tier were attempted (#54: account-default is the
+    // final tier after every explicit pin fails).
+    expect(spy.calls.length).toBe(4);
   });
 });

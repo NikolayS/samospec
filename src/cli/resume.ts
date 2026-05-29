@@ -32,6 +32,11 @@ import {
   formatProtectedBranchError,
   protectedBranchSource,
 } from "../git/protected.ts";
+import {
+  loadPersistedCritiques,
+  roundDirsFor,
+} from "../loop/round.ts";
+import { specSlugDir } from "../paths.ts";
 import { writeCalibrationSample } from "../policy/calibration.ts";
 import { injectArchitectureBlock } from "../render/architecture-spec.ts";
 import { renderTldr } from "../render/tldr.ts";
@@ -120,8 +125,34 @@ export async function runResume(
     };
   }
 
-  // lead_terminal is absorbing (SPEC §7). Exit 4 with context.
+  // lead_terminal is absorbing (SPEC §7) UNLESS the round's reviewer
+  // critiques are persisted on disk. In that case the lead revise can be
+  // retried reusing the saved critiques (samospec robustness pass), so
+  // point the user at `iterate`, which auto-resumes that round without
+  // re-running the reviewers. Otherwise keep the absorbing exit-4 copy.
   if (state.round_state === "lead_terminal") {
+    const failedRound = state.round_index + 1;
+    const failedDirs = roundDirsFor(
+      specSlugDir(input.cwd, input.slug),
+      failedRound,
+    );
+    const persisted = loadPersistedCritiques(failedDirs);
+    if (persisted !== null) {
+      notice(
+        `samospec: spec '${input.slug}' is at lead_terminal, but round ` +
+          `r${String(failedRound).padStart(2, "0")} has saved reviewer ` +
+          `critiques.`,
+      );
+      notice(
+        `next: samospec iterate ${input.slug} ` +
+          `(retries the lead revise reusing the saved critiques)`,
+      );
+      return {
+        exitCode: 0,
+        stdout: `${lines.join("\n")}\n`,
+        stderr: "",
+      };
+    }
     errors.push(
       `samospec: spec '${input.slug}' is at lead_terminal. ` +
         `Edit .samo/spec/${input.slug}/ manually or rerun with --force.`,

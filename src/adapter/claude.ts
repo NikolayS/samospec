@@ -18,7 +18,11 @@
 //   or under subscription auth.
 // - `revise()` emits the full SPEC.md text each round (not a patch);
 //   `ready` + `rationale` are inline JSON fields.
-// - Pinned default model: `claude-opus-4-7`.
+// - Pinned default model: `claude-opus-4-8` (latest-model refresh;
+//   `claude-opus-4-7` -> `claude-sonnet-4-6` remain in the fallback chain).
+// - Effort: maps samospec EffortLevel onto the real Claude CLI
+//   `--effort <level>` flag (low|medium|high|xhigh|max, confirmed via
+//   `claude --help` on v2.1.x) so `max` is a genuine highest-effort run.
 //
 // Tests never shell out to the real `claude`. Work-call tests inject
 // the fake-CLI harness via the `spawn` dependency.
@@ -63,13 +67,31 @@ const CLAUDE_VENDOR = "claude";
 const CLAUDE_BINARY_NAME = "claude";
 const CLAUDE_AUTH_ENV_KEYS: readonly string[] = ["ANTHROPIC_API_KEY"];
 
-// SPEC §11 pinned model + fallback.
+// SPEC §11 pinned model + fallback. Latest-model refresh (samospec
+// robustness pass): claude-opus-4-8 is the newest top model, prepended
+// ahead of the prior 4-7 pin so a fresh run picks the newest first but
+// still degrades through the proven chain.
 const DEFAULT_MODELS: readonly ModelInfo[] = [
+  { id: "claude-opus-4-8", family: "claude" },
   { id: "claude-opus-4-7", family: "claude" },
   { id: "claude-sonnet-4-6", family: "claude" },
 ];
 
-const DEFAULT_MODEL_ID = "claude-opus-4-7";
+const DEFAULT_MODEL_ID = "claude-opus-4-8";
+
+// Claude CLI v2.1.x `--effort` accepts: low | medium | high | xhigh | max
+// (confirmed via `claude --help`). Map samospec's EffortLevel onto the
+// real flag so `max` becomes the genuine highest level rather than an
+// advisory hint. samospec has no "xhigh" tier, so it is never emitted;
+// "off" has no Claude equivalent and clamps to the lowest accepted
+// level, "low".
+const EFFORT_TO_CLAUDE_FLAG: Readonly<Record<EffortLevel, string>> = {
+  max: "max",
+  high: "high",
+  medium: "medium",
+  low: "low",
+  off: "low",
+};
 
 // ---------- adapter options / dependency injection ----------
 
@@ -169,7 +191,12 @@ export class ClaudeAdapter implements Adapter {
       opts.host ?? (process.env as Record<string, string | undefined>);
     this.spawnFn = opts.spawn ?? spawnCli;
     this.modelList = opts.models ?? DEFAULT_MODELS;
-    this.defaultModel = opts.defaultModel ?? DEFAULT_MODEL_ID;
+    // `defaultModel` precedence: explicit opt > head of the supplied
+    // `models` list > pinned DEFAULT_MODEL_ID. Deriving from the supplied
+    // list keeps a caller-injected model list authoritative rather than
+    // silently overriding its head with the global pin.
+    this.defaultModel =
+      opts.defaultModel ?? opts.models?.[0]?.id ?? DEFAULT_MODEL_ID;
     this.resolver = opts.resolver ?? null;
   }
 
@@ -503,6 +530,8 @@ export class ClaudeAdapter implements Adapter {
       ...CLAUDE_NON_INTERACTIVE_FLAGS,
       "--model",
       this.currentModelId(),
+      "--effort",
+      EFFORT_TO_CLAUDE_FLAG[args.effort],
     ];
     const input: SpawnCliInput = {
       cmd,

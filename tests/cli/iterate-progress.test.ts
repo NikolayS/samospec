@@ -124,6 +124,14 @@ const DEFAULT_TIME_INPUTS = {
   sessionStartedAtMs: 0,
   nowMs: 0,
   maxWallClockMs: 60 * 60 * 1000,
+  // Pin per-call timeouts so this progress/heartbeat test stays decoupled
+  // from the global SPEC §7 defaults (which were raised for max-effort
+  // robustness). The worst-case round must fit the 60-min budget above.
+  callTimeouts: {
+    criticA_ms: 300_000,
+    criticB_ms: 300_000,
+    revise_ms: 600_000,
+  },
 };
 
 const SAMPLE_CRITIQUE: CritiqueOutput = {

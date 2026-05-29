@@ -136,13 +136,19 @@ describe("Bug #88-followup: invalid_request_error on STDERR → model_unavailabl
       host: FAKE_HOST,
       spawn: spy.spawn,
       binary: "/usr/bin/codex",
+      // Two explicit pins so the scripted 3-response sequence maps 1:1
+      // to the spawns regardless of the global default chain length.
+      models: [
+        { id: "gpt-5.4", family: "codex" },
+        { id: "gpt-5.3-codex", family: "codex" },
+      ],
     });
 
     const out = await adapter.ask(sampleAsk());
     expect(out.answer).toBe("account-default-ok");
     expect((out as Record<string, unknown>)["account_default"]).toBe(true);
 
-    // Three spawns: gpt-5.4 (fail on stderr), gpt-5.3-codex (fail on stderr),
+    // Three spawns: first pin (fail on stderr), second pin (fail on stderr),
     // account-default (success).
     expect(spy.calls.length).toBe(3);
     // Third call has no --model flag.

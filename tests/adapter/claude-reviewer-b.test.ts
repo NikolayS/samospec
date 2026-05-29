@@ -306,21 +306,26 @@ describe("ClaudeReviewerBAdapter — separate-process spawn (SPEC §7)", () => {
 // ---------- ClaudeResolver (shared resolver) ----------
 
 describe("ClaudeResolver — shared fallback-chain (SPEC §11)", () => {
+  // Latest-model refresh: default chain is now
+  // claude-opus-4-8 -> claude-opus-4-7 -> claude-sonnet-4-6.
   test("defaults to the pinned opus model", () => {
     const resolver = new ClaudeResolver();
-    expect(resolver.getCurrentModel()).toBe("claude-opus-4-7");
+    expect(resolver.getCurrentModel()).toBe("claude-opus-4-8");
     expect(resolver.snapshot().coupled_fallback).toBe(false);
   });
 
-  test("reportUnavailable advances to sonnet and marks coupled_fallback", () => {
+  test("reportUnavailable advances along the chain and marks coupled_fallback", () => {
     const resolver = new ClaudeResolver();
+    resolver.reportUnavailable("claude-opus-4-8");
+    expect(resolver.getCurrentModel()).toBe("claude-opus-4-7");
+    expect(resolver.snapshot().coupled_fallback).toBe(true);
     resolver.reportUnavailable("claude-opus-4-7");
     expect(resolver.getCurrentModel()).toBe("claude-sonnet-4-6");
-    expect(resolver.snapshot().coupled_fallback).toBe(true);
   });
 
   test("reportUnavailable on the last model does not advance past the end", () => {
     const resolver = new ClaudeResolver();
+    resolver.reportUnavailable("claude-opus-4-8");
     resolver.reportUnavailable("claude-opus-4-7");
     resolver.reportUnavailable("claude-sonnet-4-6");
     // Still the last model in the chain; resolver does not cycle.
@@ -329,10 +334,10 @@ describe("ClaudeResolver — shared fallback-chain (SPEC §11)", () => {
 
   test("reportUnavailable on a model that is no longer current is a no-op (idempotent)", () => {
     const resolver = new ClaudeResolver();
-    resolver.reportUnavailable("claude-opus-4-7");
+    resolver.reportUnavailable("claude-opus-4-8");
     // A reviewer-B call reporting a stale model must not double-advance.
-    resolver.reportUnavailable("claude-opus-4-7");
-    expect(resolver.getCurrentModel()).toBe("claude-sonnet-4-6");
+    resolver.reportUnavailable("claude-opus-4-8");
+    expect(resolver.getCurrentModel()).toBe("claude-opus-4-7");
   });
 });
 
@@ -371,9 +376,10 @@ describe("ClaudeResolver — coupled lead + reviewer-B (SPEC §11)", () => {
     });
 
     // Caller drives the transition: fallback is detected externally and
-    // recorded on the shared resolver. Both adapter spawns then carry
-    // the sonnet --model pin.
-    resolver.reportUnavailable("claude-opus-4-7");
+    // recorded on the shared resolver. With the refreshed chain the head
+    // is claude-opus-4-8; reporting it unavailable advances both adapters
+    // to claude-opus-4-7 on their next spawn.
+    resolver.reportUnavailable("claude-opus-4-8");
 
     await lead.ask(sampleAsk());
     await reviewerB.critique(sampleCritique());
@@ -383,8 +389,8 @@ describe("ClaudeResolver — coupled lead + reviewer-B (SPEC §11)", () => {
     expect(leadCall).toBeDefined();
     expect(reviewerCall).toBeDefined();
     if (leadCall === undefined || reviewerCall === undefined) return;
-    expect(leadCall.cmd).toContain("claude-sonnet-4-6");
-    expect(reviewerCall.cmd).toContain("claude-sonnet-4-6");
+    expect(leadCall.cmd).toContain("claude-opus-4-7");
+    expect(reviewerCall.cmd).toContain("claude-opus-4-7");
     expect(resolver.snapshot().coupled_fallback).toBe(true);
   });
 });

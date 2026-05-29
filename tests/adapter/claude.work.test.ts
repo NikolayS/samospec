@@ -268,7 +268,63 @@ describe("ClaudeAdapter spawn flags + minimal env (SPEC §7)", () => {
     expect(workCall.cmd).toContain("--print");
     expect(workCall.cmd).toContain("--dangerously-skip-permissions");
     expect(workCall.cmd).toContain("--model");
-    expect(workCall.cmd).toContain("claude-opus-4-7");
+    expect(workCall.cmd).toContain("claude-opus-4-8");
+  });
+
+  // Claude CLI v2.1.x accepts `--effort <level>` (low|medium|high|xhigh|max).
+  // The adapter must pass it so EffortLevel is a REAL knob, not advisory.
+  test("work-call spawn passes --effort with the mapped level (max)", async () => {
+    const spy = makeSpy({
+      ok: true,
+      exitCode: 0,
+      stdout: '{"answer":"ok","usage":null,"effort_used":"max"}',
+      stderr: "",
+    });
+    const { host } = makeInstalledHost();
+    const adapter = new ClaudeAdapter({ host, spawn: spy.spawn });
+
+    await adapter.ask(sampleAsk());
+
+    const workCall = spy.calls.find((c) => c.stdinLen > 0);
+    expect(workCall).toBeDefined();
+    if (workCall === undefined) return;
+    const idx = workCall.cmd.indexOf("--effort");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    // sampleAsk uses effort "max" -> claude --effort max.
+    expect(workCall.cmd[idx + 1]).toBe("max");
+  });
+
+  test("work-call spawn maps each EffortLevel to a real claude --effort value", async () => {
+    const cases: readonly { level: EffortLevel; expected: string }[] = [
+      { level: "max", expected: "max" },
+      { level: "high", expected: "high" },
+      { level: "medium", expected: "medium" },
+      { level: "low", expected: "low" },
+      // samospec "off" has no claude equivalent -> clamp to the lowest
+      // accepted level "low".
+      { level: "off", expected: "low" },
+    ];
+    for (const c of cases) {
+      const spy = makeSpy({
+        ok: true,
+        exitCode: 0,
+        stdout: `{"answer":"ok","usage":null,"effort_used":"${c.level}"}`,
+        stderr: "",
+      });
+      const { host } = makeInstalledHost();
+      const adapter = new ClaudeAdapter({ host, spawn: spy.spawn });
+      await adapter.ask({
+        prompt: "ping",
+        context: "",
+        opts: { effort: c.level, timeout: 120_000 },
+      });
+      const workCall = spy.calls.find((c2) => c2.stdinLen > 0);
+      expect(workCall).toBeDefined();
+      if (workCall === undefined) continue;
+      const idx = workCall.cmd.indexOf("--effort");
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(workCall.cmd[idx + 1]).toBe(c.expected);
+    }
   });
 
   test("work-call spawn forwards only HOME, PATH, TMPDIR, Claude auth vars", async () => {

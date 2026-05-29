@@ -295,7 +295,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
     expect(r?.reviews).toEqual([]);
     expect(r?.decisions_history).toEqual([]);
     expect(r?.opts.effort).toBe("max");
-    expect(r?.opts.timeout).toBe(600_000);
+    expect(r?.opts.timeout).toBe(1_800_000);
   });
 
   test("calibration array is appended by exactly one sample (rounds = 0)", async () => {

@@ -57,23 +57,30 @@ describe("samospec init — fresh directory", () => {
     const adapters = parsed["adapters"] as Record<string, unknown>;
     const lead = adapters["lead"] as Record<string, unknown>;
     expect(lead["adapter"]).toBe("claude");
-    expect(lead["model_id"]).toBe("claude-opus-4-7");
+    expect(lead["model_id"]).toBe("claude-opus-4-8");
     expect(lead["effort"]).toBe("max");
+    // Latest-model default prepends the new model ahead of the prior pin.
+    const leadFallback = lead["fallback_chain"] as string[];
+    expect(leadFallback[0]).toBe("claude-opus-4-8");
+    expect(leadFallback).toContain("claude-opus-4-7");
 
     const reviewerA = adapters["reviewer_a"] as Record<string, unknown>;
     expect(reviewerA["adapter"]).toBe("codex");
-    expect(reviewerA["model_id"]).toBe("gpt-5.4");
+    expect(reviewerA["model_id"]).toBe("gpt-5.5");
     expect(reviewerA["effort"]).toBe("max");
     // Regression guard: stale 5.1-codex-max must NOT appear (#130).
     expect(reviewerA["model_id"]).not.toContain("5.1-codex");
     const fallback = reviewerA["fallback_chain"] as string[];
-    expect(fallback[0]).toBe("gpt-5.4");
-    expect(fallback).toContain("gpt-5.3-codex");
+    expect(fallback[0]).toBe("gpt-5.5");
+    expect(fallback).toContain("gpt-5.4");
 
     const reviewerB = adapters["reviewer_b"] as Record<string, unknown>;
     expect(reviewerB["adapter"]).toBe("claude");
-    expect(reviewerB["model_id"]).toBe("claude-opus-4-7");
+    expect(reviewerB["model_id"]).toBe("claude-opus-4-8");
     expect(reviewerB["effort"]).toBe("max");
+    const reviewerBFallback = reviewerB["fallback_chain"] as string[];
+    expect(reviewerBFallback[0]).toBe("claude-opus-4-8");
+    expect(reviewerBFallback).toContain("claude-opus-4-7");
 
     // Budget defaults per SPEC §11.
     const budget = parsed["budget"] as Record<string, unknown>;
@@ -104,7 +111,7 @@ describe("samospec init — fresh directory", () => {
 
   test("DEFAULT_CONFIG exports a pinned-defaults constant for reuse", () => {
     expect(DEFAULT_CONFIG.schema_version).toBe(CONFIG_SCHEMA_VERSION);
-    expect(DEFAULT_CONFIG.adapters.lead.model_id).toBe("claude-opus-4-7");
+    expect(DEFAULT_CONFIG.adapters.lead.model_id).toBe("claude-opus-4-8");
   });
 });
 

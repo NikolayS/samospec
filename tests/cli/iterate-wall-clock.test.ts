@@ -273,6 +273,14 @@ describe("runIterate — maxSessionWallClockMs is a deprecated no-op (#91 / samo
       sessionStartedAtMs: 0,
       nowMs: 0,
       maxWallClockMs: 60 * 60 * 1000,
+      // Pin per-call timeouts so the pre-round shouldStartNextRound gate
+      // does not fire under the raised SPEC §7 defaults (the round must be
+      // allowed to start so the hanging critique can be observed).
+      callTimeouts: {
+        criticA_ms: 300_000,
+        criticB_ms: 300_000,
+        revise_ms: 600_000,
+      },
     });
 
     const outcome = await raceDeadline(runPromise, capMs * 3);
@@ -316,6 +324,13 @@ describe("runIterate — maxSessionWallClockMs is a deprecated no-op (#91 / samo
       sessionStartedAtMs: 0,
       nowMs: 0,
       maxWallClockMs: 60 * 60 * 1000,
+      // Pin per-call timeouts so the worst-case round fits the 60-min
+      // budget above, independent of the raised SPEC §7 defaults.
+      callTimeouts: {
+        criticA_ms: 300_000,
+        criticB_ms: 300_000,
+        revise_ms: 600_000,
+      },
     });
 
     expect(res.exitCode).toBe(0);

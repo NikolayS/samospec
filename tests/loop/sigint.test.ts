@@ -153,6 +153,13 @@ describe("loop/sigint — SPEC §12 condition 5", () => {
       sessionStartedAtMs: 0,
       nowMs: 0,
       maxWallClockMs: 60 * 60 * 1000,
+      // Pin per-call timeouts to legacy values so the worst-case round
+      // fits the 60-min budget after the SPEC §7 defaults were raised.
+      callTimeouts: {
+        criticA_ms: 300_000,
+        criticB_ms: 300_000,
+        revise_ms: 600_000,
+      },
       sigintSignal: { triggered: true },
     });
     expect(res.stopReason).toBe("sigint");

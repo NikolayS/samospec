@@ -7,6 +7,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Config-driven models (headline fix).** `samospec` now honors
+  `adapters.{lead,reviewer_a,reviewer_b}.{model_id,fallback_chain}` from
+  `.samo/config.json` everywhere adapters are built (`new`, `resume`,
+  `iterate`, `status`, `brief`). Previously every call-site constructed
+  adapters with their hardcoded pinned defaults and a fresh resolver, so
+  editing `model_id` in the config did nothing. A new
+  `src/adapter/from-config.ts` factory reads the config and builds the
+  lead / reviewer-A / reviewer-B adapters (and the shared Claude resolver
+  for the lead + reviewer-B coupled fallback) from the configured pins,
+  falling back to sensible defaults when the config is absent.
+- **Resumable reviews.** A revise timeout drops a round into
+  `lead_terminal`; `resume`/`iterate` no longer dead-end there. When the
+  round's reviewer critiques are persisted under
+  `.samo/spec/<slug>/reviews/rNN/`, the lead revise is retried reusing the
+  saved critiques without re-running (or re-paying for) the reviewers.
+  Falls back to a fresh round only when the critiques are missing or
+  unparseable.
+- **Non-TTY iterate robustness.** Multi-round `iterate` in a non-TTY
+  context no longer dies between rounds on samospec's own artifact churn
+  (the post-commit `state.json` rewrite, freshly written `reviews/rNN/`
+  files). When the only dirty paths are samospec-managed artifacts, the
+  non-TTY dirty guard auto-incorporates them; a genuine `SPEC.md` edit or
+  any foreign file still triggers the `--on-dirty` refusal.
+
+### Changed
+
+- **Raised default per-call timeouts** so max-effort lead revises and
+  reviewer critiques are not preempted mid-flight: revise
+  `600s -> 1800s`, critique `300s -> 900s` (round loop, `draft`, and
+  `status` defaults). Per-call overrides
+  (`budget.max_revise_call_ms` / `budget.max_critique_call_ms` /
+  `input.callTimeouts`) still take precedence.
+- **Real Claude `--effort`.** The Claude adapter now passes
+  `--effort <level>` (mapping samospec's `EffortLevel` onto the CLI's
+  `low|medium|high|max`, with `max -> max`) so effort is a genuine knob
+  rather than advisory.
+- **Latest-model defaults.** `samospec init` and the adapter / resolver
+  pinned defaults now lead with `claude-opus-4-8` (lead + reviewer B) and
+  `gpt-5.5` (reviewer A), each prepended ahead of the prior pin in its
+  fallback chain.
+
 ### Added
 
 - **`samospec brief <slug>` — summarized HTML brief (heuristic mode).**

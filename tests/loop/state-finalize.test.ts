@@ -124,6 +124,14 @@ const DEFAULT_TIME_INPUTS = {
   sessionStartedAtMs: 0,
   nowMs: 0,
   maxWallClockMs: 60 * 60 * 1000,
+  // Pin per-call timeouts to the legacy values so the worst-case round
+  // (~52.5 min) still fits the 60-min budget after the SPEC §7 defaults
+  // were raised for max-effort robustness.
+  callTimeouts: {
+    criticA_ms: 300_000,
+    criticB_ms: 300_000,
+    revise_ms: 600_000,
+  },
 };
 
 function buildCritique(suffix: number): CritiqueOutput {

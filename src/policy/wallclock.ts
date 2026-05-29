@@ -22,11 +22,11 @@
 export const CAPPED_RETRY_MULTIPLIER = 3.5 as const;
 
 export interface CallTimeoutsMs {
-  /** `critique` timeout for reviewer A (ms). SPEC §7 default 300s. */
+  /** `critique` timeout for reviewer A (ms). SPEC §7 default 900s. */
   readonly criticA_ms: number;
   /** `critique` timeout for reviewer B (ms). */
   readonly criticB_ms: number;
-  /** `revise` timeout for the lead (ms). SPEC §7 default 600s. */
+  /** `revise` timeout for the lead (ms). SPEC §7 default 1800s. */
   readonly revise_ms: number;
 }
 

@@ -4,7 +4,7 @@
 // ClaudeAdapter and the ClaudeReviewerBAdapter. The resolver encodes
 // the Claude family fallback chain:
 //
-//   claude-opus-4-7 -> claude-sonnet-4-6 -> terminal
+//   claude-opus-4-8 -> claude-opus-4-7 -> claude-sonnet-4-6 -> terminal
 //
 // The **coupled fallback** linkage (SPEC §11) is expressed by *sharing*
 // one resolver instance between the lead and the Reviewer B adapters.
@@ -27,7 +27,10 @@
 
 // ---------- chain ----------
 
+// Latest-model refresh (samospec robustness pass): claude-opus-4-8 is
+// prepended ahead of the prior 4-7 pin.
 const DEFAULT_CHAIN: readonly string[] = [
+  "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-sonnet-4-6",
 ];
