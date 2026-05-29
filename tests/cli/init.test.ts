@@ -58,7 +58,7 @@ describe("samospec init — fresh directory", () => {
     const lead = adapters["lead"] as Record<string, unknown>;
     expect(lead["adapter"]).toBe("claude");
     expect(lead["model_id"]).toBe("claude-opus-4-8");
-    expect(lead["effort"]).toBe("max");
+    expect(lead["effort"]).toBe("medium");
     // Latest-model default prepends the new model ahead of the prior pin.
     const leadFallback = lead["fallback_chain"] as string[];
     expect(leadFallback[0]).toBe("claude-opus-4-8");
@@ -67,7 +67,7 @@ describe("samospec init — fresh directory", () => {
     const reviewerA = adapters["reviewer_a"] as Record<string, unknown>;
     expect(reviewerA["adapter"]).toBe("codex");
     expect(reviewerA["model_id"]).toBe("gpt-5.5");
-    expect(reviewerA["effort"]).toBe("max");
+    expect(reviewerA["effort"]).toBe("medium");
     // Regression guard: stale 5.1-codex-max must NOT appear (#130).
     expect(reviewerA["model_id"]).not.toContain("5.1-codex");
     const fallback = reviewerA["fallback_chain"] as string[];
@@ -77,7 +77,7 @@ describe("samospec init — fresh directory", () => {
     const reviewerB = adapters["reviewer_b"] as Record<string, unknown>;
     expect(reviewerB["adapter"]).toBe("claude");
     expect(reviewerB["model_id"]).toBe("claude-opus-4-8");
-    expect(reviewerB["effort"]).toBe("max");
+    expect(reviewerB["effort"]).toBe("medium");
     const reviewerBFallback = reviewerB["fallback_chain"] as string[];
     expect(reviewerBFallback[0]).toBe("claude-opus-4-8");
     expect(reviewerBFallback).toContain("claude-opus-4-7");

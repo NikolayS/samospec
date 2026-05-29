@@ -148,7 +148,8 @@ describe("proposePersona — happy path", () => {
     expect(first.prompt).toContain("Veteran");
     expect(first.prompt).toContain("expert");
     expect(first.idea).toBe(idea);
-    expect(first.opts.effort).toBe("max");
+    // Unified default: medium (was "max" before the unified-effort knob).
+    expect(first.opts.effort).toBe("medium");
   });
 });
 
@@ -529,10 +530,27 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
   });
 });
 
-// ---------- effort max policy ----------
+// ---------- effort policy (unified default) ----------
 
-describe("proposePersona — lead effort policy (SPEC §11)", () => {
-  test("defaults to effort=max, honors override", async () => {
+describe("proposePersona — lead effort policy", () => {
+  test("defaults to effort=medium (unified default, not max)", async () => {
+    const adapter = makeScriptedAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "CLI software engineer" expert',
+        rationale: "r",
+      }),
+    ]);
+    const opts = {
+      idea: "idea",
+      explain: false,
+      subscriptionAuth: false,
+      choice: { kind: "accept" as const },
+    };
+    await proposePersona(opts, adapter);
+    expect(adapter.asks[0].opts.effort).toBe("medium");
+  });
+
+  test("honors an explicit effort override", async () => {
     const adapter = makeScriptedAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',

@@ -31,7 +31,7 @@ import { archiveSlugDir } from "./archive.ts";
 import { specSlugDir } from "../paths.ts";
 
 import { buildReviewLoopAdaptersFromConfig } from "../adapter/from-config.ts";
-import type { Adapter } from "../adapter/types.ts";
+import type { Adapter, EffortLevel } from "../adapter/types.ts";
 import { discoverContext } from "../context/discover.ts";
 import { contextJsonPath } from "../context/provenance.ts";
 import {
@@ -190,6 +190,13 @@ export interface RunNewInput {
    * Default (false/omitted) preserves the legacy stdout-as-summary shape.
    */
   readonly suppressStdout?: boolean;
+  /**
+   * Unified effort for the LEAD seat across persona / interview / draft.
+   * Resolved by the CLI (`--effort` flag > per-seat config > unified
+   * `medium` default) and threaded down. When omitted, each phase falls
+   * back to the unified `medium` default internally.
+   */
+  readonly leadEffort?: EffortLevel;
 }
 
 // ---------- CLI entry ----------
@@ -481,6 +488,9 @@ export async function runNew(
           subscriptionAuth: subAuth,
           onNotice: notice,
           resolver: input.resolvers.persona,
+          ...(input.leadEffort !== undefined
+            ? { effort: input.leadEffort }
+            : {}),
         },
         adapter,
       );
@@ -572,6 +582,9 @@ export async function runNew(
           outputPath: interviewPath,
           now: input.now,
           idea: input.idea,
+          ...(input.leadEffort !== undefined
+            ? { effort: input.leadEffort }
+            : {}),
         },
         adapter,
       );
@@ -625,6 +638,9 @@ export async function runNew(
           explain: input.explain,
           ...(input.skipSections !== undefined
             ? { skipSections: input.skipSections }
+            : {}),
+          ...(input.leadEffort !== undefined
+            ? { effort: input.leadEffort }
             : {}),
         },
         adapter,
@@ -987,6 +1003,7 @@ interface PersonaInteractiveInput {
   readonly subscriptionAuth: boolean;
   readonly onNotice: (line: string) => void;
   readonly resolver: (p: PersonaProposal) => Promise<PersonaChoice>;
+  readonly effort?: EffortLevel;
 }
 
 async function proposePersonaInteractive(
@@ -1000,6 +1017,7 @@ async function proposePersonaInteractive(
       subscriptionAuth: input.subscriptionAuth,
       onNotice: input.onNotice,
       choice: { kind: "accept" },
+      ...(input.effort !== undefined ? { effort: input.effort } : {}),
     },
     adapter,
   );

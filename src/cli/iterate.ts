@@ -34,7 +34,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { Adapter, CritiqueOutput, Finding } from "../adapter/types.ts";
+import type {
+  Adapter,
+  CritiqueOutput,
+  EffortLevel,
+  Finding,
+} from "../adapter/types.ts";
 import { specSlugDir } from "../paths.ts";
 import { currentBranch } from "../git/branch.ts";
 import { specCommit } from "../git/commit.ts";
@@ -198,6 +203,17 @@ export interface IterateInput {
     readonly lead: Adapter;
     readonly reviewerA: Adapter;
     readonly reviewerB: Adapter;
+  };
+  /**
+   * Unified per-seat effort, resolved by the CLI (`--effort` flag >
+   * per-seat `adapters.<seat>.effort` config > unified `medium`). Threaded
+   * into every round's `runRound`. Omitted seats fall back to the unified
+   * `medium` default inside `runRound`.
+   */
+  readonly seatEfforts?: {
+    readonly lead?: EffortLevel;
+    readonly reviewer_a?: EffortLevel;
+    readonly reviewer_b?: EffortLevel;
   };
   /** Optional per-call timeouts override (tests tweak). */
   readonly callTimeouts?: Partial<CallTimeoutsMs>;
@@ -670,6 +686,9 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             adapters: wrappedAdapters,
             critiqueTimeoutMs: callTimeouts.criticA_ms,
             reviseTimeoutMs: callTimeouts.revise_ms,
+            ...(input.seatEfforts !== undefined
+              ? { seatEfforts: input.seatEfforts }
+              : {}),
             ...(manualEditDirective !== undefined
               ? { manualEditDirective }
               : {}),

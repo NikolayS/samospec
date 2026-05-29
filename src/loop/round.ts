@@ -46,7 +46,13 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-import type { Adapter, CritiqueOutput, Finding } from "../adapter/types.ts";
+import { UNIFIED_DEFAULT_EFFORT } from "../adapter/effort.ts";
+import type {
+  Adapter,
+  CritiqueOutput,
+  EffortLevel,
+  Finding,
+} from "../adapter/types.ts";
 import type { ReviewDecision } from "./decisions.ts";
 import { reviseDecisionsToReviewDecisions } from "./decisions.ts";
 import type { DegradedResult } from "./degradation.ts";
@@ -206,6 +212,19 @@ export interface RunRoundInput {
   readonly adapters: RoundAdapters;
   readonly critiqueTimeoutMs?: number;
   readonly reviseTimeoutMs?: number;
+  /**
+   * Unified per-seat effort. Resolved by the CLI (`--effort` flag >
+   * per-seat `adapters.<seat>.effort` config > unified `medium`). The
+   * lead's effort drives `revise()`; reviewer_a / reviewer_b drive their
+   * own `critique()`. Any omitted seat falls back to the unified `medium`
+   * default so legacy callers / unit tests are unaffected (previously the
+   * round runner hardcoded `effort: "max"` for every seat).
+   */
+  readonly seatEfforts?: {
+    readonly lead?: EffortLevel;
+    readonly reviewer_a?: EffortLevel;
+    readonly reviewer_b?: EffortLevel;
+  };
   /** Optional reviewer guidelines appended to Reviewer A's critique(). */
   readonly guidelinesA?: string;
   /** Optional reviewer guidelines appended to Reviewer B's critique(). */
@@ -529,6 +548,16 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
   const critiqueTimeout = input.critiqueTimeoutMs ?? CRITIQUE_TIMEOUT_MS;
   const reviseTimeout = input.reviseTimeoutMs ?? REVISE_TIMEOUT_MS;
 
+  // Unified per-seat effort. The CLI resolves `--effort` > per-seat
+  // config > unified `medium` and threads the result here; any omitted
+  // seat falls back to the unified `medium` default (previously every
+  // seat was hardcoded at `effort: "max"`).
+  const leadEffort = input.seatEfforts?.lead ?? UNIFIED_DEFAULT_EFFORT;
+  const reviewerAEffort =
+    input.seatEfforts?.reviewer_a ?? UNIFIED_DEFAULT_EFFORT;
+  const reviewerBEffort =
+    input.seatEfforts?.reviewer_b ?? UNIFIED_DEFAULT_EFFORT;
+
   // Reviewer context preservation: reconstruct each seat's prior context
   // from PERSISTED artifacts (its own prior critique files + decisions.md)
   // so a reviewer remembers what it raised before and drives toward
@@ -608,6 +637,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
           specText: input.specText,
           adapters,
           critiqueTimeoutMs: critiqueTimeout,
+          reviewerAEffort,
+          reviewerBEffort,
           guidelinesA: input.guidelinesA ?? "",
           guidelinesB: input.guidelinesB ?? "",
           ...(input.signal !== undefined ? { signal: input.signal } : {}),
@@ -643,6 +674,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       specText: input.specText,
       adapters,
       critiqueTimeoutMs: critiqueTimeout,
+      reviewerAEffort,
+      reviewerBEffort,
       guidelinesA: input.guidelinesA ?? "",
       guidelinesB: input.guidelinesB ?? "",
       ...(input.signal !== undefined ? { signal: input.signal } : {}),
@@ -746,7 +779,7 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
         spec: buildReviseSpec(input.specText, directive),
         reviews: reviewsForLead,
         decisions_history: [...input.decisionsHistory],
-        opts: { effort: "max", timeout: effectiveReviseTimeout },
+        opts: { effort: leadEffort, timeout: effectiveReviseTimeout },
         // #85: thread idea + slug into the revise prompt for AUTHORITATIVE
         // idea framing in every review-round lead call.
         ...(input.idea !== undefined ? { idea: input.idea } : {}),
@@ -815,6 +848,8 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
         specText: input.specText,
         adapters,
         critiqueTimeoutMs: critiqueTimeout,
+        reviewerAEffort,
+        reviewerBEffort,
         guidelinesA: input.guidelinesA ?? "",
         guidelinesB: input.guidelinesB ?? "",
         ...(input.signal !== undefined ? { signal: input.signal } : {}),
@@ -851,7 +886,7 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
           spec: buildReviseSpec(input.specText, directive),
           reviews: retryReviewsForLead,
           decisions_history: [...input.decisionsHistory],
-          opts: { effort: "max", timeout: retryTimeout },
+          opts: { effort: leadEffort, timeout: retryTimeout },
           ...(input.idea !== undefined ? { idea: input.idea } : {}),
           ...(input.slug !== undefined ? { slug: input.slug } : {}),
         }),
@@ -959,6 +994,10 @@ interface ReviewerParallelInput {
   readonly specText: string;
   readonly adapters: RoundAdapters;
   readonly critiqueTimeoutMs: number;
+  /** Reviewer A (codex) effort for this critique() call. */
+  readonly reviewerAEffort: EffortLevel;
+  /** Reviewer B (claude) effort for this critique() call. */
+  readonly reviewerBEffort: EffortLevel;
   readonly guidelinesA: string;
   readonly guidelinesB: string;
   readonly signal?: AbortSignal;
@@ -985,7 +1024,7 @@ async function runReviewersParallel(
     .critique({
       spec: input.specText,
       guidelines: input.guidelinesA,
-      opts: { effort: "max", timeout: input.critiqueTimeoutMs },
+      opts: { effort: input.reviewerAEffort, timeout: input.critiqueTimeoutMs },
       // Reviewer context preservation: Reviewer A sees ONLY its own
       // (codex) prior findings + the lead's decisions.
       ...(input.priorContextA !== undefined
@@ -1008,7 +1047,7 @@ async function runReviewersParallel(
     .critique({
       spec: input.specText,
       guidelines: input.guidelinesB,
-      opts: { effort: "max", timeout: input.critiqueTimeoutMs },
+      opts: { effort: input.reviewerBEffort, timeout: input.critiqueTimeoutMs },
       // #85: thread the original idea so Reviewer B can detect
       // idea-contradictions against disclaimed classes.
       ...(input.idea !== undefined ? { idea: input.idea } : {}),

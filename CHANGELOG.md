@@ -71,9 +71,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   pinned defaults now lead with `claude-opus-4-8` (lead + reviewer B) and
   `gpt-5.5` (reviewer A), each prepended ahead of the prior pin in its
   fallback chain.
+- **Unified effort default is now `medium` (was `max`).** The previously
+  scattered `effort ?? "max"` fallbacks (persona, interview, draft) and
+  the hardcoded `effort: "max"` in the review-round runner are replaced
+  by a single unified `medium` default applied consistently across all
+  seats. `samospec init` now writes `effort: "medium"` for each seat
+  instead of `effort: "max"`. To run at the old depth, pass
+  `--effort max` or pin `adapters.<seat>.effort` in `.samo/config.json`.
 
 ### Added
 
+- **Unified `--effort` knob for `new` and `iterate`.** One global
+  `--effort <max|high|medium|low|off>` flag sets the reasoning effort for
+  ALL seats at once (lead + reviewer_a + reviewer_b), trading depth vs
+  speed. It OVERRIDES every seat's per-adapter config effort uniformly.
+  Bad values exit 2 with a usage error naming the valid set. Effort now
+  resolves through ONE documented precedence everywhere
+  (persona/interview/draft + every review-round critique/revise):
+  `--effort` flag > per-seat `adapters.<seat>.effort` in
+  `.samo/config.json` > a NEW unified default of **`medium`** (a balanced
+  average; previously the scattered default was `max`). In an interactive
+  terminal with no flag and no config pin, samospec prompts once at
+  startup to pick a level, explaining the speed/depth tradeoff (max =
+  deepest/slowest ~20-40 min/round on large specs; off = minimal/fastest;
+  medium = balanced default). The prompt is skipped under `--yes`,
+  `--no-interactive`, the jsonl interview protocol, and any non-TTY
+  (piped/CI) context, which fall back to the flag/config/medium default.
+  New module: `src/adapter/effort.ts`.
 - **`samospec brief <slug>` — summarized HTML brief (heuristic mode).**
   Generates a single self-contained `BRIEF.html` from a published spec
   — a derivative summary, not a 1:1 conversion of `SPEC.md`. Pure

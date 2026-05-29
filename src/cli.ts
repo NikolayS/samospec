@@ -12,7 +12,19 @@ import {
   buildLeadAdapter,
   buildReviewLoopAdaptersFromConfig,
 } from "./adapter/from-config.ts";
-import { BASELINE_SECTION_NAMES, type Adapter } from "./adapter/types.ts";
+import {
+  BASELINE_SECTION_NAMES,
+  type Adapter,
+  type EffortLevel,
+} from "./adapter/types.ts";
+import {
+  EFFORT_PROMPT_CHOOSE,
+  EFFORT_PROMPT_INTRO,
+  effortIsPinned,
+  parseEffortFlag,
+  resolveAllSeatEfforts,
+  resolvePromptedEffort,
+} from "./adapter/effort.ts";
 import { runInit } from "./cli/init.ts";
 import { runDoctor, type DoctorAdapterBinding } from "./cli/doctor.ts";
 import {
@@ -55,6 +67,121 @@ export interface CliResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
+}
+
+/**
+ * A parse failure that carries an explicit exit code. Most arg-parse
+ * errors exit 1 (a plain `string` return), but a bad `--effort` value
+ * exits 2 (usage error, distinct from "missing slug"). The command
+ * handlers detect this shape and use its `exitCode`.
+ */
+interface ParseError {
+  readonly parseError: true;
+  readonly message: string;
+  readonly exitCode: number;
+}
+
+function isParseError(v: unknown): v is ParseError {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    (v as Record<string, unknown>)["parseError"] === true
+  );
+}
+
+/**
+ * Parse a `--effort <level>` flag value (shared by `new` and `iterate`).
+ * On a bad value, returns a {@link ParseError} with exit code 2 and a
+ * message prefixed with the command name.
+ */
+function parseEffortArg(
+  command: "new" | "iterate",
+  raw: string,
+): EffortLevel | ParseError {
+  const parsed = parseEffortFlag(raw);
+  if (parsed.ok) return parsed.value;
+  return {
+    parseError: true,
+    message: `samospec ${command}: ${parsed.error}`,
+    exitCode: 2,
+  };
+}
+
+/**
+ * Resolve the unified per-seat effort for a command, optionally prompting
+ * the user interactively.
+ *
+ * Precedence (documented): `--effort` flag > per-seat
+ * `adapters.<seat>.effort` config > unified `medium` default.
+ *
+ * Interactive prompt: when stdin IS a TTY, no `--effort` flag was passed,
+ * config doesn't pin any seat's effort, and we are NOT in a
+ * non-interactive context (`--yes` / `--no-interactive` / jsonl), prompt
+ * the user once at startup with a concise depth/speed tradeoff
+ * explanation. The chosen level (default `medium` on empty input)
+ * overrides all seats uniformly — exactly as the `--effort` flag would.
+ *
+ * In any non-interactive context (piped stdin, `--yes`, jsonl) the prompt
+ * is skipped and per-seat config / unified default apply.
+ *
+ * `promptFn` is injected so this is testable without a real TTY; the
+ * production caller passes a readline-backed prompt. When `promptFn` is
+ * undefined, no prompt is issued regardless of the gate.
+ *
+ * Exported for unit testing the interactive-prompt gate.
+ */
+export async function resolveSeatEffortsWithPrompt(input: {
+  readonly cwd: string;
+  readonly flagEffort?: EffortLevel;
+  readonly stdinIsTty: boolean;
+  readonly nonInteractive: boolean;
+  readonly promptFn?: () => Promise<string>;
+}): Promise<ReturnType<typeof resolveAllSeatEfforts>> {
+  const pinned = effortIsPinned({
+    cwd: input.cwd,
+    ...(input.flagEffort !== undefined ? { flagEffort: input.flagEffort } : {}),
+  });
+
+  // Interactive prompt gate: TTY, not pinned, not a non-interactive run.
+  if (
+    !pinned &&
+    input.stdinIsTty &&
+    !input.nonInteractive &&
+    input.promptFn !== undefined
+  ) {
+    const raw = await input.promptFn();
+    const chosen = resolvePromptedEffort(raw);
+    // The prompted choice behaves like the flag: overrides every seat.
+    return resolveAllSeatEfforts({ cwd: input.cwd, flagEffort: chosen });
+  }
+
+  return resolveAllSeatEfforts({
+    cwd: input.cwd,
+    ...(input.flagEffort !== undefined ? { flagEffort: input.flagEffort } : {}),
+  });
+}
+
+/**
+ * Build the readline-backed effort prompt function for interactive runs.
+ * Prints the tradeoff explanation to stdout, then asks for a choice.
+ * Returns the raw answer (caller maps empty/unknown to the medium
+ * default via {@link resolvePromptedEffort}). The interface is closed
+ * after the single question.
+ */
+function makeEffortPromptFn(): () => Promise<string> {
+  return async (): Promise<string> => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    try {
+      process.stdout.write(EFFORT_PROMPT_INTRO);
+      const ans = await rl.question(EFFORT_PROMPT_CHOOSE);
+      return ans.trim();
+    } finally {
+      rl.close();
+    }
+  };
 }
 
 const VERSION_FLAGS: ReadonlySet<string> = new Set([
@@ -112,6 +239,13 @@ const USAGE =
   "Options for `new`:\n" +
   "  --idea <text>\n" +
   "      Initial idea text (default: the <slug>).\n" +
+  "  --effort <max|high|medium|low|off>\n" +
+  "      Unified reasoning effort for ALL seats (lead + both reviewers).\n" +
+  "      Trades depth vs speed. Overrides per-seat config. Precedence:\n" +
+  "      --effort flag > adapters.<seat>.effort in config > medium\n" +
+  "      (the default). In an interactive terminal with no flag/config\n" +
+  "      pin, you are prompted once to choose. max is deepest/slowest;\n" +
+  "      off is minimal/fastest; medium is the balanced default.\n" +
   "  --force\n" +
   "      Archive any existing run, then start fresh.\n" +
   "  --skip <sections>\n" +
@@ -145,6 +279,13 @@ const USAGE =
   "Options for `iterate`:\n" +
   "  --rounds <N>\n" +
   "      Cap the number of review rounds this session.\n" +
+  "  --effort <max|high|medium|low|off>\n" +
+  "      Unified reasoning effort for ALL seats (lead + both reviewers).\n" +
+  "      Trades depth vs speed. Overrides per-seat config. Precedence:\n" +
+  "      --effort flag > adapters.<seat>.effort in config > medium\n" +
+  "      (the default). In an interactive terminal with no flag/config\n" +
+  "      pin, you are prompted once to choose. max is deepest/slowest;\n" +
+  "      off is minimal/fastest; medium is the balanced default.\n" +
   "  --no-push\n" +
   "      Don't push round commits to the remote.\n" +
   "  --remote <name>\n" +
@@ -304,6 +445,14 @@ interface NewArgs {
    * refusal is bypassed because the protocol IS the non-TTY driver.
    */
   readonly interviewProtocol?: "jsonl";
+  /**
+   * Global `--effort <max|high|medium|low|off>` knob. When set, it
+   * OVERRIDES every seat's effort uniformly (lead + reviewer_a +
+   * reviewer_b), winning over per-seat config. Validated against the
+   * EffortLevel enum at parse time (bad value -> exit 2). When omitted,
+   * effort resolves from per-seat config, else the unified `medium`.
+   */
+  readonly effort?: EffortLevel;
 }
 
 interface ResumeArgs {
@@ -353,7 +502,7 @@ function parseSkipList(raw: string): readonly string[] | string {
   return canonical;
 }
 
-function parseNewArgs(argv: readonly string[]): NewArgs | string {
+function parseNewArgs(argv: readonly string[]): NewArgs | string | ParseError {
   let slug: string | null = null;
   let idea: string | null = null;
   let explain = false;
@@ -365,6 +514,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
   let yes = false;
   let answersFile: string | undefined;
   let interviewProtocol: "jsonl" | undefined;
+  let effort: EffortLevel | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
     if (token === undefined) continue;
@@ -431,6 +581,21 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
       interviewProtocol = "jsonl";
       continue;
     }
+    if (token === "--effort") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parseEffortArg("new", raw);
+      if (isParseError(parsed)) return parsed;
+      effort = parsed;
+      continue;
+    }
+    if (token.startsWith("--effort=")) {
+      const raw = token.slice("--effort=".length);
+      const parsed = parseEffortArg("new", raw);
+      if (isParseError(parsed)) return parsed;
+      effort = parsed;
+      continue;
+    }
     if (token === "--idea") {
       idea = argv[i + 1] ?? "";
       i += 1;
@@ -494,6 +659,7 @@ function parseNewArgs(argv: readonly string[]): NewArgs | string {
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
     ...(answersFile !== undefined ? { answersFile } : {}),
     ...(interviewProtocol !== undefined ? { interviewProtocol } : {}),
+    ...(effort !== undefined ? { effort } : {}),
   };
 }
 
@@ -615,6 +781,13 @@ function interactiveResolvers(): ChoiceResolvers {
 
 async function runNewCommand(rest: readonly string[]) {
   const parsed = parseNewArgs(rest);
+  if (isParseError(parsed)) {
+    return {
+      exitCode: parsed.exitCode,
+      stdout: "",
+      stderr: `${parsed.message}\n\n${USAGE}`,
+    };
+  }
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
@@ -632,6 +805,19 @@ async function runNewCommand(rest: readonly string[]) {
   }
   const adapter = leadAdapter(process.cwd());
   const jsonlMode = parsed.interviewProtocol === "jsonl";
+  // Resolve the lead effort: `--effort` flag > per-seat config > medium.
+  // In a TTY without a flag/config pin (and not in a non-interactive
+  // run), prompt the user once with a depth/speed tradeoff explanation.
+  const stdinIsTty = process.stdin.isTTY === true;
+  const nonInteractive =
+    jsonlMode || parsed.yes || parsed.acceptPersona || !stdinIsTty;
+  const seatEfforts = await resolveSeatEffortsWithPrompt({
+    cwd: process.cwd(),
+    ...(parsed.effort !== undefined ? { flagEffort: parsed.effort } : {}),
+    stdinIsTty,
+    nonInteractive,
+    ...(nonInteractive ? {} : { promptFn: makeEffortPromptFn() }),
+  });
   const result = await runNew(
     {
       cwd: process.cwd(),
@@ -642,6 +828,7 @@ async function runNewCommand(rest: readonly string[]) {
       verbose: parsed.verbose,
       resolvers: resolversOrErr,
       now: new Date().toISOString(),
+      leadEffort: seatEfforts.lead,
       ...(jsonlMode ? { suppressStdout: true } : {}),
       ...(parsed.skipSections !== undefined
         ? { skipSections: [...parsed.skipSections] }
@@ -813,6 +1000,13 @@ interface IterateArgs {
    * here too (mirrors the `new` precedent).
    */
   readonly yes: boolean;
+  /**
+   * Global `--effort <max|high|medium|low|off>` knob. When set, it
+   * OVERRIDES every seat's effort uniformly (lead + reviewer_a +
+   * reviewer_b), winning over per-seat config. Bad value -> exit 2.
+   * When omitted, effort resolves from per-seat config, else `medium`.
+   */
+  readonly effort?: EffortLevel;
 }
 
 const ON_DIRTY_CHOICES: readonly ManualEditChoice[] = [
@@ -877,9 +1071,13 @@ const ITERATE_ALLOWED_FLAGS: ReadonlySet<string> = new Set([
   // #136: non-TTY automation for first-push consent.
   "--push-consent",
   "--yes",
+  // Unified effort knob — overrides every seat's effort uniformly.
+  "--effort",
 ]);
 
-function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
+function parseIterateArgs(
+  argv: readonly string[],
+): IterateArgs | string | ParseError {
   let slug: string | null = null;
   let rounds: number | undefined;
   let noPush = false;
@@ -889,6 +1087,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
   let onDirty: ManualEditChoice | undefined;
   let pushConsent: "yes" | "no" | undefined;
   let yes = false;
+  let effort: EffortLevel | undefined;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
     if (t === undefined) continue;
@@ -958,6 +1157,21 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
       yes = true;
       continue;
     }
+    if (t === "--effort") {
+      const raw = argv[i + 1] ?? "";
+      i += 1;
+      const parsed = parseEffortArg("iterate", raw);
+      if (isParseError(parsed)) return parsed;
+      effort = parsed;
+      continue;
+    }
+    if (t.startsWith("--effort=")) {
+      const raw = t.slice("--effort=".length);
+      const parsed = parseEffortArg("iterate", raw);
+      if (isParseError(parsed)) return parsed;
+      effort = parsed;
+      continue;
+    }
     if (t === "--remote") {
       const v = argv[i + 1];
       i += 1;
@@ -1014,6 +1228,7 @@ function parseIterateArgs(argv: readonly string[]): IterateArgs | string {
     ...(maxSessionWallClockMs !== undefined ? { maxSessionWallClockMs } : {}),
     ...(onDirty !== undefined ? { onDirty } : {}),
     ...(pushConsent !== undefined ? { pushConsent } : {}),
+    ...(effort !== undefined ? { effort } : {}),
   };
 }
 
@@ -1287,6 +1502,13 @@ function resolveRemoteUrlForPreflight(
 
 async function runIterateCommand(rest: readonly string[]) {
   const parsed = parseIterateArgs(rest);
+  if (isParseError(parsed)) {
+    return {
+      exitCode: parsed.exitCode,
+      stdout: "",
+      stderr: `${parsed.message}\n\n${USAGE}`,
+    };
+  }
   if (typeof parsed === "string") {
     return { exitCode: 1, stdout: "", stderr: `${parsed}\n\n${USAGE}` };
   }
@@ -1301,6 +1523,19 @@ async function runIterateCommand(rest: readonly string[]) {
     remote: parsed.remote,
     noPush: parsed.noPush,
   };
+  // Resolve per-seat effort: `--effort` flag > per-seat config > medium.
+  // In a TTY without a flag/config pin (and not under `--yes`), prompt
+  // the user once with a depth/speed tradeoff explanation; the choice
+  // overrides every seat uniformly.
+  const stdinIsTty = process.stdin.isTTY === true;
+  const nonInteractive = parsed.yes || !stdinIsTty;
+  const seatEfforts = await resolveSeatEffortsWithPrompt({
+    cwd: process.cwd(),
+    ...(parsed.effort !== undefined ? { flagEffort: parsed.effort } : {}),
+    stdinIsTty,
+    nonInteractive,
+    ...(nonInteractive ? {} : { promptFn: makeEffortPromptFn() }),
+  });
   try {
     const result = await runIterate({
       cwd: process.cwd(),
@@ -1314,6 +1549,7 @@ async function runIterateCommand(rest: readonly string[]) {
       adapters,
       pushOptions,
       quiet: parsed.quiet,
+      seatEfforts,
       ...(parsed.rounds !== undefined ? { maxRounds: parsed.rounds } : {}),
       ...(parsed.maxSessionWallClockMs !== undefined
         ? { maxSessionWallClockMs: parsed.maxSessionWallClockMs }

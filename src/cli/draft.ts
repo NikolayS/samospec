@@ -8,8 +8,9 @@
 //     interview Q&A, and a pointer at the untrusted context envelopes
 //   - `reviews: []` and `decisions_history: []` (there has been no
 //     review round yet)
-//   - `effort: "max"` (SPEC §11 product thesis: lead runs at max
-//     effort; downshift is an explicit opt-in)
+//   - `effort` resolved by the caller (`--effort` flag > per-seat
+//     config > unified `medium` default); falls back to
+//     DRAFT_DEFAULT_EFFORT (`medium`) when the caller passes nothing
 //   - `timeout: 1_800_000` (SPEC §7 revise default, raised for max effort)
 //
 // Failure classification per SPEC §7 exit-4 messaging:
@@ -24,6 +25,7 @@
 // Scope guard: this module does NOT write SPEC.md, TLDR.md, or commit.
 // It returns the lead's payload; the new/resume flow handles files.
 
+import { UNIFIED_DEFAULT_EFFORT } from "../adapter/effort.ts";
 import type { Adapter, EffortLevel, ReviseOutput } from "../adapter/types.ts";
 import type { InterviewResult } from "./interview.ts";
 import {
@@ -43,8 +45,14 @@ import {
  */
 export const DRAFT_REVISE_TIMEOUT_MS = 1_800_000 as const;
 
-/** SPEC §11: lead runs at max effort by default. */
-export const DRAFT_DEFAULT_EFFORT: EffortLevel = "max";
+/**
+ * Unified effort default for the v0.1 draft when the caller does not
+ * pass an explicit `effort`. The lead's effort is resolved up in the
+ * CLI (`--effort` flag > per-seat config > medium) and threaded down via
+ * `input.effort`; this constant is the last-resort fallback and now
+ * matches the unified `medium` default (previously `"max"`).
+ */
+export const DRAFT_DEFAULT_EFFORT: EffortLevel = UNIFIED_DEFAULT_EFFORT;
 
 // ---------- types ----------
 

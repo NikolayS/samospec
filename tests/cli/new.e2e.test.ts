@@ -294,7 +294,8 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
     expect(r).toBeDefined();
     expect(r?.reviews).toEqual([]);
     expect(r?.decisions_history).toEqual([]);
-    expect(r?.opts.effort).toBe("max");
+    // Unified default: medium (was "max" before the unified-effort knob).
+    expect(r?.opts.effort).toBe("medium");
     expect(r?.opts.timeout).toBe(1_800_000);
   });
 

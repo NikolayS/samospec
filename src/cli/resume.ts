@@ -23,7 +23,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import type { Adapter } from "../adapter/types.ts";
+import type { Adapter, EffortLevel } from "../adapter/types.ts";
 import { discoverContext } from "../context/discover.ts";
 import { contextJsonPath, writeContextJson } from "../context/provenance.ts";
 import { specCommit } from "../git/commit.ts";
@@ -77,6 +77,13 @@ export interface RunResumeInput {
   readonly pid?: number;
   readonly maxWallClockMinutes?: number;
   readonly explain?: boolean;
+  /**
+   * Unified effort for the LEAD seat (interview / draft on resume).
+   * Resolved by the CLI (`--effort` flag > per-seat config > unified
+   * `medium`). When omitted, each phase falls back to the unified
+   * `medium` default internally.
+   */
+  readonly leadEffort?: EffortLevel;
 }
 
 export interface RunResumeResult {
@@ -265,6 +272,9 @@ export async function runResume(
             ...(state.input?.idea !== undefined
               ? { idea: state.input.idea }
               : {}),
+            ...(input.leadEffort !== undefined
+              ? { effort: input.leadEffort }
+              : {}),
           },
           adapter,
         );
@@ -370,6 +380,9 @@ export async function runResume(
             interview,
             contextChunks: chunks,
             explain: input.explain ?? false,
+            ...(input.leadEffort !== undefined
+              ? { effort: input.leadEffort }
+              : {}),
           },
           adapter,
         );
