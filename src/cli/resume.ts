@@ -32,10 +32,7 @@ import {
   formatProtectedBranchError,
   protectedBranchSource,
 } from "../git/protected.ts";
-import {
-  loadPersistedCritiques,
-  roundDirsFor,
-} from "../loop/round.ts";
+import { loadPersistedCritiques, roundDirsFor } from "../loop/round.ts";
 import { specSlugDir } from "../paths.ts";
 import { writeCalibrationSample } from "../policy/calibration.ts";
 import { injectArchitectureBlock } from "../render/architecture-spec.ts";

@@ -104,7 +104,9 @@ function roleEntry(
  * the config supplies nothing, so the caller keeps the adapter's pinned
  * default chain.
  */
-export function resolveChain(cfg: AdapterRoleConfig | undefined): string[] | undefined {
+export function resolveChain(
+  cfg: AdapterRoleConfig | undefined,
+): string[] | undefined {
   if (cfg === undefined) return undefined;
   const out: string[] = [];
   const push = (id: string): void => {
@@ -128,7 +130,9 @@ function toModelInfo(chain: readonly string[], family: string): ModelInfo[] {
  */
 export function buildClaudeResolver(cfg: AdaptersConfig): ClaudeResolver {
   const chain = resolveChain(cfg.lead);
-  return chain !== undefined ? new ClaudeResolver({ chain }) : new ClaudeResolver();
+  return chain !== undefined
+    ? new ClaudeResolver({ chain })
+    : new ClaudeResolver();
 }
 
 /**

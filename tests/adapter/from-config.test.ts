@@ -21,10 +21,7 @@ import {
 } from "../../src/adapter/from-config.ts";
 import type { ClaudeAdapter } from "../../src/adapter/claude.ts";
 import type { CodexAdapter } from "../../src/adapter/codex.ts";
-import type {
-  SpawnCliInput,
-  SpawnCliResult,
-} from "../../src/adapter/spawn.ts";
+import type { SpawnCliInput, SpawnCliResult } from "../../src/adapter/spawn.ts";
 import type { AskInput } from "../../src/adapter/types.ts";
 
 // ---------- spawn spy ----------
@@ -53,12 +50,19 @@ function fakeClaudeHost(): Record<string, string | undefined> {
 }
 
 function sampleAsk(): AskInput {
-  return { prompt: "ping", context: "", opts: { effort: "max", timeout: 120_000 } };
+  return {
+    prompt: "ping",
+    context: "",
+    opts: { effort: "max", timeout: 120_000 },
+  };
 }
 
 function writeConfig(cwd: string, config: unknown): void {
   mkdirSync(join(cwd, ".samo"), { recursive: true });
-  writeFileSync(join(cwd, ".samo", "config.json"), JSON.stringify(config, null, 2));
+  writeFileSync(
+    join(cwd, ".samo", "config.json"),
+    JSON.stringify(config, null, 2),
+  );
 }
 
 function tmpRepo(): string {
@@ -83,14 +87,26 @@ describe("readAdaptersConfig", () => {
     const cwd = tmpRepo();
     writeConfig(cwd, {
       adapters: {
-        lead: { model_id: "claude-opus-4-8", fallback_chain: ["claude-opus-4-8", "terminal"] },
-        reviewer_a: { model_id: "gpt-5.5", fallback_chain: ["gpt-5.5", "gpt-5.4"] },
+        lead: {
+          model_id: "claude-opus-4-8",
+          fallback_chain: ["claude-opus-4-8", "terminal"],
+        },
+        reviewer_a: {
+          model_id: "gpt-5.5",
+          fallback_chain: ["gpt-5.5", "gpt-5.4"],
+        },
         reviewer_b: { model_id: "claude-opus-4-8" },
       },
     });
     expect(readAdaptersConfig(cwd)).toEqual({
-      lead: { model_id: "claude-opus-4-8", fallback_chain: ["claude-opus-4-8", "terminal"] },
-      reviewer_a: { model_id: "gpt-5.5", fallback_chain: ["gpt-5.5", "gpt-5.4"] },
+      lead: {
+        model_id: "claude-opus-4-8",
+        fallback_chain: ["claude-opus-4-8", "terminal"],
+      },
+      reviewer_a: {
+        model_id: "gpt-5.5",
+        fallback_chain: ["gpt-5.5", "gpt-5.4"],
+      },
       reviewer_b: { model_id: "claude-opus-4-8" },
     });
   });
@@ -107,7 +123,12 @@ describe("resolveChain", () => {
     expect(
       resolveChain({
         model_id: "claude-opus-4-8",
-        fallback_chain: ["claude-opus-4-8", "claude-opus-4-7", "terminal", "__account_default__"],
+        fallback_chain: [
+          "claude-opus-4-8",
+          "claude-opus-4-7",
+          "terminal",
+          "__account_default__",
+        ],
       }),
     ).toEqual(["claude-opus-4-8", "claude-opus-4-7"]);
   });
@@ -223,14 +244,26 @@ describe("buildReviewLoopAdaptersFromConfig (FIX 1)", () => {
     const cwd = tmpRepo();
     writeConfig(cwd, {
       adapters: {
-        lead: { model_id: "claude-opus-4-8", fallback_chain: ["claude-opus-4-8", "terminal"] },
-        reviewer_a: { model_id: "gpt-5.5", fallback_chain: ["gpt-5.5", "gpt-5.4", "terminal"] },
-        reviewer_b: { model_id: "claude-opus-4-8", fallback_chain: ["claude-opus-4-8", "terminal"] },
+        lead: {
+          model_id: "claude-opus-4-8",
+          fallback_chain: ["claude-opus-4-8", "terminal"],
+        },
+        reviewer_a: {
+          model_id: "gpt-5.5",
+          fallback_chain: ["gpt-5.5", "gpt-5.4", "terminal"],
+        },
+        reviewer_b: {
+          model_id: "claude-opus-4-8",
+          fallback_chain: ["claude-opus-4-8", "terminal"],
+        },
       },
     });
-    const { lead, reviewerA, reviewerB } = buildReviewLoopAdaptersFromConfig(cwd);
+    const { lead, reviewerA, reviewerB } =
+      buildReviewLoopAdaptersFromConfig(cwd);
     expect((lead as ClaudeAdapter).currentModelId()).toBe("claude-opus-4-8");
-    expect((reviewerB as ClaudeAdapter).currentModelId()).toBe("claude-opus-4-8");
+    expect((reviewerB as ClaudeAdapter).currentModelId()).toBe(
+      "claude-opus-4-8",
+    );
     expect((reviewerA as CodexAdapter).currentModelId()).toBe("gpt-5.5");
   });
 
