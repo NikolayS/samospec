@@ -193,6 +193,25 @@ Both must be **repo-relative** (absolute paths and `..`-escapes are rejected). P
 
 > **Heads-up:** the next minor release flips the defaults to `samo/spec` and `samo/blueprints` (visible, Pages-friendly out of the box). Set the keys above to keep the legacy layout when that lands. `.samo/config.json` itself stays put — the `.samo/` directory remains the home for runtime/config files.
 
+### Configuring the review panel
+
+Each panel seat is configured under `adapters.<seat>` in `.samo/config.json`. A seat picks its CLI vendor with `adapter` (`"claude"` or `"codex"`), its preferred model with `model_id`, and its degrade order with `fallback_chain`:
+
+```json
+{
+  "schema_version": 1,
+  "adapters": {
+    "lead": { "adapter": "claude", "model_id": "claude-opus-4-8" },
+    "reviewer_a": { "adapter": "codex", "model_id": "gpt-5.5" },
+    "reviewer_b": { "adapter": "claude", "model_id": "claude-opus-4-8" }
+  }
+}
+```
+
+- `adapters.<seat>.adapter` — which CLI runs the seat: `"claude"` or `"codex"`. Omit it to keep the default (lead → `claude`, reviewer_a → `codex`, reviewer_b → `claude`).
+- Reviewer A defaults to Codex. In a Claude-only environment (no `codex` CLI), set `adapters.reviewer_a.adapter` to `"claude"` to run the whole panel on Claude — the seat keeps the same paranoid security/ops persona (weighting toward missing-risk, weak-implementation, unnecessary-scope).
+- The lead and reviewer_b share one Claude fallback resolver (coupled fallback), so a `claude` reviewer_a and a divergent `adapters.reviewer_b` model config track the lead's pin rather than diverging.
+
 ---
 
 ## Stack

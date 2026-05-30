@@ -21,10 +21,23 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { ClaudeAdapter } from "./claude.ts";
+import { ClaudeReviewerAAdapter } from "./claude-reviewer-a.ts";
 import { ClaudeReviewerBAdapter } from "./claude-reviewer-b.ts";
 import { ClaudeResolver } from "./claude-resolver.ts";
 import { CodexAdapter } from "./codex.ts";
 import type { Adapter, ModelInfo } from "./types.ts";
+
+/**
+ * Per-seat adapter vendor selector, read from
+ * `adapters.<seat>.adapter` in `.samo/config.json`. A seat may be filled
+ * by either the Claude CLI or the Codex CLI. Absent / unrecognized
+ * values fall back to each seat's pinned default vendor (lead → claude,
+ * reviewer_a → codex, reviewer_b → claude), so the field is fully
+ * back-compatible.
+ */
+export type AdapterVendor = "claude" | "codex";
+
+const ADAPTER_VENDORS: ReadonlySet<string> = new Set(["claude", "codex"]);
 
 /**
  * Chain sentinels that are NOT real model ids and must be stripped
@@ -39,6 +52,11 @@ const NON_MODEL_CHAIN_ENTRIES: ReadonlySet<string> = new Set([
 
 /** One adapter role's pinned config, as read from `.samo/config.json`. */
 export interface AdapterRoleConfig {
+  /**
+   * Which CLI vendor fills this seat. Absent (or malformed) keeps the
+   * seat's pinned-default vendor, so existing configs are unchanged.
+   */
+  readonly adapter?: AdapterVendor;
   readonly model_id?: string;
   readonly fallback_chain?: readonly string[];
 }
@@ -82,15 +100,23 @@ function roleEntry(
   const raw = rec[role];
   if (typeof raw !== "object" || raw === null) return {};
   const r = raw as Record<string, unknown>;
+  const adapterRaw = r["adapter"];
+  const adapter =
+    typeof adapterRaw === "string" && ADAPTER_VENDORS.has(adapterRaw)
+      ? (adapterRaw as AdapterVendor)
+      : undefined;
   const modelId = typeof r["model_id"] === "string" ? r["model_id"] : undefined;
   const chainRaw = r["fallback_chain"];
   const chain =
     Array.isArray(chainRaw) && chainRaw.every((x) => typeof x === "string")
       ? (chainRaw as readonly string[])
       : undefined;
-  if (modelId === undefined && chain === undefined) return {};
+  if (adapter === undefined && modelId === undefined && chain === undefined) {
+    return {};
+  }
   return {
     [role]: {
+      ...(adapter !== undefined ? { adapter } : {}),
       ...(modelId !== undefined ? { model_id: modelId } : {}),
       ...(chain !== undefined ? { fallback_chain: chain } : {}),
     },
@@ -161,10 +187,45 @@ function defaultWarn(line: string): void {
 }
 
 /**
+ * Construct the Reviewer A seat from its per-seat config. The vendor is
+ * `adapters.reviewer_a.adapter` ("codex" | "claude"); absent → codex,
+ * preserving the historical default. A claude Reviewer A is wired to the
+ * shared Claude `resolver` (SPEC §11 coupled fallback, like lead +
+ * Reviewer B) and carries the security/ops persona; a codex Reviewer A
+ * is pinned from its own configured fallback chain.
+ */
+function buildReviewerA(
+  cfg: AdapterRoleConfig | undefined,
+  resolver: ClaudeResolver,
+): Adapter {
+  const chain = resolveChain(cfg);
+  if (cfg?.adapter === "claude") {
+    return new ClaudeReviewerAAdapter({
+      resolver,
+      ...(chain !== undefined
+        ? { models: toModelInfo(chain, "claude"), defaultModel: chain[0] }
+        : {}),
+    });
+  }
+  // Default (codex) — unchanged behavior.
+  return chain !== undefined
+    ? new CodexAdapter({
+        models: toModelInfo(chain, "codex"),
+        defaultModel: chain[0],
+      })
+    : new CodexAdapter();
+}
+
+/**
  * Build the full review-loop adapter trio from `.samo/config.json`.
  * Lead + reviewer-B share one config-pinned {@link ClaudeResolver}
- * (coupled fallback); reviewer-A (codex) is pinned from its own
- * configured chain. Absent config falls back to pinned defaults.
+ * (coupled fallback). Reviewer-A's vendor is selected per seat via
+ * `adapters.reviewer_a.adapter` ("codex" | "claude"); absent → codex
+ * (the pinned default). A codex Reviewer A is pinned from its own
+ * configured chain; a claude Reviewer A ({@link ClaudeReviewerAAdapter})
+ * joins the shared Claude resolver (coupled fallback) and carries the
+ * same security/ops persona as the codex seat. Absent config falls back
+ * to pinned defaults.
  *
  * SPEC §11 couples reviewer-B to the lead's shared Claude resolver, so a
  * distinct `adapters.reviewer_b.{model_id,fallback_chain}` is INERT. That
@@ -226,15 +287,11 @@ export function buildReviewLoopAdaptersFromConfig(
       : {}),
   });
 
-  // Reviewer A (codex).
-  const reviewerAChain = resolveChain(cfg.reviewer_a);
-  const reviewerA =
-    reviewerAChain !== undefined
-      ? new CodexAdapter({
-          models: toModelInfo(reviewerAChain, "codex"),
-          defaultModel: reviewerAChain[0],
-        })
-      : new CodexAdapter();
+  // Reviewer A: vendor is selectable per seat (default codex, unchanged).
+  // A claude Reviewer A joins the shared resolver (coupled fallback) like
+  // the lead + Reviewer B; a codex Reviewer A is pinned from its own
+  // configured chain.
+  const reviewerA = buildReviewerA(cfg.reviewer_a, resolver);
 
   return { lead, reviewerA, reviewerB };
 }
