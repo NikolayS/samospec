@@ -37,6 +37,44 @@ export function formatVersionLabel(semver: string): string {
   return `v${major}.${minor}.${patch}`;
 }
 
+/**
+ * Parse a published label (`vX.Y` or `vX.Y.Z`, leading `v` optional) back
+ * into the full `X.Y.Z` SemVer triple — the inverse of
+ * {@link formatVersionLabel}. A short `vX.Y` expands to `X.Y.0`. Returns
+ * `null` when the label is malformed (so callers can decide whether a
+ * missing/garbled published_version should block a republish).
+ */
+export function parsePublishedLabel(label: string): string | null {
+  const stripped = label.startsWith("v") ? label.slice(1) : label;
+  const m = /^(\d+)\.(\d+)(?:\.(\d+))?$/.exec(stripped);
+  if (m === null) return null;
+  const major = m[1] ?? "0";
+  const minor = m[2] ?? "0";
+  const patch = m[3] ?? "0";
+  return `${major}.${minor}.${patch}`;
+}
+
+/**
+ * Compare two `X.Y.Z` SemVer triples numerically (NOT lexically, so
+ * `0.10.0 > 0.9.0`). Returns a negative number when `a < b`, `0` when
+ * equal, and a positive number when `a > b`. Throws on malformed input
+ * so a republish decision never silently treats a garbled version as
+ * "not newer".
+ */
+export function compareSemver(a: string, b: string): number {
+  const pa = SEMVER_RE.exec(a);
+  const pb = SEMVER_RE.exec(b);
+  if (pa === null || pb === null) {
+    throw new Error(`compareSemver: expected X.Y.Z, received '${a}' / '${b}'.`);
+  }
+  for (let i = 1; i <= 3; i += 1) {
+    const da = Number.parseInt(pa[i] ?? "0", 10);
+    const db = Number.parseInt(pb[i] ?? "0", 10);
+    if (da !== db) return da - db;
+  }
+  return 0;
+}
+
 export interface ChangelogEntryInput {
   readonly version: string;
   readonly now: string;

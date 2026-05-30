@@ -56,6 +56,12 @@ bunx samospec iterate linkrot                            # lead drafts → 2 rev
 bunx samospec publish linkrot                            # promote, commit, push, open PR via gh
 ```
 
+The loop is repeatable: run `iterate` again to advance the version, then
+`publish` again to re-promote the newer draft (`blueprints/<slug>/SPEC.md`
+and any regenerated `brief` follow the latest published version). `publish`
+only refuses when there is nothing new to promote — i.e. the working draft
+has not advanced past the published snapshot.
+
 At every step: `bunx samospec status <slug>` prints phase, current version, next-step hint, and last-round summary.
 
 ---
