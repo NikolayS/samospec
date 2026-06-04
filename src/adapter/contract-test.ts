@@ -25,6 +25,7 @@ import {
   type CritiqueInput,
   type EffortLevel,
   type ReviseInput,
+  type StructuredAskInput,
   AskOutputSchema,
   AuthStatusSchema,
   CritiqueOutputSchema,
@@ -32,6 +33,7 @@ import {
   EffortLevelSchema,
   ModelInfoSchema,
   ReviseOutputSchema,
+  StructuredAskOutputSchema,
 } from "./types.ts";
 
 export interface AdapterContractInput {
@@ -54,6 +56,12 @@ const SAMPLE_OPTS = Object.freeze({
 
 const SAMPLE_ASK: AskInput = {
   prompt: "ping",
+  context: "",
+  opts: SAMPLE_OPTS,
+};
+const SAMPLE_STRUCTURED_ASK: StructuredAskInput = {
+  prompt:
+    'Respond ONLY with a JSON object: { "result": "pong" }. Do not wrap in code fences.',
   context: "",
   opts: SAMPLE_OPTS,
 };
@@ -99,6 +107,10 @@ export async function runAdapterContract(
   // Work
   const ask = await adapter.ask(SAMPLE_ASK);
   AskOutputSchema.parse(ask);
+
+  const structuredAsk = await adapter.structuredAsk(SAMPLE_STRUCTURED_ASK);
+  StructuredAskOutputSchema.parse(structuredAsk);
+  expect(typeof structuredAsk.rawJson).toBe("string");
 
   const critique = await adapter.critique(SAMPLE_CRITIQUE);
   CritiqueOutputSchema.parse(critique);

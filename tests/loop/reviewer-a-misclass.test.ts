@@ -71,6 +71,7 @@ function makeFailingAdapter(errorMessage: string): Adapter {
     supports_effort: () => true,
     models: () => Promise.resolve([{ id: "x", family: "fake" }]),
     ask: () => Promise.reject(new Error("unused")),
+    structuredAsk: () => Promise.reject(new Error("unused")),
     critique: () => Promise.reject(new Error(errorMessage)),
     revise: () => Promise.reject(new Error("unused")),
   };

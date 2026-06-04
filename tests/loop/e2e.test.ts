@@ -162,6 +162,7 @@ describe("loop/e2e — 3-round fake-adapter loop to ready=true", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("unused")),
       revise: () => {
         roundCounter += 1;
@@ -277,6 +278,7 @@ describe("loop/e2e — manual-edit mid-session", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("unused")),
       revise: (input) => {
         roundCounter += 1;

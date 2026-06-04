@@ -37,6 +37,8 @@ import type {
   ModelInfo,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { runInit } from "../../src/cli/init.ts";
@@ -53,6 +55,10 @@ function makeHangingAdapter(): Adapter {
     models: (): Promise<readonly ModelInfo[]> =>
       Promise.resolve([{ id: "fake", family: "fake" }]),
     ask: (_input: AskInput): Promise<AskOutput> =>
+      new Promise(() => {
+        /* hangs */
+      }),
+    structuredAsk: (_input: StructuredAskInput): Promise<StructuredAskOutput> =>
       new Promise(() => {
         /* hangs */
       }),
@@ -177,10 +183,14 @@ describe("session wall-clock cap is a deprecated no-op (#81 / samo.team #415, #4
       supports_effort: (_level: EffortLevel) => true,
       models: (): Promise<readonly ModelInfo[]> =>
         Promise.resolve([{ id: "fake", family: "fake" }]),
-      ask: (_input: AskInput): Promise<AskOutput> => {
+      ask: (_input: AskInput): Promise<AskOutput> =>
+        Promise.resolve({ answer: "", usage: null, effort_used: "max" }),
+      structuredAsk: (
+        _input: StructuredAskInput,
+      ): Promise<StructuredAskOutput> => {
         const c = callCount++;
-        const answer = c === 0 ? personaJson : questionsJson;
-        return Promise.resolve({ answer, usage: null, effort_used: "max" });
+        const rawJson = c === 0 ? personaJson : questionsJson;
+        return Promise.resolve({ rawJson, usage: null, effort_used: "max" });
       },
       critique: (_input: CritiqueInput): Promise<CritiqueOutput> =>
         Promise.resolve({

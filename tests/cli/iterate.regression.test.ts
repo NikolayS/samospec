@@ -531,6 +531,7 @@ describe("iterate regression — lead_terminal exit-4 messages are specific per 
         supports_effort: () => true,
         models: () => Promise.resolve([{ id: "x", family: "fake" }]),
         ask: () => Promise.reject(new Error("unused")),
+        structuredAsk: () => Promise.reject(new Error("unused")),
         critique: () => Promise.reject(new Error("unused")),
         revise: () => Promise.reject(new Error(sub.errorMessage)),
       };
@@ -594,6 +595,7 @@ describe("iterate regression — lead_terminal exit-4 messages are specific per 
           supports_effort: () => true,
           models: () => Promise.resolve([{ id: "x", family: "fake" }]),
           ask: () => Promise.reject(new Error("unused")),
+          structuredAsk: () => Promise.reject(new Error("unused")),
           critique: () => Promise.reject(new Error("unused")),
           revise: () => Promise.reject(new Error(errMsg)),
         };

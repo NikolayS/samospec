@@ -92,6 +92,7 @@ function explodingReviewer(): Adapter {
     supports_effort: () => true,
     models: () => Promise.resolve([{ id: "x", family: "fake" }]),
     ask: () => Promise.reject(new Error("unused")),
+    structuredAsk: () => Promise.reject(new Error("unused")),
     critique: (_input: CritiqueInput) =>
       Promise.reject(new Error("reviewer must NOT be invoked on resume")),
     revise: () => Promise.reject(new Error("unused")),
@@ -111,6 +112,7 @@ function flakyLead(): { adapter: Adapter; reviseCalls: () => number } {
     supports_effort: () => true,
     models: () => Promise.resolve([{ id: "x", family: "fake" }]),
     ask: () => Promise.reject(new Error("unused")),
+    structuredAsk: () => Promise.reject(new Error("unused")),
     critique: () => Promise.reject(new Error("unused")),
     revise: (input: ReviseInput): Promise<ReviseOutput> => {
       calls += 1;

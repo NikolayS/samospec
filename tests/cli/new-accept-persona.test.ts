@@ -14,17 +14,17 @@ import path from "node:path";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { runInit } from "../../src/cli/init.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { buildNonInteractiveResolvers } from "../../src/cli/non-interactive.ts";
 
-function askOut(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOut(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 function personaJson(skill: string): string {
@@ -49,10 +49,12 @@ function makeLeadAdapter(answers: readonly string[]): Adapter {
   let call = 0;
   return {
     ...base,
-    ask: (_input: AskInput): Promise<AskOutput> => {
-      const a = answers[call] ?? answers[answers.length - 1] ?? "";
+    structuredAsk: (
+      _input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
+      const a = answers[call] ?? answers[answers.length - 1] ?? "{}";
       call += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
     revise: (_input: ReviseInput): Promise<ReviseOutput> =>
       Promise.resolve({

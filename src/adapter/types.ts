@@ -112,6 +112,37 @@ export const AskOutputSchema = z.object({
 });
 export type AskOutput = z.infer<typeof AskOutputSchema>;
 
+// ---------- structuredAsk — caller owns the schema directive ----------
+
+/**
+ * Input for structuredAsk(). Identical to AskInput but the prompt
+ * ALREADY contains the full "Respond ONLY with ..." schema instruction.
+ * The adapter must NOT inject an additional outer { "answer": string }
+ * wrapper — that would produce two contradictory schema directives and
+ * cause the model to emit one shape while the caller parses another.
+ */
+export const StructuredAskInputSchema = z.object({
+  prompt: z.string().min(1),
+  context: z.string(),
+  opts: WorkOptsSchema,
+  autonomy_policy: autonomyPolicySnapshotSchema.optional(),
+});
+export type StructuredAskInput = z.infer<typeof StructuredAskInputSchema>;
+
+/**
+ * Output for structuredAsk(). Returns the model's raw JSON string exactly
+ * as emitted (after code-fence stripping). The caller is responsible for
+ * parsing it against their own domain schema (e.g. personaAskSchema,
+ * LeadResponseSchema). No { "answer" } envelope is applied.
+ */
+export const StructuredAskOutputSchema = z.object({
+  rawJson: z.string(),
+  usage: UsageSchema,
+  effort_used: EffortLevelSchema,
+  account_default: z.boolean().optional(),
+});
+export type StructuredAskOutput = z.infer<typeof StructuredAskOutputSchema>;
+
 // SPEC §7 review taxonomy.
 export const FindingCategorySchema = z.enum([
   "ambiguity",
@@ -268,6 +299,13 @@ export interface Adapter {
 
   // Work
   ask(input: AskInput): Promise<AskOutput>;
+  /**
+   * Like ask() but does NOT inject the outer { "answer": string } wrapper.
+   * Use this when the caller's prompt already carries a full "Respond ONLY
+   * with ..." schema directive (e.g. persona, interview). Returns the raw
+   * JSON string; the caller parses it against their own domain schema.
+   */
+  structuredAsk(input: StructuredAskInput): Promise<StructuredAskOutput>;
   critique(input: CritiqueInput): Promise<CritiqueOutput>;
   revise(input: ReviseInput): Promise<ReviseOutput>;
 }

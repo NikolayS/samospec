@@ -13,10 +13,10 @@ import path from "node:path";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { runIterate } from "../../src/cli/iterate.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
@@ -33,8 +33,8 @@ import {
 import { writeState } from "../../src/state/store.ts";
 import { createTempRepo, type TempRepo } from "../git/helpers/tempRepo.ts";
 
-function askOut(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOut(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 function personaJson(): string {
@@ -65,10 +65,12 @@ function makeLeadAdapter(): Adapter {
   let askCall = 0;
   return {
     ...base,
-    ask: (_input: AskInput): Promise<AskOutput> => {
-      const a = answers[askCall] ?? answers[answers.length - 1] ?? "";
+    structuredAsk: (
+      _input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
+      const a = answers[askCall] ?? answers[answers.length - 1] ?? "{}";
       askCall += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
     revise: (_input: ReviseInput): Promise<ReviseOutput> =>
       Promise.resolve({
@@ -316,10 +318,12 @@ function makeResumeAdapter(): Adapter {
   let askCall = 0;
   return {
     ...base,
-    ask: (_input: AskInput): Promise<AskOutput> => {
-      const a = answers[askCall] ?? answers[answers.length - 1] ?? "";
+    structuredAsk: (
+      _input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
+      const a = answers[askCall] ?? answers[answers.length - 1] ?? "{}";
       askCall += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
     revise: (_input: ReviseInput): Promise<ReviseOutput> =>
       Promise.resolve({

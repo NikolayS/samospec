@@ -92,6 +92,7 @@ function recordingReviewer(seat: "reviewer_a" | "reviewer_b"): {
     supports_effort: () => true,
     models: () => Promise.resolve([{ id: "x", family: "fake" }]),
     ask: () => Promise.reject(new Error("unused")),
+    structuredAsk: () => Promise.reject(new Error("unused")),
     critique: (input: CritiqueInput): Promise<CritiqueOutput> => {
       captured = input;
       return Promise.resolve(out);
@@ -111,6 +112,7 @@ function leadAdapter(): Adapter {
     supports_effort: () => true,
     models: () => Promise.resolve([{ id: "x", family: "fake" }]),
     ask: () => Promise.reject(new Error("unused")),
+    structuredAsk: () => Promise.reject(new Error("unused")),
     critique: () => Promise.reject(new Error("unused")),
     revise: (_input: ReviseInput): Promise<ReviseOutput> =>
       Promise.resolve(READY_REVISE),

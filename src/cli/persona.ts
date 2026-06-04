@@ -21,7 +21,11 @@ import { z } from "zod";
 
 import { UNIFIED_DEFAULT_EFFORT } from "../adapter/effort.ts";
 import { preParseJson } from "../adapter/json-parse.ts";
-import type { Adapter, AskInput, EffortLevel } from "../adapter/types.ts";
+import type {
+  Adapter,
+  EffortLevel,
+  StructuredAskInput,
+} from "../adapter/types.ts";
 
 // SPEC §5 Phase 2 canonical form. Matches:
 //   Veteran "<non-empty skill>" expert
@@ -191,24 +195,27 @@ async function askForPersona(
   prompt: string,
   effort: EffortLevel,
   timeoutMs: number,
-  idea?: string,
 ): Promise<string> {
-  const askInput: AskInput = {
+  // Use structuredAsk so the adapter does NOT inject an outer
+  // { "answer": string } wrapper. buildPersonaPrompt already carries a
+  // "Respond ONLY with { persona, rationale }" directive; adding a second
+  // "Respond ONLY with { answer }" directive from buildAskPrompt creates a
+  // schema conflict that causes non-deterministic parse failures.
+  const askInput: StructuredAskInput = {
     prompt,
     context: "",
     opts: { effort, timeout: timeoutMs },
-    ...(typeof idea === "string" && idea.length > 0 ? { idea } : {}),
   };
   let output;
   try {
-    output = await adapter.ask(askInput);
+    output = await adapter.structuredAsk(askInput);
   } catch (err) {
     throw new PersonaTerminalError(
       "adapter_error",
       err instanceof Error ? err.message : String(err),
     );
   }
-  return output.answer;
+  return output.rawJson;
 }
 
 /**
@@ -238,13 +245,7 @@ export async function proposePersona(
   });
 
   // First attempt.
-  const rawFirst = await askForPersona(
-    adapter,
-    prompt,
-    effort,
-    timeoutMs,
-    input.idea,
-  );
+  const rawFirst = await askForPersona(adapter, prompt, effort, timeoutMs);
   let validated = parsePersonaAnswer(rawFirst);
 
   // One repair retry if the first attempt failed the schema.
@@ -255,7 +256,6 @@ export async function proposePersona(
       repairPrompt,
       effort,
       timeoutMs,
-      input.idea,
     );
     validated = parsePersonaAnswer(rawSecond);
   }

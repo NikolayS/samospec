@@ -8,10 +8,10 @@ import { describe, expect, test } from "bun:test";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   AuthStatus,
   EffortLevel,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import {
   PERSONA_FORM_RE,
@@ -20,35 +20,42 @@ import {
   formatPersonaString,
 } from "../../src/cli/persona.ts";
 
-function askOutputWithAnswer(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOutputWithRawJson(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
-interface ScriptedAskAdapter extends Adapter {
-  readonly asks: readonly AskInput[];
+interface ScriptedStructuredAskAdapter extends Adapter {
+  readonly structuredAsks: readonly StructuredAskInput[];
 }
 
-function makeScriptedAskAdapter(
-  answers: readonly string[],
+function makeScriptedStructuredAskAdapter(
+  rawJsonAnswers: readonly string[],
   overrides: Partial<{
     auth: AuthStatus;
   }> = {},
-): ScriptedAskAdapter {
+): ScriptedStructuredAskAdapter {
   const base = createFakeAdapter(
     overrides.auth !== undefined ? { auth: overrides.auth } : {},
   );
-  const asks: AskInput[] = [];
+  const structuredAsks: StructuredAskInput[] = [];
   let call = 0;
   const scripted: Adapter = {
     ...base,
-    ask: (input: AskInput): Promise<AskOutput> => {
-      asks.push(input);
-      const answer = answers[call] ?? answers[answers.length - 1] ?? "";
+    structuredAsk: (
+      input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
+      structuredAsks.push(input);
+      const rawJson =
+        rawJsonAnswers[call] ??
+        rawJsonAnswers[rawJsonAnswers.length - 1] ??
+        "{}";
       call += 1;
-      return Promise.resolve(askOutputWithAnswer(answer));
+      return Promise.resolve(structuredAskOutputWithRawJson(rawJson));
     },
   };
-  const result = Object.assign(scripted, { asks }) as ScriptedAskAdapter;
+  const result = Object.assign(scripted, {
+    structuredAsks,
+  }) as ScriptedStructuredAskAdapter;
   return result;
 }
 
@@ -102,7 +109,7 @@ describe("persona form regex (SPEC §5 Phase 2)", () => {
 
 describe("proposePersona — happy path", () => {
   test("returns { persona, rationale } when lead returns canonical form + rationale", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale:
@@ -125,9 +132,9 @@ describe("proposePersona — happy path", () => {
     expect(result.skill).toBe("CLI software engineer");
   });
 
-  test("ask() is invoked with a system prompt mentioning the persona form", async () => {
+  test("structuredAsk() is invoked with a system prompt mentioning the persona form", async () => {
     const idea = "some idea";
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "platform engineer" expert',
         rationale: "ok",
@@ -143,11 +150,12 @@ describe("proposePersona — happy path", () => {
       adapter,
     );
 
-    expect(adapter.asks.length).toBeGreaterThan(0);
-    const first = adapter.asks[0];
+    expect(adapter.structuredAsks.length).toBeGreaterThan(0);
+    const first = adapter.structuredAsks[0];
     expect(first.prompt).toContain("Veteran");
     expect(first.prompt).toContain("expert");
-    expect(first.idea).toBe(idea);
+    // The idea text is baked into the domain prompt (not a separate field).
+    expect(first.prompt).toContain(idea);
     // Unified default: high (was "max" before the unified-effort knob).
     expect(first.opts.effort).toBe("high");
   });
@@ -157,7 +165,7 @@ describe("proposePersona — happy path", () => {
 
 describe("proposePersona — confirm / edit / replace", () => {
   test("kind: edit overrides the skill and keeps the rationale", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "reasoning",
@@ -180,7 +188,7 @@ describe("proposePersona — confirm / edit / replace", () => {
   });
 
   test("kind: replace overrides the entire persona string", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "reasoning",
@@ -206,7 +214,7 @@ describe("proposePersona — confirm / edit / replace", () => {
   });
 
   test("kind: replace rejects an ill-formed persona (throws)", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "reasoning",
@@ -236,7 +244,7 @@ describe("proposePersona — confirm / edit / replace", () => {
 describe("proposePersona — schema repair + lead_terminal", () => {
   test("first response malformed, second response valid: accepts second", async () => {
     const idea = "idea";
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       // Malformed: missing quotes around skill.
       JSON.stringify({
         persona: "Veteran CLI software engineer expert",
@@ -258,14 +266,15 @@ describe("proposePersona — schema repair + lead_terminal", () => {
       adapter,
     );
     expect(result.persona).toBe('Veteran "CLI software engineer" expert');
-    // Exactly one repair attempt was made (so 2 total ask calls).
-    expect(adapter.asks.length).toBe(2);
-    expect(adapter.asks[0].idea).toBe(idea);
-    expect(adapter.asks[1].idea).toBe(idea);
+    // Exactly one repair attempt was made (so 2 total structuredAsk calls).
+    expect(adapter.structuredAsks.length).toBe(2);
+    // The idea is baked into the prompt, not a separate field.
+    expect(adapter.structuredAsks[0].prompt).toContain(idea);
+    expect(adapter.structuredAsks[1].prompt).toContain(idea);
   });
 
   test("two malformed responses in a row => throws PersonaTerminalError", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({ persona: "nope", rationale: "bad" }),
       JSON.stringify({ persona: "still bad", rationale: "worse" }),
     ]);
@@ -288,7 +297,7 @@ describe("proposePersona — schema repair + lead_terminal", () => {
   });
 
   test("non-JSON response => throws PersonaTerminalError", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       "this is not JSON at all",
       "still not JSON",
     ]);
@@ -315,7 +324,7 @@ describe("proposePersona — schema repair + lead_terminal", () => {
 
 describe("proposePersona — subscription-auth UX copy (SPEC §11)", () => {
   test("subscriptionAuth=true surfaces the explicit message via onNotice callback", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "r",
@@ -337,7 +346,7 @@ describe("proposePersona — subscription-auth UX copy (SPEC §11)", () => {
   });
 
   test("subscriptionAuth=false suppresses the message", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "r",
@@ -362,7 +371,7 @@ describe("proposePersona — subscription-auth UX copy (SPEC §11)", () => {
 
 describe("proposePersona — --explain flag (SPEC §4 secondary ICP)", () => {
   test("explain=true adds a plain-English preamble to the prompt", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "r",
@@ -377,14 +386,14 @@ describe("proposePersona — --explain flag (SPEC §4 secondary ICP)", () => {
       },
       adapter,
     );
-    const first = adapter.asks[0];
+    const first = adapter.structuredAsks[0];
     expect(first.prompt.toLowerCase()).toMatch(
       /plain english|plain-english|non-technical|everyday/,
     );
   });
 
   test("explain=false does NOT include the plain-English preamble", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "r",
@@ -399,7 +408,7 @@ describe("proposePersona — --explain flag (SPEC §4 secondary ICP)", () => {
       },
       adapter,
     );
-    const first = adapter.asks[0];
+    const first = adapter.structuredAsks[0];
     expect(first.prompt.toLowerCase()).not.toMatch(
       /plain english preamble|non-technical/,
     );
@@ -410,7 +419,7 @@ describe("proposePersona — --explain flag (SPEC §4 secondary ICP)", () => {
 
 describe("proposePersona — job-title shape guidance (#367)", () => {
   test("prompt asks for a 2-4 word job-title-shaped role", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "Recipe Developer" expert',
         rationale: "r",
@@ -425,7 +434,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
       },
       adapter,
     );
-    const prompt = adapter.asks[0].prompt;
+    const prompt = adapter.structuredAsks[0].prompt;
     // Must mention the 2-4 word constraint.
     expect(prompt).toMatch(/2[–—-]4\s+words/i);
     // Must instruct Title Case.
@@ -435,7 +444,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
   });
 
   test("prompt names person-noun endings (Developer, Designer, etc.)", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "Recipe Developer" expert',
         rationale: "r",
@@ -450,7 +459,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
       },
       adapter,
     );
-    const prompt = adapter.asks[0].prompt;
+    const prompt = adapter.structuredAsks[0].prompt;
     // At least three of these person-nouns should be enumerated as
     // accepted endings.
     const personNouns = [
@@ -470,7 +479,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
   });
 
   test("prompt forbids descriptive task / domain phrases", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "Recipe Developer" expert',
         rationale: "r",
@@ -485,7 +494,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
       },
       adapter,
     );
-    const prompt = adapter.asks[0].prompt;
+    const prompt = adapter.structuredAsks[0].prompt;
     const lower = prompt.toLowerCase();
     // Must call out the forbidden -ing / -ment / -ence task-shaped
     // suffixes by listing some of them verbatim.
@@ -501,7 +510,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
   });
 
   test("prompt includes few-shot good/bad examples for shape", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "Recipe Developer" expert',
         rationale: "r",
@@ -516,7 +525,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
       },
       adapter,
     );
-    const prompt = adapter.asks[0].prompt;
+    const prompt = adapter.structuredAsks[0].prompt;
     // Good examples: short job-title-shaped roles (canonically wrapped
     // in the Veteran "<skill>" expert form).
     expect(prompt).toContain('Veteran "Recipe Developer" expert');
@@ -534,7 +543,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
 
 describe("proposePersona — lead effort policy", () => {
   test("defaults to effort=high (unified default, not max)", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "r",
@@ -547,11 +556,11 @@ describe("proposePersona — lead effort policy", () => {
       choice: { kind: "accept" as const },
     };
     await proposePersona(opts, adapter);
-    expect(adapter.asks[0].opts.effort).toBe("high");
+    expect(adapter.structuredAsks[0].opts.effort).toBe("high");
   });
 
   test("honors an explicit effort override", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "r",
@@ -565,22 +574,19 @@ describe("proposePersona — lead effort policy", () => {
       effort: "high" as EffortLevel,
     };
     await proposePersona(opts, adapter);
-    expect(adapter.asks[0].opts.effort).toBe("high");
+    expect(adapter.structuredAsks[0].opts.effort).toBe("high");
   });
 });
 
 // ---------- timeout policy (raised SPEC §7 default) ----------
 //
 // Regression guard for the timeouts robustness pass: persona's lead
-// `ask()` must default `opts.timeout` to 900_000 ms (15m) so a slow
-// max-effort lead is not preempted mid-flight. Before this guard the
-// suite asserted `opts.effort` but NEVER `opts.timeout`, so a revert of
-// the 900_000 default (e.g. back to 300_000) would have passed green.
-// See draft.test.ts (DRAFT_REVISE_TIMEOUT_MS) for the sibling pattern.
+// `structuredAsk()` must default `opts.timeout` to 900_000 ms (15m) so a
+// slow max-effort lead is not preempted mid-flight.
 
 describe("proposePersona — lead timeout policy (SPEC §7)", () => {
   test("defaults opts.timeout to 900_000 ms (15m) when no override is given", async () => {
-    const adapter = makeScriptedAskAdapter([
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "r",
@@ -595,11 +601,11 @@ describe("proposePersona — lead timeout policy (SPEC §7)", () => {
       },
       adapter,
     );
-    expect(adapter.asks[0].opts.timeout).toBe(900_000);
+    expect(adapter.structuredAsks[0].opts.timeout).toBe(900_000);
   });
 
-  test("a caller-supplied timeoutMs override reaches adapter.ask opts.timeout", async () => {
-    const adapter = makeScriptedAskAdapter([
+  test("a caller-supplied timeoutMs override reaches adapter.structuredAsk opts.timeout", async () => {
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "r",
@@ -615,14 +621,14 @@ describe("proposePersona — lead timeout policy (SPEC §7)", () => {
       },
       adapter,
     );
-    expect(adapter.asks[0].opts.timeout).toBe(123_456);
+    expect(adapter.structuredAsks[0].opts.timeout).toBe(123_456);
   });
 
   test("the 900_000 default and the override both apply on the repair retry too", async () => {
     // First answer is malformed -> triggers ONE repair retry. The
-    // timeout override must thread through to BOTH asks (the default
-    // would otherwise silently re-appear on the retry path).
-    const adapter = makeScriptedAskAdapter([
+    // timeout override must thread through to BOTH structuredAsks (the
+    // default would otherwise silently re-appear on the retry path).
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({ persona: "not canonical", rationale: "r1" }),
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
@@ -639,17 +645,15 @@ describe("proposePersona — lead timeout policy (SPEC §7)", () => {
       },
       adapter,
     );
-    expect(adapter.asks.length).toBe(2);
-    expect(adapter.asks[0].opts.timeout).toBe(777_000);
-    expect(adapter.asks[1].opts.timeout).toBe(777_000);
+    expect(adapter.structuredAsks.length).toBe(2);
+    expect(adapter.structuredAsks[0].opts.timeout).toBe(777_000);
+    expect(adapter.structuredAsks[1].opts.timeout).toBe(777_000);
   });
 
-  test("effort AND timeout are BOTH correct on the same ask (no regression from the timeout raise)", async () => {
+  test("effort AND timeout are BOTH correct on the same structuredAsk (no regression from the timeout raise)", async () => {
     // Combined assertion: bumping the timeout default must not regress
-    // effort threading, and vice versa. Here effort is set explicitly
-    // (`high`, which also happens to be the unified default); timeout
-    // defaults to 900_000.
-    const adapter = makeScriptedAskAdapter([
+    // effort threading, and vice versa.
+    const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
         persona: 'Veteran "CLI software engineer" expert',
         rationale: "r",
@@ -665,7 +669,7 @@ describe("proposePersona — lead timeout policy (SPEC §7)", () => {
       },
       adapter,
     );
-    expect(adapter.asks[0].opts.effort).toBe("high");
-    expect(adapter.asks[0].opts.timeout).toBe(900_000);
+    expect(adapter.structuredAsks[0].opts.effort).toBe("high");
+    expect(adapter.structuredAsks[0].opts.timeout).toBe(900_000);
   });
 });

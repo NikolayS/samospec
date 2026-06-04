@@ -34,7 +34,11 @@ import { z } from "zod";
 
 import { UNIFIED_DEFAULT_EFFORT } from "../adapter/effort.ts";
 import { preParseJson } from "../adapter/json-parse.ts";
-import type { Adapter, AskInput, EffortLevel } from "../adapter/types.ts";
+import type {
+  Adapter,
+  EffortLevel,
+  StructuredAskInput,
+} from "../adapter/types.ts";
 import { PERSONA_FORM_RE } from "./persona.ts";
 
 // ---------- constants ----------
@@ -337,21 +341,25 @@ export async function runInterview(
   let currentPrompt = prompt;
   let lastDuplicates: string[] = [];
   for (let attempt = 0; attempt <= MAX_DEDUPE_RETRIES; attempt += 1) {
-    const askInput: AskInput = {
+    // Use structuredAsk so the adapter does NOT inject an outer
+    // { "answer": string } wrapper. buildInterviewPrompt already carries a
+    // "Respond ONLY with { questions: [...] }" directive; a second wrapper
+    // from buildAskPrompt creates a schema conflict causing parse failures.
+    const askInput: StructuredAskInput = {
       prompt: currentPrompt,
       context: "",
       opts: { effort, timeout: timeoutMs },
     };
     let askOut;
     try {
-      askOut = await adapter.ask(askInput);
+      askOut = await adapter.structuredAsk(askInput);
     } catch (err) {
       throw new InterviewTerminalError(
         err instanceof Error ? err.message : String(err),
       );
     }
 
-    const parsed = preParseJson(askOut.answer);
+    const parsed = preParseJson(askOut.rawJson);
     if (!parsed.ok) {
       throw new InterviewTerminalError(
         `lead response was not valid JSON: ${parsed.error.message}`,

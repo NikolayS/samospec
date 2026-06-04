@@ -21,6 +21,7 @@ function fakeAdapter(vendor: string, detect: DetectResult): Adapter {
     supports_effort: () => true,
     models: () => Promise.resolve([{ id: "x", family: vendor }]),
     ask: () => Promise.reject(new Error("unused")),
+    structuredAsk: () => Promise.reject(new Error("unused")),
     critique: () => Promise.reject(new Error("unused")),
     revise: () => Promise.reject(new Error("unused")),
   };

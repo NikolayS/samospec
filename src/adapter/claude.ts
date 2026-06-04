@@ -54,12 +54,16 @@ import {
   type ModelInfo,
   type ReviseInput,
   type ReviseOutput,
+  type StructuredAskInput,
+  type StructuredAskOutput,
   AskInputSchema,
   AskOutputSchema,
   CritiqueInputSchema,
   CritiqueOutputSchema,
   ReviseInputSchema,
   ReviseOutputSchema,
+  StructuredAskInputSchema,
+  StructuredAskOutputSchema,
 } from "./types.ts";
 
 // ---------- constants ----------
@@ -354,6 +358,32 @@ export class ClaudeAdapter implements Adapter {
     });
     const parsed = parseAskJson(raw, input.opts.effort);
     return AskOutputSchema.parse(parsed);
+  }
+
+  async structuredAsk(input: StructuredAskInput): Promise<StructuredAskOutput> {
+    StructuredAskInputSchema.parse(input);
+    const prompt = buildStructuredAskPrompt(input);
+    const raw = await this.runWithRetries({
+      prompt,
+      timeoutMs: input.opts.timeout,
+      effort: input.opts.effort,
+      structured: true,
+    });
+    // Return the raw JSON string; caller parses it against their own schema.
+    // We still normalize usage + effort_used for consistent bookkeeping.
+    const parsed = preParseJson<Record<string, unknown>>(raw);
+    if (!parsed.ok) {
+      throw new ClaudeAdapterError({
+        kind: "terminal",
+        reason: "schema_violation",
+        detail: `structuredAsk: response is not valid JSON: ${parsed.error.message}`,
+      });
+    }
+    return StructuredAskOutputSchema.parse({
+      rawJson: raw,
+      usage: null,
+      effort_used: input.opts.effort,
+    });
   }
 
   async critique(input: CritiqueInput): Promise<CritiqueOutput> {
@@ -726,6 +756,24 @@ export function buildAskPrompt(input: AskInput): string {
     ctx +
     `\n\nQuestion:\n${input.prompt}\n`
   );
+}
+
+/**
+ * Prompt builder for structuredAsk(). Unlike buildAskPrompt(), this does
+ * NOT prepend the outer { "answer": string } schema directive. The caller's
+ * prompt is expected to already contain the full "Respond ONLY with ..."
+ * instruction for its own domain JSON shape (e.g. { "persona", "rationale" }
+ * for persona, { "questions": [...] } for interview).
+ *
+ * Passing a domain prompt through this builder keeps the model's instruction
+ * set unambiguous — exactly ONE schema directive, from the caller.
+ */
+export function buildStructuredAskPrompt(input: StructuredAskInput): string {
+  const ctx = input.context === "" ? "" : `\n\nContext:\n${input.context}\n`;
+  const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
+    input.autonomy_policy,
+  );
+  return autonomyBlock + ctx + input.prompt;
 }
 
 export function buildCritiquePrompt(input: CritiqueInput): string {

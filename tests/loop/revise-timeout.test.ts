@@ -34,6 +34,8 @@ import type {
   DetectResult,
   EffortLevel,
   ModelInfo,
+  StructuredAskInput,
+  StructuredAskOutput,
   ReviseInput,
   ReviseOutput,
 } from "../../src/adapter/types.ts";
@@ -76,6 +78,8 @@ function passingReviewer(): Adapter {
       Promise.resolve([{ id: "fake", family: "fake" }]),
     ask: (_i: AskInput): Promise<AskOutput> =>
       Promise.reject(new Error("ask not used")),
+    structuredAsk: (_i: StructuredAskInput): Promise<StructuredAskOutput> =>
+      Promise.reject(new Error("structuredAsk not used")),
     critique: (_i: CritiqueInput): Promise<CritiqueOutput> =>
       Promise.resolve(SAMPLE_CRITIQUE),
     revise: (_i: ReviseInput): Promise<ReviseOutput> =>
@@ -102,6 +106,8 @@ function hangingLead(): Adapter & { reviseCalls: () => number } {
       Promise.resolve([{ id: "fake", family: "fake" }]),
     ask: (_i: AskInput): Promise<AskOutput> =>
       Promise.reject(new Error("ask not used")),
+    structuredAsk: (_i: StructuredAskInput): Promise<StructuredAskOutput> =>
+      Promise.reject(new Error("structuredAsk not used")),
     critique: (_i: CritiqueInput): Promise<CritiqueOutput> =>
       Promise.reject(new Error("critique not used on lead")),
     revise: (_i: ReviseInput): Promise<ReviseOutput> => {
@@ -137,6 +143,8 @@ function capturingReviewer(): Adapter & {
       Promise.resolve([{ id: "fake", family: "fake" }]),
     ask: (_i: AskInput): Promise<AskOutput> =>
       Promise.reject(new Error("ask not used")),
+    structuredAsk: (_i: StructuredAskInput): Promise<StructuredAskOutput> =>
+      Promise.reject(new Error("structuredAsk not used")),
     critique: (i: CritiqueInput): Promise<CritiqueOutput> => {
       seen.push(i.opts.timeout);
       return Promise.resolve(SAMPLE_CRITIQUE);
@@ -168,6 +176,8 @@ function capturingLead(): Adapter & {
       Promise.resolve([{ id: "fake", family: "fake" }]),
     ask: (_i: AskInput): Promise<AskOutput> =>
       Promise.reject(new Error("ask not used")),
+    structuredAsk: (_i: StructuredAskInput): Promise<StructuredAskOutput> =>
+      Promise.reject(new Error("structuredAsk not used")),
     critique: (_i: CritiqueInput): Promise<CritiqueOutput> =>
       Promise.reject(new Error("critique not used on lead")),
     revise: (i: ReviseInput): Promise<ReviseOutput> => {
@@ -289,6 +299,7 @@ describe("loop/round — lead revise per-call timeout (#92)", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
       ask: () => Promise.reject(new Error("ask not used")),
+      structuredAsk: () => Promise.reject(new Error("structuredAsk not used")),
       critique: () => Promise.reject(new Error("critique not used on lead")),
       revise: (_i: ReviseInput): Promise<ReviseOutput> => {
         calls += 1;
@@ -580,6 +591,7 @@ describe("loop/round — distinguishes reviewer-retry from revise-retry (#92 REV
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
       ask: () => Promise.reject(new Error("ask not used")),
+      structuredAsk: () => Promise.reject(new Error("structuredAsk not used")),
       critique: () => Promise.reject(new Error("critique not used on lead")),
       revise: (_i: ReviseInput): Promise<ReviseOutput> =>
         Promise.resolve({
@@ -602,6 +614,8 @@ describe("loop/round — distinguishes reviewer-retry from revise-retry (#92 REV
         supports_effort: () => true,
         models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
         ask: () => Promise.reject(new Error("ask not used")),
+        structuredAsk: () =>
+          Promise.reject(new Error("structuredAsk not used")),
         critique: (): Promise<CritiqueOutput> => {
           n += 1;
           if (n === 1) return Promise.reject(new Error("first-fail"));
@@ -660,6 +674,7 @@ describe("loop/round — distinguishes reviewer-retry from revise-retry (#92 REV
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
       ask: () => Promise.reject(new Error("ask not used")),
+      structuredAsk: () => Promise.reject(new Error("structuredAsk not used")),
       critique: () => Promise.reject(new Error("critique not used on lead")),
       revise: (_i: ReviseInput): Promise<ReviseOutput> => {
         calls += 1;
@@ -750,6 +765,7 @@ describe("iterate — changelog note differs by retry kind (#92 REV)", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
       ask: () => Promise.reject(new Error("ask not used")),
+      structuredAsk: () => Promise.reject(new Error("structuredAsk not used")),
       critique: () => Promise.reject(new Error("critique not used on lead")),
       revise: (_i: ReviseInput): Promise<ReviseOutput> => {
         calls += 1;
@@ -810,6 +826,7 @@ describe("iterate — changelog note differs by retry kind (#92 REV)", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
       ask: () => Promise.reject(new Error("ask not used")),
+      structuredAsk: () => Promise.reject(new Error("structuredAsk not used")),
       critique: () => Promise.reject(new Error("critique not used on lead")),
       revise: (_i: ReviseInput): Promise<ReviseOutput> =>
         Promise.resolve({
@@ -831,6 +848,8 @@ describe("iterate — changelog note differs by retry kind (#92 REV)", () => {
         supports_effort: () => true,
         models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
         ask: () => Promise.reject(new Error("ask not used")),
+        structuredAsk: () =>
+          Promise.reject(new Error("structuredAsk not used")),
         critique: (): Promise<CritiqueOutput> => {
           n += 1;
           if (n === 1) return Promise.reject(new Error("first-fail"));

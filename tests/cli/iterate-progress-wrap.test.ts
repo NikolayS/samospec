@@ -33,6 +33,8 @@ import type {
   ModelInfo,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { wrapAdaptersForProgress } from "../../src/cli/iterate.ts";
 import type { ProgressReporter } from "../../src/cli/iterate-progress.ts";
@@ -71,6 +73,10 @@ class FakeClassAdapter implements Adapter {
       usage: null,
       effort_used: "max",
     });
+  }
+
+  structuredAsk(_input: StructuredAskInput): Promise<StructuredAskOutput> {
+    return Promise.reject(new Error("structuredAsk not expected"));
   }
 
   critique(_input: CritiqueInput): Promise<CritiqueOutput> {
