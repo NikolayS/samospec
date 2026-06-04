@@ -26,11 +26,11 @@ import { spawnSync } from "node:child_process";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   AuthStatus,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { readInterview } from "../../src/cli/interview.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
@@ -42,8 +42,8 @@ import { createTempRepo, type TempRepo } from "../git/helpers/tempRepo.ts";
 
 // ---------- fixture builders ----------
 
-function askOut(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOut(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 function personaJson(skill: string): string {
@@ -91,23 +91,25 @@ interface MakeAdapterArgs {
 
 function makeAdapter(args: MakeAdapterArgs): {
   adapter: Adapter;
-  asks: AskInput[];
+  asks: StructuredAskInput[];
   revises: ReviseInput[];
 } {
   const base = createFakeAdapter(
     args.auth !== undefined ? { auth: args.auth } : {},
   );
-  const asks: AskInput[] = [];
+  const asks: StructuredAskInput[] = [];
   const revises: ReviseInput[] = [];
   let askCall = 0;
   const adapter: Adapter = {
     ...base,
-    ask: (input: AskInput): Promise<AskOutput> => {
+    structuredAsk: (input: StructuredAskInput): Promise<StructuredAskOutput> => {
       asks.push(input);
       const a =
-        args.answers[askCall] ?? args.answers[args.answers.length - 1] ?? "";
+        args.answers[askCall] ??
+        args.answers[args.answers.length - 1] ??
+        "{}";
       askCall += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
     revise: (input: ReviseInput): Promise<ReviseOutput> => {
       revises.push(input);

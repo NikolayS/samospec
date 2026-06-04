@@ -81,12 +81,16 @@ import {
   type ModelInfo,
   type ReviseInput,
   type ReviseOutput,
+  type StructuredAskInput,
+  type StructuredAskOutput,
   AskInputSchema,
   AskOutputSchema,
   CritiqueInputSchema,
   CritiqueOutputSchema,
   ReviseInputSchema,
   ReviseOutputSchema,
+  StructuredAskInputSchema,
+  StructuredAskOutputSchema,
 } from "./types.ts";
 
 // ---------- constants ----------
@@ -343,6 +347,31 @@ export class CodexAdapter implements Adapter {
     const parsed = parseStructuredJson(raw, input.opts.effort);
     const base = AskOutputSchema.parse(parsed);
     return accountDefault ? { ...base, account_default: true } : base;
+  }
+
+  async structuredAsk(input: StructuredAskInput): Promise<StructuredAskOutput> {
+    StructuredAskInputSchema.parse(input);
+    const prompt = buildStructuredAskPrompt(input);
+    const { raw } = await this.runWithRetries({
+      prompt,
+      timeoutMs: input.opts.timeout,
+      effort: input.opts.effort,
+      structured: true,
+    });
+    // Validate the raw output is parseable JSON before returning.
+    const parsed = preParseJson<Record<string, unknown>>(raw);
+    if (!parsed.ok) {
+      throw new CodexAdapterError({
+        kind: "terminal",
+        reason: "schema_violation",
+        detail: `structuredAsk: response is not valid JSON: ${parsed.error.message}`,
+      });
+    }
+    return StructuredAskOutputSchema.parse({
+      rawJson: raw,
+      usage: null,
+      effort_used: input.opts.effort,
+    });
   }
 
   async critique(input: CritiqueInput): Promise<CritiqueOutput> {
@@ -672,6 +701,19 @@ function buildAskPrompt(input: AskInput): string {
     ctx +
     `\n\nQuestion:\n${input.prompt}\n`
   );
+}
+
+/**
+ * Like buildAskPrompt but does NOT inject the outer { "answer": string }
+ * wrapper. Used by structuredAsk() when the caller's prompt already carries
+ * the full schema directive for a domain-specific JSON shape.
+ */
+function buildStructuredAskPrompt(input: StructuredAskInput): string {
+  const ctx = input.context === "" ? "" : `\n\nContext:\n${input.context}\n`;
+  const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
+    input.autonomy_policy,
+  );
+  return autonomyBlock + ctx + input.prompt;
 }
 
 /**

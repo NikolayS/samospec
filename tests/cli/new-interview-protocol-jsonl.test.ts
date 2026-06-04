@@ -39,10 +39,10 @@ import path from "node:path";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { runInit } from "../../src/cli/init.ts";
 import { runNew } from "../../src/cli/new.ts";
@@ -337,8 +337,8 @@ afterEach(() => {
   rmSync(tmp, { recursive: true, force: true });
 });
 
-function askOut(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOut(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 function personaJson(skill: string): string {
@@ -359,10 +359,12 @@ function makeLeadAdapter(answers: readonly string[]): Adapter {
   let call = 0;
   return {
     ...base,
-    ask: (_input: AskInput): Promise<AskOutput> => {
-      const a = answers[call] ?? answers[answers.length - 1] ?? "";
+    structuredAsk: (
+      _input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
+      const a = answers[call] ?? answers[answers.length - 1] ?? "{}";
       call += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
     revise: (_input: ReviseInput): Promise<ReviseOutput> =>
       Promise.resolve({
@@ -626,16 +628,15 @@ describe("samospec new --interview-protocol jsonl — spawnSync E2E (M4)", () =>
       // works even across re-invocations in the same PID.
       const counterPath = path.join(fakeBin, ".claude-count");
       writeFileSync(counterPath, "0");
-      // The adapter wraps every call's structured JSON inside
-      // {"answer": "...", "usage": null, "effort_used": "max"} for ask,
-      // and {"spec": "...", "ready": ..., "rationale": "...", "usage": null,
-      // "effort_used": "max"} for revise. `answer` is a JSON-string that
-      // the caller (persona / interview) re-parses.
-      const personaJsonStr = JSON.stringify({
+      // structuredAsk (persona + interview) receives the raw domain JSON
+      // directly from the model. revise() receives the spec JSON object.
+      // NOTE: since the persona and interview calls now use structuredAsk,
+      // the Claude stub must return the raw domain JSON (no {answer} wrapper).
+      const personaPayload = JSON.stringify({
         persona: 'Veteran "CLI engineer" expert',
         rationale: "pragmatic",
       });
-      const questionsJsonStr = JSON.stringify({
+      const questionsPayload = JSON.stringify({
         questions: [
           { id: "q1", text: "framework?", options: ["React", "Vue"] },
           { id: "q2", text: "db?", options: ["pg", "sqlite"] },
@@ -643,16 +644,6 @@ describe("samospec new --interview-protocol jsonl — spawnSync E2E (M4)", () =>
           { id: "q4", text: "lang?", options: ["ts", "rust"] },
           { id: "q5", text: "auth?", options: ["oauth", "magic-link"] },
         ],
-      });
-      const askPersonaPayload = JSON.stringify({
-        answer: personaJsonStr,
-        usage: null,
-        effort_used: "max",
-      });
-      const askInterviewPayload = JSON.stringify({
-        answer: questionsJsonStr,
-        usage: null,
-        effort_used: "max",
       });
       const revisePayload = JSON.stringify({
         spec: "# spec\n\n## Goal\nx\n\n## Scope\n- x\n\n## Non-goals\n- n\n",
@@ -667,9 +658,9 @@ describe("samospec new --interview-protocol jsonl — spawnSync E2E (M4)", () =>
         `N=$(cat "${counterPath}" 2>/dev/null || echo 0)\n` +
         `echo $((N+1)) > "${counterPath}"\n` +
         "case $N in\n" +
-        `  0) cat <<'PAYLOAD_EOF_0'\n${askPersonaPayload}\nPAYLOAD_EOF_0\n` +
+        `  0) cat <<'PAYLOAD_EOF_0'\n${personaPayload}\nPAYLOAD_EOF_0\n` +
         "    ;;\n" +
-        `  1) cat <<'PAYLOAD_EOF_1'\n${askInterviewPayload}\nPAYLOAD_EOF_1\n` +
+        `  1) cat <<'PAYLOAD_EOF_1'\n${questionsPayload}\nPAYLOAD_EOF_1\n` +
         "    ;;\n" +
         `  *) cat <<'PAYLOAD_EOF_R'\n${revisePayload}\nPAYLOAD_EOF_R\n` +
         "    ;;\n" +

@@ -26,35 +26,35 @@ import { spawnSync } from "node:child_process";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   AuthStatus,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { readInterview } from "../../src/cli/interview.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { readState } from "../../src/state/store.ts";
 import { runInit } from "../../src/cli/init.ts";
 
-function askOut(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOut(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 function makeLeadAdapter(
   answers: readonly string[],
   authOverride?: AuthStatus,
-): { adapter: Adapter; asks: AskInput[] } {
+): { adapter: Adapter; asks: StructuredAskInput[] } {
   const base = createFakeAdapter(
     authOverride !== undefined ? { auth: authOverride } : {},
   );
-  const asks: AskInput[] = [];
+  const asks: StructuredAskInput[] = [];
   let call = 0;
   const adapter: Adapter = {
     ...base,
-    ask: (input: AskInput): Promise<AskOutput> => {
+    structuredAsk: (input: StructuredAskInput): Promise<StructuredAskOutput> => {
       asks.push(input);
-      const a = answers[call] ?? answers[answers.length - 1] ?? "";
+      const a = answers[call] ?? answers[answers.length - 1] ?? "{}";
       call += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
   };
   return { adapter, asks };

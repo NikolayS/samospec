@@ -28,6 +28,8 @@ import type {
   ModelInfo,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { runInit } from "../../src/cli/init.ts";
@@ -44,6 +46,12 @@ function makeHangingAdapter(): Adapter {
     models: (): Promise<readonly ModelInfo[]> =>
       Promise.resolve([{ id: "fake", family: "fake" }]),
     ask: (_input: AskInput): Promise<AskOutput> =>
+      new Promise(() => {
+        /* never resolves */
+      }),
+    structuredAsk: (
+      _input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> =>
       new Promise(() => {
         /* never resolves */
       }),

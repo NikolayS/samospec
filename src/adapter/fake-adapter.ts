@@ -18,6 +18,8 @@ import {
   type ModelInfo,
   type ReviseInput,
   type ReviseOutput,
+  type StructuredAskInput,
+  type StructuredAskOutput,
   AskInputSchema,
   AskOutputSchema,
   AuthStatusSchema,
@@ -26,6 +28,8 @@ import {
   DetectResultSchema,
   ReviseInputSchema,
   ReviseOutputSchema,
+  StructuredAskInputSchema,
+  StructuredAskOutputSchema,
 } from "./types.ts";
 
 export interface FakeAdapterProgram {
@@ -35,6 +39,7 @@ export interface FakeAdapterProgram {
   readonly supports_effort: ReadonlySet<EffortLevel>;
   readonly models: readonly ModelInfo[];
   readonly ask: AskOutput;
+  readonly structuredAsk: StructuredAskOutput;
   readonly critique: CritiqueOutput;
   readonly revise: ReviseOutput;
 }
@@ -57,6 +62,12 @@ const DEFAULT_MODELS: readonly ModelInfo[] = [
 
 const DEFAULT_ASK: AskOutput = {
   answer: "fake answer",
+  usage: null,
+  effort_used: "max",
+};
+
+const DEFAULT_STRUCTURED_ASK: StructuredAskOutput = {
+  rawJson: "{}",
   usage: null,
   effort_used: "max",
 };
@@ -96,6 +107,7 @@ const DEFAULT_PROGRAM: FakeAdapterProgram = {
   ]),
   models: DEFAULT_MODELS,
   ask: DEFAULT_ASK,
+  structuredAsk: DEFAULT_STRUCTURED_ASK,
   critique: DEFAULT_CRITIQUE,
   revise: DEFAULT_REVISE,
 };
@@ -121,6 +133,12 @@ export function createFakeAdapter(
       AskInputSchema.parse(input);
       return Promise.resolve(AskOutputSchema.parse(program.ask));
     },
+    structuredAsk: (input: StructuredAskInput) => {
+      StructuredAskInputSchema.parse(input);
+      return Promise.resolve(
+        StructuredAskOutputSchema.parse(program.structuredAsk),
+      );
+    },
     critique: (input: CritiqueInput) => {
       CritiqueInputSchema.parse(input);
       return Promise.resolve(CritiqueOutputSchema.parse(program.critique));
@@ -130,4 +148,30 @@ export function createFakeAdapter(
       return Promise.resolve(ReviseOutputSchema.parse(program.revise));
     },
   };
+}
+
+/**
+ * Returns a stub `structuredAsk` method that never resolves (simulates a
+ * hanging adapter). Used in tests that need an Adapter with a non-resolving
+ * structuredAsk without going through createFakeAdapter.
+ */
+export function hangingStructuredAsk(): (
+  input: StructuredAskInput,
+) => Promise<StructuredAskOutput> {
+  return (_input: StructuredAskInput) =>
+    new Promise(() => {
+      /* hangs forever */
+    });
+}
+
+/**
+ * Returns a stub `structuredAsk` method that immediately rejects with the
+ * given error message. Useful for testing adapters that shouldn't be called
+ * for persona/interview.
+ */
+export function rejectingStructuredAsk(
+  msg = "structuredAsk not expected in this test",
+): (input: StructuredAskInput) => Promise<StructuredAskOutput> {
+  return (_input: StructuredAskInput) =>
+    Promise.reject(new Error(msg));
 }

@@ -30,6 +30,8 @@ import type {
   EffortLevel,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 
 let tmp: string;
@@ -79,6 +81,10 @@ function makeAdapter(
         effort_used: input.opts.effort,
       });
     },
+    structuredAsk: (
+      _input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> =>
+      Promise.reject(new Error("structuredAsk not expected in brief-ai tests")),
     critique: (_i: CritiqueInput): Promise<CritiqueOutput> =>
       Promise.reject(new Error("not used")),
     revise: (_i: ReviseInput): Promise<ReviseOutput> =>

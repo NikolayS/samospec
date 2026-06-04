@@ -30,18 +30,18 @@ import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { runInit } from "../../src/cli/init.ts";
 import { createTempRepo, type TempRepo } from "../git/helpers/tempRepo.ts";
 
 // ---------- fixture builders (shared with new.e2e.test.ts pattern) ----------
 
-function askOut(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOut(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 function personaJson(skill: string): string {
@@ -86,10 +86,12 @@ function makeAdapter(answers: readonly string[]): {
   let askCall = 0;
   const adapter: Adapter = {
     ...base,
-    ask: (_input: AskInput): Promise<AskOutput> => {
-      const a = answers[askCall] ?? answers[answers.length - 1] ?? "";
+    structuredAsk: (
+      _input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
+      const a = answers[askCall] ?? answers[answers.length - 1] ?? "{}";
       askCall += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
     revise: (input: ReviseInput): Promise<ReviseOutput> => {
       revises.push(input);

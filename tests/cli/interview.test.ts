@@ -11,9 +11,9 @@ import path from "node:path";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   EffortLevel,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import {
   INTERVIEW_MAX_QUESTIONS,
@@ -25,27 +25,30 @@ import {
   writeInterview,
 } from "../../src/cli/interview.ts";
 
-function askOutputWithAnswer(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOutputWithRawJson(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 interface ScriptedAskAdapter extends Adapter {
-  readonly asks: readonly AskInput[];
+  readonly asks: readonly StructuredAskInput[];
 }
 
 function makeScriptedAskAdapter(
-  answers: readonly string[],
+  rawJsonAnswers: readonly string[],
 ): ScriptedAskAdapter {
   const base = createFakeAdapter();
-  const asks: AskInput[] = [];
+  const asks: StructuredAskInput[] = [];
   let call = 0;
   const scripted: Adapter = {
     ...base,
-    ask: (input: AskInput): Promise<AskOutput> => {
+    structuredAsk: (input: StructuredAskInput): Promise<StructuredAskOutput> => {
       asks.push(input);
-      const answer = answers[call] ?? answers[answers.length - 1] ?? "";
+      const rawJson =
+        rawJsonAnswers[call] ??
+        rawJsonAnswers[rawJsonAnswers.length - 1] ??
+        "{}";
       call += 1;
-      return Promise.resolve(askOutputWithAnswer(answer));
+      return Promise.resolve(structuredAskOutputWithRawJson(rawJson));
     },
   };
   const result = Object.assign(scripted, { asks }) as ScriptedAskAdapter;

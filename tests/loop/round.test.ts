@@ -123,6 +123,7 @@ describe("loop/round — partial failure (SPEC §7)", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("not used")),
+      structuredAsk: () => Promise.reject(new Error("not used")),
       critique: () => Promise.reject(new Error("fail: reviewer b crash")),
       revise: () => Promise.reject(new Error("not used")),
     };
@@ -160,6 +161,7 @@ describe("loop/round — partial failure (SPEC §7)", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => {
         aCalls += 1;
         if (aCalls === 1) return Promise.reject(new Error("first-fail a"));
@@ -176,6 +178,7 @@ describe("loop/round — partial failure (SPEC §7)", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => {
         bCalls += 1;
         if (bCalls === 1) return Promise.reject(new Error("first-fail b"));
@@ -210,6 +213,7 @@ describe("loop/round — partial failure (SPEC §7)", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("persistent-fail")),
       revise: () => Promise.reject(new Error("unused")),
     };
@@ -246,6 +250,7 @@ describe("loop/round — lead_terminal (SPEC §7)", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("unused")),
       revise: () => Promise.reject(new Error("model refused to continue")),
     };
@@ -482,6 +487,7 @@ describe("loop/round — round.json records real started/completed timestamps (#
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("persistent-fail")),
       revise: () => Promise.reject(new Error("unused")),
     };
@@ -520,6 +526,7 @@ describe("loop/round — decisions_history passthrough", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("unused")),
       revise: (input) => {
         seenHistory = input.decisions_history;

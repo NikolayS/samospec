@@ -18,10 +18,10 @@ import path from "node:path";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { loadIdeaFile } from "../../src/cli/non-interactive.ts";
 import { runInit } from "../../src/cli/init.ts";
@@ -155,8 +155,8 @@ describe("samospec new --idea-file — parse-time path validation", () => {
 // none asserted the happy path at the CLI level. We drive runCli against a
 // scripted fake adapter inside a throwaway repo via the test-only deps seam.
 
-function askOut(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOut(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 function personaJson(skill: string): string {
@@ -192,10 +192,12 @@ function makeIdeaFileAdapter(): {
   ];
   const adapter: Adapter = {
     ...base,
-    ask: (_input: AskInput): Promise<AskOutput> => {
-      const a = answers[askCall] ?? answers[answers.length - 1] ?? "";
+    structuredAsk: (
+      _input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
+      const a = answers[askCall] ?? answers[answers.length - 1] ?? "{}";
       askCall += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
     revise: (input: ReviseInput): Promise<ReviseOutput> => {
       revises.push(input);

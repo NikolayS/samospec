@@ -20,10 +20,10 @@ import path from "node:path";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { runInit } from "../../src/cli/init.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
@@ -33,8 +33,8 @@ import { createTempRepo, type TempRepo } from "../git/helpers/tempRepo.ts";
 
 // ---------- fixtures ----------
 
-function askOut(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOut(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 function personaJson(skill: string): string {
@@ -79,12 +79,14 @@ function makeAdapter(args: MakeArgs): Adapter {
   let askCall = 0;
   return {
     ...base,
-    ask: (input: AskInput): Promise<AskOutput> => {
+    structuredAsk: (input: StructuredAskInput): Promise<StructuredAskOutput> => {
       void input;
       const a =
-        args.answers[askCall] ?? args.answers[args.answers.length - 1] ?? "";
+        args.answers[askCall] ??
+        args.answers[args.answers.length - 1] ??
+        "{}";
       askCall += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
     revise: (input: ReviseInput): Promise<ReviseOutput> => {
       void input;

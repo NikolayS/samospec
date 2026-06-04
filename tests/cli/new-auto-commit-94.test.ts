@@ -27,10 +27,10 @@ import { spawnSync } from "node:child_process";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
 import type {
   Adapter,
-  AskInput,
-  AskOutput,
   ReviseInput,
   ReviseOutput,
+  StructuredAskInput,
+  StructuredAskOutput,
 } from "../../src/adapter/types.ts";
 import { runNew, type ChoiceResolvers } from "../../src/cli/new.ts";
 import { runInit } from "../../src/cli/init.ts";
@@ -39,8 +39,8 @@ import { createTempRepo, type TempRepo } from "../git/helpers/tempRepo.ts";
 
 // ---------- fixture builders ----------
 
-function askOut(answer: string): AskOutput {
-  return { answer, usage: null, effort_used: "max" };
+function structuredAskOut(rawJson: string): StructuredAskOutput {
+  return { rawJson, usage: null, effort_used: "max" };
 }
 
 function personaJson(skill: string): string {
@@ -86,11 +86,15 @@ function makeAdapter(args: MakeAdapterArgs): {
   let askCall = 0;
   const adapter: Adapter = {
     ...base,
-    ask: (_input: AskInput): Promise<AskOutput> => {
+    structuredAsk: (
+      _input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
       const a =
-        args.answers[askCall] ?? args.answers[args.answers.length - 1] ?? "";
+        args.answers[askCall] ??
+        args.answers[args.answers.length - 1] ??
+        "{}";
       askCall += 1;
-      return Promise.resolve(askOut(a));
+      return Promise.resolve(structuredAskOut(a));
     },
     revise: (_input: ReviseInput): Promise<ReviseOutput> =>
       Promise.resolve(reviseOut()),

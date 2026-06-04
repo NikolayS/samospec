@@ -321,6 +321,7 @@ describe("cli/iterate — partial reviewer failure", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("unused")),
       revise: (input) => {
         if (input.spec.includes("samospec:lead-directive")) {
@@ -383,6 +384,7 @@ describe("cli/iterate — both seats fail then retry succeeds", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => {
         if (label === "a") {
           aCalls += 1;
@@ -485,6 +487,7 @@ describe("cli/iterate — reviewers exhausted", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("persistent fail")),
       revise: () => Promise.reject(new Error("unused")),
     };
@@ -523,6 +526,7 @@ describe("cli/iterate — lead_terminal", () => {
       supports_effort: () => true,
       models: () => Promise.resolve([{ id: "x", family: "fake" }]),
       ask: () => Promise.reject(new Error("unused")),
+      structuredAsk: () => Promise.reject(new Error("unused")),
       critique: () => Promise.reject(new Error("unused")),
       revise: () => Promise.reject(new Error("model refused")),
     };

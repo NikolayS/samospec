@@ -24,9 +24,8 @@ import {
   buildAskPrompt,
   buildStructuredAskPrompt,
 } from "../../src/adapter/claude.ts";
-import type { AskInput } from "../../src/adapter/types.ts";
 import { createFakeAdapter } from "../../src/adapter/fake-adapter.ts";
-import type { Adapter, StructuredAskInput, StructuredAskOutput } from "../../src/adapter/types.ts";
+import type { AskInput, StructuredAskInput } from "../../src/adapter/types.ts";
 
 // The exact phrase both prompt builders inject.
 const RESPOND_ONLY_PATTERN = /Respond ONLY with/gi;
