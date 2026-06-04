@@ -270,7 +270,7 @@ function slowAdapter(
     supports_effort: () => true,
     models: () => Promise.resolve([{ id: `${vendor}-max`, family: vendor }]),
     ask: () => Promise.reject(new Error("unused")),
-      structuredAsk: () => Promise.reject(new Error("unused")),
+    structuredAsk: () => Promise.reject(new Error("unused")),
     critique: async (_input: CritiqueInput) => {
       const startedAt = clock.now();
       await waitUntil(startedAt);

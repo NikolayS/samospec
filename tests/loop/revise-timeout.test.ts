@@ -614,7 +614,8 @@ describe("loop/round — distinguishes reviewer-retry from revise-retry (#92 REV
         supports_effort: () => true,
         models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
         ask: () => Promise.reject(new Error("ask not used")),
-      structuredAsk: () => Promise.reject(new Error("structuredAsk not used")),
+        structuredAsk: () =>
+          Promise.reject(new Error("structuredAsk not used")),
         critique: (): Promise<CritiqueOutput> => {
           n += 1;
           if (n === 1) return Promise.reject(new Error("first-fail"));
@@ -847,7 +848,8 @@ describe("iterate — changelog note differs by retry kind (#92 REV)", () => {
         supports_effort: () => true,
         models: () => Promise.resolve([{ id: "fake", family: "fake" }]),
         ask: () => Promise.reject(new Error("ask not used")),
-      structuredAsk: () => Promise.reject(new Error("structuredAsk not used")),
+        structuredAsk: () =>
+          Promise.reject(new Error("structuredAsk not used")),
         critique: (): Promise<CritiqueOutput> => {
           n += 1;
           if (n === 1) return Promise.reject(new Error("first-fail"));

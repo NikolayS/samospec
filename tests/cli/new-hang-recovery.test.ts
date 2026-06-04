@@ -49,9 +49,7 @@ function makeHangingAdapter(): Adapter {
       new Promise(() => {
         /* never resolves */
       }),
-    structuredAsk: (
-      _input: StructuredAskInput,
-    ): Promise<StructuredAskOutput> =>
+    structuredAsk: (_input: StructuredAskInput): Promise<StructuredAskOutput> =>
       new Promise(() => {
         /* never resolves */
       }),

@@ -79,12 +79,12 @@ function makeAdapter(args: MakeArgs): Adapter {
   let askCall = 0;
   return {
     ...base,
-    structuredAsk: (input: StructuredAskInput): Promise<StructuredAskOutput> => {
+    structuredAsk: (
+      input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
       void input;
       const a =
-        args.answers[askCall] ??
-        args.answers[args.answers.length - 1] ??
-        "{}";
+        args.answers[askCall] ?? args.answers[args.answers.length - 1] ?? "{}";
       askCall += 1;
       return Promise.resolve(structuredAskOut(a));
     },

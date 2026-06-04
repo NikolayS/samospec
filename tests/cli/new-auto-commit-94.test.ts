@@ -90,9 +90,7 @@ function makeAdapter(args: MakeAdapterArgs): {
       _input: StructuredAskInput,
     ): Promise<StructuredAskOutput> => {
       const a =
-        args.answers[askCall] ??
-        args.answers[args.answers.length - 1] ??
-        "{}";
+        args.answers[askCall] ?? args.answers[args.answers.length - 1] ?? "{}";
       askCall += 1;
       return Promise.resolve(structuredAskOut(a));
     },

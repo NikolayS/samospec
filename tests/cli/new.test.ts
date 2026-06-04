@@ -50,7 +50,9 @@ function makeLeadAdapter(
   let call = 0;
   const adapter: Adapter = {
     ...base,
-    structuredAsk: (input: StructuredAskInput): Promise<StructuredAskOutput> => {
+    structuredAsk: (
+      input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
       asks.push(input);
       const a = answers[call] ?? answers[answers.length - 1] ?? "{}";
       call += 1;

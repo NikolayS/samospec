@@ -80,9 +80,7 @@ function makeHangingAdapter(): Adapter {
       new Promise(() => {
         /* hangs */
       }),
-    structuredAsk: (
-      _input: StructuredAskInput,
-    ): Promise<StructuredAskOutput> =>
+    structuredAsk: (_input: StructuredAskInput): Promise<StructuredAskOutput> =>
       new Promise(() => {
         /* hangs */
       }),

@@ -41,10 +41,14 @@ function makeScriptedStructuredAskAdapter(
   let call = 0;
   const scripted: Adapter = {
     ...base,
-    structuredAsk: (input: StructuredAskInput): Promise<StructuredAskOutput> => {
+    structuredAsk: (
+      input: StructuredAskInput,
+    ): Promise<StructuredAskOutput> => {
       structuredAsks.push(input);
       const rawJson =
-        rawJsonAnswers[call] ?? rawJsonAnswers[rawJsonAnswers.length - 1] ?? "{}";
+        rawJsonAnswers[call] ??
+        rawJsonAnswers[rawJsonAnswers.length - 1] ??
+        "{}";
       call += 1;
       return Promise.resolve(structuredAskOutputWithRawJson(rawJson));
     },

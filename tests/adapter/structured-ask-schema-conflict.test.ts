@@ -38,11 +38,11 @@ function countOccurrences(haystack: string, re: RegExp): number {
 // A domain prompt that has its own "Respond ONLY with" directive (like
 // persona.ts:155-158 and interview.ts:239-242 do).
 const DOMAIN_PROMPT_WITH_SCHEMA =
-  'You are the samospec lead. Given a rough idea, propose a single expert persona.\n\n' +
-  'Respond ONLY with a JSON object:\n' +
+  "You are the samospec lead. Given a rough idea, propose a single expert persona.\n\n" +
+  "Respond ONLY with a JSON object:\n" +
   '  { "persona": "Veteran \\"<skill>\\" expert", "rationale": "..." }\n' +
-  'Do not wrap in code fences.\n\n' +
-  'Idea:\nA recipe sharing app\n';
+  "Do not wrap in code fences.\n\n" +
+  "Idea:\nA recipe sharing app\n";
 
 function makeAskInputWithDomainPrompt(): AskInput {
   return {
@@ -125,7 +125,11 @@ describe("Adapter interface — structuredAsk method", () => {
 
   test("structuredAsk returns a StructuredAskOutput with a rawJson string field", async () => {
     const adapter = createFakeAdapter({
-      structuredAsk: { rawJson: '{"persona":"Veteran \\"Test\\" expert","rationale":"test"}', usage: null, effort_used: "max" },
+      structuredAsk: {
+        rawJson: '{"persona":"Veteran \\"Test\\" expert","rationale":"test"}',
+        usage: null,
+        effort_used: "max",
+      },
     });
     const result = await adapter.structuredAsk(makeStructuredAskInput());
     expect(typeof result.rawJson).toBe("string");
@@ -133,7 +137,8 @@ describe("Adapter interface — structuredAsk method", () => {
   });
 
   test("structuredAsk rawJson is parseable JSON", async () => {
-    const domainJson = '{"questions":[{"id":"q1","text":"What is the target user?","options":["A","B"]}]}';
+    const domainJson =
+      '{"questions":[{"id":"q1","text":"What is the target user?","options":["A","B"]}]}';
     const adapter = createFakeAdapter({
       structuredAsk: { rawJson: domainJson, usage: null, effort_used: "max" },
     });
@@ -151,7 +156,8 @@ describe("persona call site — uses structuredAsk, no { answer } wrapper collis
     // in the RED test phase when the interface doesn't exist yet.
     const { proposePersona } = await import("../../src/cli/persona.ts");
 
-    const personaJson = '{"persona":"Veteran \\"Recipe Developer\\" expert","rationale":"Core skill for recipe app"}';
+    const personaJson =
+      '{"persona":"Veteran \\"Recipe Developer\\" expert","rationale":"Core skill for recipe app"}';
     const adapter = createFakeAdapter({
       structuredAsk: { rawJson: personaJson, usage: null, effort_used: "max" },
     });

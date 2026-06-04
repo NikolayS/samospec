@@ -172,6 +172,5 @@ export function hangingStructuredAsk(): (
 export function rejectingStructuredAsk(
   msg = "structuredAsk not expected in this test",
 ): (input: StructuredAskInput) => Promise<StructuredAskOutput> {
-  return (_input: StructuredAskInput) =>
-    Promise.reject(new Error(msg));
+  return (_input: StructuredAskInput) => Promise.reject(new Error(msg));
 }

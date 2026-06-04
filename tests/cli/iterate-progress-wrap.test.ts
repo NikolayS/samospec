@@ -75,9 +75,7 @@ class FakeClassAdapter implements Adapter {
     });
   }
 
-  structuredAsk(
-    _input: StructuredAskInput,
-  ): Promise<StructuredAskOutput> {
+  structuredAsk(_input: StructuredAskInput): Promise<StructuredAskOutput> {
     return Promise.reject(new Error("structuredAsk not expected"));
   }
 
