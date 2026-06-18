@@ -27,9 +27,9 @@ Install the OpenAI CLI: https://platform.openai.com/docs/guides/codex.
 FAIL  auth  claude: not authenticated
 ```
 
-Run `claude auth login` or `claude login` per the Claude Code documentation.
-For Codex, run `codex auth login` with a valid `OPENAI_API_KEY` in your
-environment.
+Run `claude /login` per the Claude Code documentation (OAuth is the happy
+path), or set a valid `ANTHROPIC_API_KEY` env var. For Codex, run `codex auth`
+(ChatGPT-account OAuth) or set a valid `OPENAI_API_KEY` env var.
 
 ## Stale ANTHROPIC_API_KEY preempting OAuth
 
@@ -61,15 +61,16 @@ samospec doctor
 
 ```
 samospec: terminal — model_unavailable: all fallbacks exhausted:
-  gpt-5.4 → gpt-5.3-codex → account-default (no --model flag);
+  gpt-5.5 → gpt-5.4 → gpt-5.3-codex → account-default (no --model flag);
   account is not authorized or no model is available
 ```
 
 Codex under ChatGPT-account auth (browser login via `codex auth`) does not
-support the pinned models `gpt-5.4` and `gpt-5.3-codex`. The
-adapter tries a three-tier fallback chain:
+support the pinned models `gpt-5.5` / `gpt-5.4` / `gpt-5.3-codex`. The
+adapter tries an ordered fallback chain:
 
-- `gpt-5.4` (default pin — flagship model, default effort high)
+- `gpt-5.5` (default pin — flagship model, default effort high)
+- `gpt-5.4` (explicit fallback)
 - `gpt-5.3-codex` (explicit fallback)
 - account-default: no `--model` flag, letting codex pick the account's
   supported model

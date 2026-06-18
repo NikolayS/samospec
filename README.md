@@ -36,12 +36,17 @@ No install step. Requires [Bun](https://bun.sh) ≥ 1.2.0; `bunx` fetches and ca
 
 ```bash
 bunx samospec doctor
-bunx samospec --version   # 0.8.0
+bunx samospec --version   # 0.9.1
 ```
 
 `npx` won't work — the CLI ships as TypeScript and depends on the Bun runtime (`Bun.spawn`, etc.). Use `bunx`.
 
 For brevity, the rest of this README writes `samospec` — read it as `bunx samospec`.
+
+> **Running samospec from a bot / agent / CI?** See
+> [`docs/bot-operations.md`](docs/bot-operations.md) — a self-contained
+> runbook with the credential checklist, the fully non-interactive command
+> surface, exit codes, stopping conditions, and the JSONL interview protocol.
 
 ---
 
@@ -85,9 +90,9 @@ At every step: `bunx samospec status <slug>` prints phase, current version, next
              └──────────────────────┘
 ```
 
-- **Lead** = `claude` CLI, pinned `claude-opus-4-7`, default effort `high`.
-- **Reviewer A** = `codex` CLI with a **security/ops** persona: missing risks, weak implementation, unnecessary scope.
-- **Reviewer B** = second `claude` session with a **QA / testability** persona: ambiguity, contradiction, weak-testing. Also checks the spec's mandatory baseline sections and verifies it stays faithful to your original idea.
+- **Lead** = `claude` CLI, pinned `claude-opus-4-8` (fallback chain `claude-opus-4-8 → claude-opus-4-7 → claude-sonnet-4-6`), default effort `high`.
+- **Reviewer A** = `codex` CLI with a **security/ops** persona: missing risks, weak implementation, unnecessary scope. Pinned `gpt-5.5` (fallback `gpt-5.5 → gpt-5.4 → gpt-5.3-codex → account-default`).
+- **Reviewer B** = second `claude` session with a **QA / testability** persona: ambiguity, contradiction, weak-testing. Same pin as the lead (`claude-opus-4-8`). Also checks the spec's mandatory baseline sections and verifies it stays faithful to your original idea.
 - Adapters share a coupled-fallback rule (lead and Reviewer B use the same vendor, so a Claude outage fails them together rather than running an uneven panel).
 
 Every generated `SPEC.md` gets nine mandatory sections by default (goal & why, user stories, architecture, implementation details, tests plan with red/green TDD, team of veteran experts, sprint plan, embedded changelog, version header). Pass `--skip` to opt out.
@@ -100,12 +105,19 @@ Every spec also ships a machine-readable `.samo/spec/<slug>/architecture.json` (
 
 The CLI shells out to the vendor CLIs you already use. OAuth-based sessions are the **primary** auth mode — API keys are an alternative:
 
-- **Claude Code** — `claude /login` once in a terminal; samospec inherits the session for `claude --print` calls. Or `export ANTHROPIC_API_KEY=sk-ant-...`. **Requires `claude` ≥ v2.1.0** (samospec passes `--effort` on every call; older CLIs reject the flag). `samospec doctor` WARNs if your `claude` predates it.
-- **Codex** — `codex auth` (ChatGPT subscription account works); samospec handles the pinned-model fallback when your account default differs. Or `export OPENAI_API_KEY=sk-...`.
+- **Claude Code** — `claude /login` once in a terminal; samospec inherits the session for `claude --print` calls. Or set the `ANTHROPIC_API_KEY` env var. **Requires `claude` ≥ v2.1.0** (samospec passes `--effort` on every call; older CLIs reject the flag). `samospec doctor` WARNs if your `claude` predates it.
+- **Codex** — `codex auth` (ChatGPT subscription account works); samospec handles the pinned-model fallback when your account default differs. Or set the `OPENAI_API_KEY` env var. Note: here Codex is a full reviewer LLM, so its `OPENAI_API_KEY` (when used) drives chat/reasoning calls — distinct from images-only OpenAI usage elsewhere in the Samo stack.
+
+A stale `ANTHROPIC_API_KEY` in the environment **preempts** the `claude /login` OAuth session and surfaces as an `Invalid API key` WARN in `doctor` — `unset` it to fall back to OAuth. Same shape for Codex.
 
 ```bash
-samospec doctor   # verifies CLI availability, auth, git, lockfile, config, entropy, push consent
+samospec doctor   # availability, effort-support, auth, git, lock, config,
+                  # global-config, entropy, push-consent, calibration, pr-capability
 ```
+
+> **Bots:** the full credential/setup checklist (every env-var name, the
+> `claude -p` OAuth-subprocess model, doctor exit codes) is in
+> [`docs/bot-operations.md`](docs/bot-operations.md).
 
 ---
 
@@ -133,18 +145,24 @@ samospec doctor   # verifies CLI availability, auth, git, lockfile, config, entr
 | `samospec publish <slug>`        | Promotes the spec to `blueprints/<slug>/SPEC.md`, commits, pushes, opens PR via `gh` / `glab`.                                               |
 | `samospec brief <slug>`          | Generates a summarized HTML brief — a derivative of the published spec, NOT the spec itself. Pages-friendly, single self-contained file.     |
 
-Useful flags:
+Useful flags (run `samospec` with no command for the full usage block, which is the authoritative source):
 
+- `samospec new --effort <max|high|medium|low|off>` — unified reasoning effort for ALL seats. Default `high`; `max` is deepest/slowest, `off` is minimal/fastest. Overrides per-seat config. Precedence: `--effort` flag > `adapters.<seat>.effort` in config > `high`. Same flag exists on `iterate`.
 - `samospec new --skip user-stories,sprint-plan,…` — opt out of baseline sections.
-- `samospec new --max-session-wall-clock-ms 1800000` — 30-min session cap.
+- `samospec new --verbose` — emit per-phase / per-file diagnostics on stderr (stdout stays concise).
+- `samospec new --max-session-wall-clock-ms <ms>` — **deprecated no-op.** The session wall-clock kill was removed; the flag is still accepted for script back-compat but the value is ignored. The only stop signals are the inactivity heartbeat and SIGTERM.
 - `samospec new --force` — archive any existing `<slug>` dir as `.archived-YYYY-MM-DDThhmmssZ/` before starting.
 - `samospec new --idea-file <path>` — read the idea from a file instead of `--idea "…"`. Preferred for long, structured ideas (AI agents, CI): no fragile shell-quoting. Surrounding whitespace is trimmed; internal markdown is preserved. Mutually exclusive with `--idea`.
 - `samospec new --yes` — fully non-interactive: auto-accept the lead's persona proposal and default every interview answer to `decide for me`. Pair with `--answers-file <path>` when you want to steer the five questions from JSON instead.
 - `samospec new --interview-protocol jsonl` — drive the interview over stdin/stdout with a line-delimited JSON event stream. The CLI emits one JSON object per line on stdout (`{"type":"persona-proposal","v":1,…}`, `{"type":"question","v":1,…}`, terminal `{"type":"complete","v":1}`); the consumer writes `{"type":"persona-answer","v":1,…}` and `{"type":"answer","v":1,…}` on stdin. Every event carries `v: 1` — the protocol version — so consumers can sniff breaking changes; events missing or mismatching `v` are rejected. Human notices route to stderr so stdout stays protocol-clean. Bypasses the `#114` non-TTY refusal (when both `--yes` and `--interview-protocol jsonl` are passed, the JSONL resolver wins; `--yes` auto-accept is ignored). Question count is bounded by the lead's output (0..5), not a fixed wire-level contract. See [`tests/cli/new-interview-protocol-jsonl.test.ts`](tests/cli/new-interview-protocol-jsonl.test.ts) for a live example (including the spawn-based end-to-end driver).
-- `samospec iterate --rounds 5` — cap rounds for this invocation.
+- `samospec iterate --rounds 5` — cap rounds for this invocation (a safety **cap**, not a target; the loop usually stops earlier on a convergence condition).
 - `samospec iterate --no-push` — stay local this run.
-- `samospec iterate --quiet` — suppress the per-round progress + heartbeat stream on stderr (final summary still prints on stdout).
-- `samospec iterate --on-dirty <incorporate|overwrite|abort>` — non-interactive answer for the uncommitted-edits prompt.
+- `samospec iterate --remote <name>` — git remote name (default: `origin`). Also on `publish`.
+- `samospec iterate --quiet` — suppress the per-round progress + heartbeat stream on stderr (final summary still prints on stdout). `--verbose` is a no-op alias (iterate is verbose by default).
+- `samospec iterate --on-dirty <incorporate|overwrite|abort>` — non-interactive answer for the uncommitted-edits prompt. Required when stdin is not a TTY and the slug dir has dirty edits.
+- `samospec iterate --push-consent <yes|no>` — non-interactive answer for the first-push consent prompt. Required (or `--no-push`, or `--yes`) when stdin is not a TTY and the remote has no persisted consent.
+- `samospec iterate --yes` — accept everything non-interactively; implies `--push-consent yes`.
+- `samospec publish --no-lint` — skip the publish-time lint pass.
 - `samospec brief <slug> --out docs/<slug>/index.html` — write the brief into your static-site host's expected location instead of the default `blueprints/<slug>/BRIEF.html`.
 - `samospec brief <slug> --no-nojekyll` — skip creating the repo-root `.nojekyll` marker (default: created idempotently for GitHub Pages compatibility).
 - `samospec brief <slug> --ai` — generate a **rich** HTML brief via the lead AI adapter with a cross-vendor verifier pass. Produces SVG architecture diagrams (synthesized from `architecture.json`), scope tables, decision matrices, mobile-responsive layout (per [Thariq's "unreasonable effectiveness of HTML"](https://x.com/trq212/status/2052809885763747935)). Cached in `.samo/cache/brief/` keyed by spec hash; re-runs return the cached HTML for free.
