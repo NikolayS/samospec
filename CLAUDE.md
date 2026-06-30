@@ -11,6 +11,7 @@ Accumulated, non-negotiable working principles for SAMO projects. Canonical sour
 Once a reviewer (samorev) approves an MR/PR, **any** later commit invalidates that approval — **including a commit that fixes the review's own findings**. Re-review the change (at minimum the new delta) **before** merge. Never merge a post-review commit on the strength of the prior PASS plus a green pipeline: a passing pipeline proves it builds and tests pass, not that it was reviewed.
 
 Order: review → fix-commit → **re-review the delta** → merge. (NOT: review → fix-commit → merge.)
+
 <!-- SAMO-DEV-PRINCIPLES:END -->
 
 ## Project
