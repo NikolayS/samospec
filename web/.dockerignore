@@ -1,0 +1,9 @@
+node_modules
+dist
+.astro
+data
+config
+*.log
+.env
+.env.*
+!.env.example
