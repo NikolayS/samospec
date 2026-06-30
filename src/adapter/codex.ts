@@ -129,7 +129,7 @@ const EFFORT_TO_REASONING: Readonly<Record<EffortLevel, string>> = {
 
 // Persona + taxonomy weighting (SPEC §7 Model roles). Literal wording
 // is pinned by test; issue #23 forbids paraphrasing.
-const CODEX_CRITIQUE_PERSONA_PREFIX =
+export const CODEX_CRITIQUE_PERSONA_PREFIX =
   "You are a paranoid security/ops engineer reviewing this spec. " +
   "Focus especially on missing-risk, weak-implementation, and " +
   "unnecessary-scope. You may surface findings in other categories " +

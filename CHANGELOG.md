@@ -7,6 +7,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Per-seat review-panel adapter selection.** Each panel seat now reads
+  `adapters.<seat>.adapter` from `.samo/config.json` (`"claude"` or
+  `"codex"`) to choose the CLI vendor that fills it. Reviewer A is no
+  longer hardcoded to Codex: set `adapters.reviewer_a.adapter` to
+  `"claude"` to run the whole panel on Claude in Codex-less (Claude-only)
+  environments. A Claude-vendor Reviewer A keeps the same paranoid
+  security/ops persona as the Codex seat (weighting toward missing-risk,
+  weak-implementation, unnecessary-scope) and joins the lead +
+  reviewer_b shared Claude fallback resolver (coupled fallback). The
+  field is fully back-compatible: absent (or `"codex"`) preserves the
+  existing defaults — lead → claude, reviewer_a → codex, reviewer_b →
+  claude.
+
 ## [0.9.0] - 2026-05-29
 
 ### Added
