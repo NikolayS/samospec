@@ -759,7 +759,7 @@ First public release. v1.0 feature set per `.samo/blueprints/SPEC.md`.
 
 ### Added
 
-- `samospec init` — initialise `.samo/` config directory in any git repo
+- `samospec init` — initialize `.samo/` config directory in any git repo
   (SPEC §5 Phase 1, §10).
 - `samospec new <slug> --idea "..."` — lead persona proposal, five-question
   strategic interview, v0.1 draft commit on `samospec/<slug>` branch

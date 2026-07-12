@@ -43,7 +43,7 @@ SPEC §18 lists the non-goals. The two most important:
   user's own wording. Applying `redact()` there could quietly corrupt
   rationale text, so this is opt-out rather than opt-in. Users who want
   stricter hygiene should run an external scanner on the committed
-  artefacts before pushing (see below).
+  artifacts before pushing (see below).
 
 Neither set of files is covered in v1. The roadmap in SPEC §18 tracks
 the open question for post-v1.

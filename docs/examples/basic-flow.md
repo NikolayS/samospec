@@ -5,7 +5,7 @@ Copyright 2026 Nikolay Samokhvalov.
 This walkthrough shows the full `samospec` lifecycle for a new feature spec.
 Output shown is representative; real AI output varies.
 
-## 1. Initialise
+## 1. Initialize
 
 ```bash
 cd /path/to/your-repo
@@ -15,7 +15,7 @@ samospec init
 Output:
 
 ```
-samospec: initialised .samo/ in /path/to/your-repo.
+samospec: initialized .samo/ in /path/to/your-repo.
 Run `samospec doctor` to verify the environment.
 ```
 
