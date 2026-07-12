@@ -143,7 +143,7 @@ samospec doctor   # availability, effort-support, auth, git, lock, config,
 | `samospec resume <slug>`         | Idempotent resume from any crash/kill. Works at every round state boundary.                                                                  |
 | `samospec status <slug>`         | Phase, version, round index, last-round summary, next-step hint.                                                                             |
 | `samospec publish <slug>`        | Promotes the spec to `blueprints/<slug>/SPEC.md`, commits, pushes, opens PR via `gh` / `glab`.                                               |
-| `samospec brief <slug>`          | Generates a summarized HTML brief -- a derivative of the published spec, NOT the spec itself. Pages-friendly, single self-contained file.     |
+| `samospec brief <slug>`          | Generates a summarized HTML brief -- a derivative of the published spec, NOT the spec itself. Pages-friendly, single self-contained file.    |
 
 Useful flags (run `samospec` with no command for the full usage block, which is the authoritative source):
 
