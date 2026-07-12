@@ -72,7 +72,7 @@ Notes for a bot:
 - **Codex is a full reviewer LLM here.** Its `OPENAI_API_KEY` (when used) drives
   chat/reasoning calls for Reviewer A — this is _not_ an images-only usage.
   ChatGPT-account OAuth via `codex auth` works and is preferred; the adapter
-  auto-falls-back through the model chain if your account default differs.
+  automatically falls back through the model chain if your account default differs.
 - **Git remote auth** (for `iterate --push` / `publish`): the bot's git client
   must be able to push to the remote (HTTPS token or SSH key), and `gh` (or
   `glab`) must be authenticated for `publish` to open a PR. samospec does not
@@ -259,7 +259,7 @@ The session wall-clock kill was **removed**. `--max-session-wall-clock-ms` is a
 deprecated no-op (accepted, ignored). LLM calls run as long as they need; the
 only stop signals are the **inactivity heartbeat** and **SIGTERM/SIGINT**. Do
 not wrap samospec in an external "kill after N minutes" timeout expecting
-graceful behaviour — send SIGTERM and let it checkpoint.
+graceful behavior — send SIGTERM and let it checkpoint.
 
 ### Non-TTY refusals are the most common bot failure
 
