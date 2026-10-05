@@ -39,6 +39,7 @@ const NON_MODEL_CHAIN_ENTRIES: ReadonlySet<string> = new Set([
 
 /** One adapter role's pinned config, as read from `.samo/config.json`. */
 export interface AdapterRoleConfig {
+  readonly adapter?: "claude" | "codex";
   readonly model_id?: string;
   readonly fallback_chain?: readonly string[];
 }
@@ -82,15 +83,21 @@ function roleEntry(
   const raw = rec[role];
   if (typeof raw !== "object" || raw === null) return {};
   const r = raw as Record<string, unknown>;
+  const adapter =
+    r["adapter"] === "claude" || r["adapter"] === "codex"
+      ? r["adapter"]
+      : undefined;
   const modelId = typeof r["model_id"] === "string" ? r["model_id"] : undefined;
   const chainRaw = r["fallback_chain"];
   const chain =
     Array.isArray(chainRaw) && chainRaw.every((x) => typeof x === "string")
       ? (chainRaw as readonly string[])
       : undefined;
-  if (modelId === undefined && chain === undefined) return {};
+  if (adapter === undefined && modelId === undefined && chain === undefined)
+    return {};
   return {
     [role]: {
+      ...(adapter !== undefined ? { adapter } : {}),
       ...(modelId !== undefined ? { model_id: modelId } : {}),
       ...(chain !== undefined ? { fallback_chain: chain } : {}),
     },
@@ -143,6 +150,14 @@ export function buildClaudeResolver(cfg: AdaptersConfig): ClaudeResolver {
 export function buildLeadAdapter(cwd: string): Adapter {
   const cfg = readAdaptersConfig(cwd);
   const chain = resolveChain(cfg.lead);
+  if (cfg.lead?.adapter === "codex") {
+    return chain === undefined
+      ? new CodexAdapter()
+      : new CodexAdapter({
+          models: toModelInfo(chain, "codex"),
+          defaultModel: chain[0],
+        });
+  }
   if (chain === undefined) return new ClaudeAdapter();
   return new ClaudeAdapter({
     models: toModelInfo(chain, "claude"),
@@ -190,9 +205,11 @@ export function buildReviewLoopAdaptersFromConfig(
   // ignored. Warn (once) rather than silently dropping it. Compared on
   // the RESOLVED chains (sentinels stripped, pin de-duped) so equivalent
   // configs written differently don't false-positive.
+  const leadIsCodex = cfg.lead?.adapter === "codex";
   const leadResolved = resolveChain(cfg.lead);
   const reviewerBResolved = resolveChain(cfg.reviewer_b);
   if (
+    !leadIsCodex &&
     reviewerBResolved !== undefined &&
     JSON.stringify(reviewerBResolved) !== JSON.stringify(leadResolved)
   ) {
@@ -207,14 +224,33 @@ export function buildReviewLoopAdaptersFromConfig(
   }
 
   // Shared Claude resolver (lead + reviewer B).
-  const resolver = buildClaudeResolver(cfg);
+  // A Codex lead is not coupled to Claude reviewer B. In that shape the
+  // reviewer keeps its own configured/default Claude chain; never pass GPT
+  // model ids into ClaudeResolver.
+  const resolver = buildClaudeResolver(
+    leadIsCodex
+      ? cfg.reviewer_b !== undefined
+        ? { lead: cfg.reviewer_b }
+        : {}
+      : cfg,
+  );
   const leadChain = resolveChain(cfg.lead);
-  const lead = new ClaudeAdapter({
-    resolver,
-    ...(leadChain !== undefined
-      ? { models: toModelInfo(leadChain, "claude"), defaultModel: leadChain[0] }
-      : {}),
-  });
+  const lead = leadIsCodex
+    ? leadChain !== undefined
+      ? new CodexAdapter({
+          models: toModelInfo(leadChain, "codex"),
+          defaultModel: leadChain[0],
+        })
+      : new CodexAdapter()
+    : new ClaudeAdapter({
+        resolver,
+        ...(leadChain !== undefined
+          ? {
+              models: toModelInfo(leadChain, "claude"),
+              defaultModel: leadChain[0],
+            }
+          : {}),
+      });
   const reviewerBChain = resolveChain(cfg.reviewer_b);
   const reviewerB = new ClaudeReviewerBAdapter({
     resolver,

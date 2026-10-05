@@ -20,7 +20,7 @@ import {
   resolveChain,
 } from "../../src/adapter/from-config.ts";
 import type { ClaudeAdapter } from "../../src/adapter/claude.ts";
-import type { CodexAdapter } from "../../src/adapter/codex.ts";
+import { CodexAdapter } from "../../src/adapter/codex.ts";
 import type { SpawnCliInput, SpawnCliResult } from "../../src/adapter/spawn.ts";
 import type { AskInput } from "../../src/adapter/types.ts";
 
@@ -141,6 +141,43 @@ describe("resolveChain", () => {
 // ---------- END-TO-END: config model_id actually reaches --model ----------
 
 describe("config-pinned lead model reaches the spawned --model (FIX 1)", () => {
+  test("lead configured with adapter=codex builds a Codex lead", () => {
+    const cwd = tmpRepo();
+    writeConfig(cwd, {
+      adapters: {
+        lead: {
+          adapter: "codex",
+          model_id: "gpt-5.4",
+          fallback_chain: ["gpt-5.4", "gpt-5.3-codex", "terminal"],
+        },
+      },
+    });
+
+    const lead = buildLeadAdapter(cwd);
+    expect(lead).toBeInstanceOf(CodexAdapter);
+    expect((lead as CodexAdapter).currentModelId()).toBe("gpt-5.4");
+  });
+
+  test("Codex lead does not feed GPT model ids to Claude reviewer B", () => {
+    const cwd = tmpRepo();
+    writeConfig(cwd, {
+      adapters: {
+        lead: {
+          adapter: "codex",
+          model_id: "gpt-5.4",
+          fallback_chain: ["gpt-5.4", "gpt-5.3-codex", "terminal"],
+        },
+      },
+    });
+
+    const { lead, reviewerB } = buildReviewLoopAdaptersFromConfig(cwd);
+    expect(lead).toBeInstanceOf(CodexAdapter);
+    expect(reviewerB).not.toBeInstanceOf(CodexAdapter);
+    expect(
+      (reviewerB as unknown as { currentModelId(): string }).currentModelId(),
+    ).toMatch(/^claude-/);
+  });
+
   test("lead pinned to claude-opus-4-8 spawns --model claude-opus-4-8", async () => {
     const cwd = tmpRepo();
     writeConfig(cwd, {
