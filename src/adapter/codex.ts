@@ -742,7 +742,7 @@ export function buildCritiquePrompt(input: CritiqueInput): string {
   );
 }
 
-function buildRevisePrompt(input: ReviseInput): string {
+export function buildRevisePrompt(input: ReviseInput): string {
   // Reviewer seats rarely call revise(); the method is exposed for
   // adapter-contract parity with the lead seat.
   const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
