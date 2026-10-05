@@ -734,6 +734,19 @@ export function buildIdeaPrecedenceBlock(opts: {
   );
 }
 
+/** Shared output constraints for a lead authoring a complete SPEC.md. */
+export function buildLeadSpecOutputBlock(hasIdea: boolean): string {
+  return (
+    "\n\nSPEC OUTPUT REQUIREMENTS: Keep the spec concise. For the first " +
+    "draft, target 800–1,200 words, with a hard maximum of 1,500 words. " +
+    "Prefer compact bullets and tables over repetitive prose." +
+    (hasIdea
+      ? " Near the top of SPEC.md, include an `## Original idea` section " +
+        "that reproduces the authoritative project idea verbatim."
+      : "")
+  );
+}
+
 // ---------- prompt builders (exported for tests) ----------
 
 export function buildAskPrompt(input: AskInput): string {
@@ -801,6 +814,9 @@ export function buildRevisePrompt(input: ReviseInput): string {
   if (typeof input.slug === "string" && input.slug.length > 0)
     reviseIdeaOpts.slug = input.slug;
   const ideaBlock = buildIdeaPrecedenceBlock(reviseIdeaOpts);
+  const outputBlock = buildLeadSpecOutputBlock(
+    typeof input.idea === "string" && input.idea.trim().length > 0,
+  );
   const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
     input.autonomy_policy,
   );
@@ -818,6 +834,7 @@ export function buildRevisePrompt(input: ReviseInput): string {
     "(did not apply, with reason), deferred (punted to a later version)." +
     ideaBlock +
     autonomyBlock +
+    outputBlock +
     baselineSections +
     `\n\nCurrent spec:\n${input.spec}\n\nReviews (JSON):\n` +
     `${JSON.stringify(input.reviews)}\n\nDecisions so far (JSON):\n` +

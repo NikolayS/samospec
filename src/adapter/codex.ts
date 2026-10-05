@@ -92,6 +92,11 @@ import {
   StructuredAskInputSchema,
   StructuredAskOutputSchema,
 } from "./types.ts";
+import {
+  buildBaselineSectionsBlock,
+  buildIdeaPrecedenceBlock,
+  buildLeadSpecOutputBlock,
+} from "./claude.ts";
 
 // ---------- constants ----------
 
@@ -743,19 +748,35 @@ export function buildCritiquePrompt(input: CritiqueInput): string {
 }
 
 export function buildRevisePrompt(input: ReviseInput): string {
-  // Reviewer seats rarely call revise(); the method is exposed for
-  // adapter-contract parity with the lead seat.
+  const baselineSections = buildBaselineSectionsBlock(input.skipSections ?? []);
+  const ideaOpts: { idea?: string; slug?: string } = {};
+  if (typeof input.idea === "string" && input.idea.length > 0)
+    ideaOpts.idea = input.idea;
+  if (typeof input.slug === "string" && input.slug.length > 0)
+    ideaOpts.slug = input.slug;
+  const ideaBlock = buildIdeaPrecedenceBlock(ideaOpts);
   const autonomyBlock = renderAutonomyPolicySnapshotPromptBlock(
     input.autonomy_policy,
   );
+  const outputBlock = buildLeadSpecOutputBlock(
+    typeof input.idea === "string" && input.idea.trim().length > 0,
+  );
   return (
-    "You are the samospec reviewer operating in revise mode. Emit the " +
-    "FULL revised SPEC.md text — not a patch. Return ONLY a JSON " +
-    'object: { "spec": <full text>, "ready": boolean, "rationale": ' +
-    'string, "usage": null, ' +
+    "You are the samospec lead. Emit the FULL revised SPEC.md text — " +
+    'not a patch. Return ONLY a JSON object: { "spec": <full text>, ' +
+    '"ready": boolean, "rationale": string, ' +
+    '"decisions": [{ "finding_id"?: string, "category": string, ' +
+    '"verdict": "accepted"|"rejected"|"deferred", "rationale": string }], ' +
+    '"usage": null, ' +
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code ` +
-    "fences." +
+    "fences. For each finding the reviewers raised, emit a decision " +
+    "object in the decisions array with a one-sentence rationale. " +
+    "Verdict options: accepted (applied to the spec), rejected " +
+    "(did not apply, with reason), deferred (punted to a later version)." +
+    ideaBlock +
     autonomyBlock +
+    outputBlock +
+    baselineSections +
     `\n\nCurrent spec:\n${input.spec}\n\nReviews (JSON):\n` +
     `${JSON.stringify(input.reviews)}\n\nDecisions so far (JSON):\n` +
     `${JSON.stringify(input.decisions_history)}\n`
