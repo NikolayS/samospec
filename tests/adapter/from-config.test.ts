@@ -19,7 +19,7 @@ import {
   readAdaptersConfig,
   resolveChain,
 } from "../../src/adapter/from-config.ts";
-import { ClaudeAdapter } from "../../src/adapter/claude.ts";
+import type { ClaudeAdapter } from "../../src/adapter/claude.ts";
 import { CodexAdapter } from "../../src/adapter/codex.ts";
 import type { SpawnCliInput, SpawnCliResult } from "../../src/adapter/spawn.ts";
 import type { AskInput } from "../../src/adapter/types.ts";
