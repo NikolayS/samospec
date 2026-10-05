@@ -155,7 +155,7 @@ describe("config-pinned lead model reaches the spawned --model (FIX 1)", () => {
 
     const lead = buildLeadAdapter(cwd);
     expect(lead).toBeInstanceOf(CodexAdapter);
-    expect(lead.currentModelId()).toBe("gpt-5.4");
+    expect((lead as CodexAdapter).currentModelId()).toBe("gpt-5.4");
   });
 
   test("Codex lead does not feed GPT model ids to Claude reviewer B", () => {
@@ -173,7 +173,9 @@ describe("config-pinned lead model reaches the spawned --model (FIX 1)", () => {
     const { lead, reviewerB } = buildReviewLoopAdaptersFromConfig(cwd);
     expect(lead).toBeInstanceOf(CodexAdapter);
     expect(reviewerB).not.toBeInstanceOf(CodexAdapter);
-    expect(reviewerB.currentModelId()).toMatch(/^claude-/);
+    expect(
+      (reviewerB as unknown as { currentModelId(): string }).currentModelId(),
+    ).toMatch(/^claude-/);
   });
 
   test("lead pinned to claude-opus-4-8 spawns --model claude-opus-4-8", async () => {
