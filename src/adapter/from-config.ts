@@ -93,7 +93,8 @@ function roleEntry(
     Array.isArray(chainRaw) && chainRaw.every((x) => typeof x === "string")
       ? (chainRaw as readonly string[])
       : undefined;
-  if (adapter === undefined && modelId === undefined && chain === undefined) return {};
+  if (adapter === undefined && modelId === undefined && chain === undefined)
+    return {};
   return {
     [role]: {
       ...(adapter !== undefined ? { adapter } : {}),
