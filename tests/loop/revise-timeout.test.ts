@@ -375,6 +375,7 @@ describe("iterate — revise timeout propagates to state.json.exit.reason (#92)"
       cwd: tmp,
     });
     spawnSync("git", ["config", "user.name", "Test"], { cwd: tmp });
+    spawnSync("git", ["config", "commit.gpgsign", "false"], { cwd: tmp });
     spawnSync("git", ["add", "."], { cwd: tmp });
     spawnSync("git", ["commit", "-m", "initial"], { cwd: tmp });
     spawnSync("git", ["checkout", "-b", `samospec/${slug}`], { cwd: tmp });
@@ -518,6 +519,7 @@ describe.skip("iterate — threads remainingSessionMsFn into runRound (#92 REV) 
       cwd: tmp,
     });
     spawnSync("git", ["config", "user.name", "Test"], { cwd: tmp });
+    spawnSync("git", ["config", "commit.gpgsign", "false"], { cwd: tmp });
     spawnSync("git", ["add", "."], { cwd: tmp });
     spawnSync("git", ["commit", "-m", "initial"], { cwd: tmp });
     spawnSync("git", ["checkout", "-b", `samospec/${slug}`], { cwd: tmp });
@@ -742,6 +744,7 @@ describe("iterate — changelog note differs by retry kind (#92 REV)", () => {
       cwd: tmp,
     });
     spawnSync("git", ["config", "user.name", "Test"], { cwd: tmp });
+    spawnSync("git", ["config", "commit.gpgsign", "false"], { cwd: tmp });
     spawnSync("git", ["add", "."], { cwd: tmp });
     spawnSync("git", ["commit", "-m", "initial"], { cwd: tmp });
     spawnSync("git", ["checkout", "-b", `samospec/${slug}`], { cwd: tmp });

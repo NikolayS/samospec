@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# cont-init.d/20-pg-init — initialise the PG data dir on first boot.
+#
+# The supabase/postgres base image already has all the binaries; we just
+# need to run initdb if the data dir is empty (as it will be when the
+# operator mounts a fresh -v ./data/postgres:/var/lib/postgresql/data).
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+PGDATA="${PGDATA:-/var/lib/postgresql/data}"
+
+# Fix ownership when the volume was created by root.
+chown -R postgres:postgres "${PGDATA}"
+chmod 0700 "${PGDATA}"
+
+if [[ -s "${PGDATA}/PG_VERSION" ]]; then
+  echo "[init] PG data dir already initialised at ${PGDATA}" >&2
+  exit 0
+fi
+
+pw_file="/run/s6/container_environment/POSTGRES_PASSWORD"
+if [[ ! -s "${pw_file}" ]]; then
+  echo "[init] POSTGRES_PASSWORD not set" >&2
+  exit 1
+fi
+
+su - postgres -c "initdb --username=postgres \
+  --pwfile=${pw_file} \
+  --auth-host=scram-sha-256 \
+  --auth-local=trust \
+  --encoding=UTF8 \
+  --locale=C \
+  -D '${PGDATA}'"
+
+cat >> "${PGDATA}/postgresql.conf" <<'EOF'
+
+# samospec — listen on loopback only (web app shares the container)
+listen_addresses = '127.0.0.1'
+port = 5432
+EOF
+
+echo "[init] PG initialised" >&2

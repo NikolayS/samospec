@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# cont-init.d/10-config — load configuration from the mounted config dir.
+#
+# Reads /etc/samospec/samospec.env (if present) and exports each KEY=VAL
+# line into the s6 container environment so service `run` scripts inherit
+# it. Generates secrets on first boot when they aren't supplied, and
+# persists them back to the config dir.
+set -Eeuo pipefail
+IFS=$'\n\t'
+
+CONFIG_DIR="${SAMOSPEC_CONFIG_DIR:-/etc/samospec}"
+ENV_FILE="${CONFIG_DIR}/samospec.env"
+
+mkdir -p "${CONFIG_DIR}"
+
+gen_secret() {
+  local len="${1:-32}"
+  head -c $((len * 2)) /dev/urandom | base64 | tr -d '/+=' | head -c "${len}"
+}
+
+if [[ ! -f "${ENV_FILE}" ]]; then
+  echo "[init] no ${ENV_FILE}, generating defaults" >&2
+  pw=$(gen_secret 32)
+  session_secret=$(gen_secret 48)
+  cat > "${ENV_FILE}" <<EOF
+# samospec.dev — generated on first boot. Edit as needed; the password
+# below MUST match the one written to the postgres data dir (changing it
+# here without re-initialising PGDATA will break startup).
+POSTGRES_PASSWORD=${pw}
+POSTGRES_DB=postgres
+SESSION_SECRET=${session_secret}
+PUBLIC_BASE_URL=https://samospec.dev
+# Set to 1 only when the container sits behind a reverse proxy you
+# control and you want publisher_ip captured from X-Forwarded-For /
+# CF-Connecting-IP. Off by default — see web/src/lib/auth.ts.
+TRUST_FORWARDED_IPS=0
+EOF
+fi
+
+# Always tighten perms on the env file (in case an operator edited it
+# after first boot with looser umask).
+chmod 600 "${ENV_FILE}"
+
+# If the file existed before this boot but lacks SESSION_SECRET (upgrade
+# from an older image), backfill it. Same for TRUST_FORWARDED_IPS.
+if ! grep -q '^SESSION_SECRET=' "${ENV_FILE}"; then
+  echo "SESSION_SECRET=$(gen_secret 48)" >> "${ENV_FILE}"
+fi
+if ! grep -q '^TRUST_FORWARDED_IPS=' "${ENV_FILE}"; then
+  echo "TRUST_FORWARDED_IPS=0" >> "${ENV_FILE}"
+fi
+
+# Export all KEY=VAL pairs from the env file into the s6 environment.
+set -a
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
+set +a
+
+mkdir -p /run/s6/container_environment
+for key in POSTGRES_PASSWORD POSTGRES_DB SESSION_SECRET PUBLIC_BASE_URL \
+           TRUST_FORWARDED_IPS; do
+  val="${!key:-}"
+  if [[ -n "${val}" ]]; then
+    printf '%s' "${val}" > "/run/s6/container_environment/${key}"
+  fi
+done
+
+# DATABASE_URL is derived from POSTGRES_PASSWORD; the web service reads it.
+printf 'postgres://postgres:%s@127.0.0.1:5432/%s' \
+  "${POSTGRES_PASSWORD}" "${POSTGRES_DB:-postgres}" \
+  > /run/s6/container_environment/DATABASE_URL

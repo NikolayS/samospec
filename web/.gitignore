@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.astro/
+.env
+.env.*
+!.env.example
+# operator-side mount targets, intentionally untracked
+data/
+config/

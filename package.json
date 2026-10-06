@@ -16,8 +16,8 @@
   ],
   "scripts": {
     "samospec": "bun run src/main.ts",
-    "test": "bun test",
-    "test:coverage": "bun test --coverage",
+    "test": "bun test src tests",
+    "test:coverage": "bun test --coverage src tests",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
