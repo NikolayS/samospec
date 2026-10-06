@@ -7,6 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`publish` can now re-promote an iterated spec.** Previously the first
+  `samospec publish <slug>` set `published_at` and every later `publish`
+  hard-failed — even though the error told the user to "republish", a
+  command that never existed. `blueprints/<slug>/SPEC.md` (and `brief`,
+  which reads it) stayed frozen on the first published version. `publish`
+  now re-promotes the committed working draft whenever it is newer than
+  the published snapshot, matching the documented iterate → publish loop.
+  It still refuses (exit 1) when the draft has not advanced, with an
+  actionable message pointing at `iterate`.
+
 ## [0.9.0] - 2026-05-29
 
 ### Added

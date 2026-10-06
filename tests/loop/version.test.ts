@@ -4,8 +4,10 @@ import { describe, expect, test } from "bun:test";
 
 import {
   bumpMinor,
+  compareSemver,
   formatChangelogEntry,
   formatVersionLabel,
+  parsePublishedLabel,
 } from "../../src/loop/version.ts";
 
 describe("loop/version — version bump", () => {
@@ -62,5 +64,40 @@ describe("loop/version — formatChangelogEntry", () => {
       degradedResolution: "lead fell back to claude-sonnet-4-6",
     });
     expect(entry).toContain("lead fell back to claude-sonnet-4-6");
+  });
+});
+
+describe("loop/version — parsePublishedLabel", () => {
+  test("expands a short vX.Y label to the X.Y.0 triple", () => {
+    expect(parsePublishedLabel("v0.2")).toBe("0.2.0");
+    expect(parsePublishedLabel("v1.10")).toBe("1.10.0");
+  });
+  test("keeps an explicit patch in a vX.Y.Z label", () => {
+    expect(parsePublishedLabel("v0.2.3")).toBe("0.2.3");
+  });
+  test("tolerates a missing leading v", () => {
+    expect(parsePublishedLabel("0.4")).toBe("0.4.0");
+  });
+  test("returns null on a malformed label", () => {
+    expect(parsePublishedLabel("not-a-version")).toBeNull();
+    expect(parsePublishedLabel("v1")).toBeNull();
+  });
+});
+
+describe("loop/version — compareSemver", () => {
+  test("orders by major, then minor, then patch", () => {
+    expect(compareSemver("0.2.0", "0.1.0")).toBeGreaterThan(0);
+    expect(compareSemver("0.1.0", "0.2.0")).toBeLessThan(0);
+    expect(compareSemver("1.0.0", "0.9.0")).toBeGreaterThan(0);
+    expect(compareSemver("0.2.1", "0.2.0")).toBeGreaterThan(0);
+  });
+  test("returns 0 for equal versions", () => {
+    expect(compareSemver("0.2.0", "0.2.0")).toBe(0);
+  });
+  test("compares numerically, not lexically (v0.10 > v0.9)", () => {
+    expect(compareSemver("0.10.0", "0.9.0")).toBeGreaterThan(0);
+  });
+  test("throws on a malformed input", () => {
+    expect(() => compareSemver("0.2", "0.1.0")).toThrow();
   });
 });

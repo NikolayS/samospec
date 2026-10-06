@@ -13,7 +13,9 @@
  *   1. Preconditions (exit 1 on miss):
  *      - `.samo/spec/<slug>/state.json` exists.
  *      - `state.round_state === "committed"`.
- *      - `state.published_at` is absent (republish error message).
+ *      - If `state.published_at` is set, the committed working draft must
+ *        be NEWER than the published snapshot (the iterate→publish loop);
+ *        otherwise exit 1 with "nothing new to publish".
  *   2. Safety invariant: refuse if current branch is protected (exit 2).
  *   3. Copy SPEC.md → `blueprints/<slug>/SPEC.md`.
  *   4. Advance state: set `published_at`, `published_version`,
@@ -56,7 +58,11 @@ import {
   type PrCapabilityProbe,
 } from "../git/push-consent.ts";
 import { pushBranch, type PushBranchResult } from "../git/push.ts";
-import { formatVersionLabel } from "../loop/version.ts";
+import {
+  compareSemver,
+  formatVersionLabel,
+  parsePublishedLabel,
+} from "../loop/version.ts";
 import { writeState } from "../state/store.ts";
 import { stateSchema, type State } from "../state/types.ts";
 import { specPaths } from "./new.ts";
@@ -134,12 +140,23 @@ export async function runPublish(input: PublishInput): Promise<PublishResult> {
   // Republish check (must come BEFORE the committed-state check so the
   // message is actionable: we don't want to confuse users who already
   // advanced past `committed` via publish).
+  //
+  // Auto-allow re-promotion when the committed working draft is NEWER
+  // than the published snapshot — that is exactly the README's
+  // "iterate → publish → iterate → publish" loop. Only refuse when there
+  // is nothing new to promote (the draft is at or below the published
+  // version), so the message stops promising a "republish" that the user
+  // can't reach.
   if (state.published_at !== undefined) {
-    error(
-      `samospec: '${input.slug}' is already published at ${state.published_at}. ` +
-        `Use \`samospec iterate ${input.slug}\` to run more rounds, then republish.`,
-    );
-    return finish(1, outLines, errLines);
+    if (!draftIsNewerThanPublished(state)) {
+      error(
+        `samospec: '${input.slug}' is already published at ${state.published_at} ` +
+          `(${state.published_version ?? "unknown"}) and the working draft has ` +
+          `not advanced. Run \`samospec iterate ${input.slug}\` to produce a ` +
+          `newer version, then publish again.`,
+      );
+      return finish(1, outLines, errLines);
+    }
   }
 
   if (state.round_state !== "committed") {
@@ -359,6 +376,25 @@ function finish(
 
 function stripLeadingV(label: string): string {
   return label.startsWith("v") ? label.slice(1) : label;
+}
+
+/**
+ * Decide whether a re-publish should proceed: true when the committed
+ * working draft's `state.version` (a full `X.Y.Z` triple) is strictly
+ * newer than the recorded `published_version` label (`vX.Y[.Z]`).
+ *
+ * When `published_version` is absent or malformed we cannot prove the
+ * draft is newer, so we conservatively allow the republish — the user
+ * already passed the `published_at` gate and the alternative is leaving
+ * them permanently stuck on a corrupted snapshot. The common path
+ * (`published_version` present and parseable) is a precise numeric
+ * comparison.
+ */
+function draftIsNewerThanPublished(state: State): boolean {
+  if (state.published_version === undefined) return true;
+  const publishedTriple = parsePublishedLabel(state.published_version);
+  if (publishedTriple === null) return true;
+  return compareSemver(state.version, publishedTriple) > 0;
 }
 
 function safePushBranch(args: {

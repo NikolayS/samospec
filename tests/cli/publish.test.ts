@@ -589,7 +589,7 @@ describe("samospec publish — state advance (SPEC §7)", () => {
     expect(state["published_version"]).toBe("v0.2");
   });
 
-  test("second publish on the same slug exits 1 (republish error)", async () => {
+  test("second publish at the SAME version exits 1 (nothing new to publish)", async () => {
     seedCommittedSpec(tmp, "refunds");
     const remoteUrl = spawnSync("git", ["remote", "get-url", "origin"], {
       cwd: tmp,
@@ -608,6 +608,8 @@ describe("samospec publish — state advance (SPEC §7)", () => {
       env: { PATH },
     });
     expect(first.exitCode).toBe(0);
+    // No iterate happened — the working draft is still v0.2, same as the
+    // published snapshot — so a re-publish has nothing new to promote.
     const second = await runPublish({
       cwd: tmp,
       slug: "refunds",
@@ -618,5 +620,110 @@ describe("samospec publish — state advance (SPEC §7)", () => {
     expect(second.exitCode).toBe(1);
     expect(second.stderr).toMatch(/already published/i);
     expect(second.stderr).toMatch(/iterate/);
+  });
+});
+
+describe("samospec publish — republish when the draft is newer (issue: stuck on first version)", () => {
+  /**
+   * Advance the committed working draft to a newer version, mirroring
+   * what `samospec iterate` does between two publishes: rewrite SPEC.md,
+   * bump `state.version`, and commit so the working tree is clean.
+   */
+  function advanceDraftTo(
+    cwd: string,
+    slug: string,
+    version: string,
+    label: string,
+  ): void {
+    const slugDir = path.join(cwd, ".samo", "spec", slug);
+    writeFileSync(
+      path.join(slugDir, "SPEC.md"),
+      [
+        "# SPEC",
+        "",
+        "## Goal",
+        "",
+        `Deliver a refunds policy that is reviewable and actionable (${label}).`,
+        "",
+        "## Scope",
+        "",
+        "- refund window",
+        "- edge cases",
+        "- partial refunds",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const statePath = path.join(slugDir, "state.json");
+    const state = JSON.parse(readFileSync(statePath, "utf8")) as State;
+    writeState(statePath, {
+      ...state,
+      version,
+      round_index: state.round_index + 1,
+      round_state: "committed",
+      updated_at: "2026-04-19T13:04:00Z",
+    });
+    spawnSync("git", ["add", "-A"], { cwd });
+    spawnSync("git", ["commit", "-q", "-m", `spec(${slug}): refine ${label}`], {
+      cwd,
+    });
+  }
+
+  test("re-promotes the working draft and updates published_at/version", async () => {
+    seedCommittedSpec(tmp, "refunds");
+    const remoteUrl = spawnSync("git", ["remote", "get-url", "origin"], {
+      cwd: tmp,
+      encoding: "utf8",
+    }).stdout.trim();
+    seedConfig(tmp, {
+      schema_version: 1,
+      git: { push_consent: { [remoteUrl]: true } },
+    });
+    const { PATH } = scriptShim({ gh: true });
+    const first = await runPublish({
+      cwd: tmp,
+      slug: "refunds",
+      now: "2026-04-19T13:00:00Z",
+      remote: "origin",
+      env: { PATH },
+    });
+    expect(first.exitCode).toBe(0);
+
+    // Simulate `iterate` bumping the working draft to v0.3.
+    advanceDraftTo(tmp, "refunds", "0.3.0", "v0.3");
+
+    const second = await runPublish({
+      cwd: tmp,
+      slug: "refunds",
+      now: "2026-04-19T13:10:00Z",
+      remote: "origin",
+      env: { PATH },
+    });
+    expect(second.exitCode).toBe(0);
+
+    // The promoted snapshot reflects the newer draft.
+    const promoted = readFileSync(
+      path.join(tmp, "blueprints", "refunds", "SPEC.md"),
+      "utf8",
+    );
+    expect(promoted).toContain("(v0.3)");
+    expect(promoted).toContain("partial refunds");
+
+    // state.json records the new publish.
+    const state = JSON.parse(
+      readFileSync(
+        path.join(tmp, ".samo", "spec", "refunds", "state.json"),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(state["published_version"]).toBe("v0.3");
+    expect(state["published_at"]).toBe("2026-04-19T13:10:00Z");
+
+    // The publish commit landed for the new version.
+    const lastMsg = spawnSync("git", ["log", "-1", "--format=%s"], {
+      cwd: tmp,
+      encoding: "utf8",
+    }).stdout.trim();
+    expect(lastMsg).toBe("spec(refunds): publish v0.3");
   });
 });
