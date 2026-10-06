@@ -386,7 +386,7 @@ const USAGE =
   "      Override the output path. Repo-relative or absolute.\n" +
   "      Default: <blueprints_dir>/<slug>/BRIEF.html. Use this to write\n" +
   "      directly into your static-site host's expected location\n" +
-  "      (e.g. docs/<slug>/index.html for GitHub Pages /docs source,\n" +
+  "      (e.g., docs/<slug>/index.html for GitHub Pages /docs source,\n" +
   "      public/<slug>/index.html for GitLab Pages).\n" +
   "  --no-nojekyll\n" +
   "      Skip creating the repo-root `.nojekyll` marker file. By\n" +
