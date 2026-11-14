@@ -187,7 +187,7 @@ function makeIdeaFileAdapter(): {
   const revises: ReviseInput[] = [];
   let askCall = 0;
   const answers = [
-    personaJson("platform engineer"),
+    personaJson("Platform Software Engineer"),
     questionsJson([{ id: "q1", text: "framework?" }]),
   ];
   const adapter: Adapter = {

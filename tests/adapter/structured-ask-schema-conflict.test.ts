@@ -157,7 +157,7 @@ describe("persona call site — uses structuredAsk, no { answer } wrapper collis
     const { proposePersona } = await import("../../src/cli/persona.ts");
 
     const personaJson =
-      '{"persona":"Veteran \\"Recipe Developer\\" expert","rationale":"Core skill for recipe app"}';
+      '{"persona":"Veteran \\"Bakery Software Engineer\\" expert","rationale":"Core skill for recipe app"}';
     const adapter = createFakeAdapter({
       structuredAsk: { rawJson: personaJson, usage: null, effort_used: "max" },
     });
@@ -172,7 +172,7 @@ describe("persona call site — uses structuredAsk, no { answer } wrapper collis
       adapter,
     );
 
-    expect(result.persona).toBe('Veteran "Recipe Developer" expert');
-    expect(result.skill).toBe("Recipe Developer");
+    expect(result.persona).toBe('Veteran "Bakery Software Engineer" expert');
+    expect(result.skill).toBe("Bakery Software Engineer");
   });
 });

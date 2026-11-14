@@ -153,7 +153,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
   test("writes all committed artifacts and makes the first commit on samospec/refunds", async () => {
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([
           { id: "q1", text: "framework?" },
           { id: "q2", text: "auth?" },
@@ -236,7 +236,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
   test("commit staged files are ONLY the samospec spec dir (never `add -A`)", async () => {
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
       revise: reviseOut(),
@@ -275,7 +275,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
   test("passes an empty reviews array and decisions_history to revise()", async () => {
     const { adapter, revises } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
       revise: reviseOut(),
@@ -304,7 +304,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
   test("calibration array is appended by exactly one sample (rounds = 0)", async () => {
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
       revise: reviseOut(),
@@ -332,7 +332,7 @@ describe("samospec new refunds — end-to-end (SPEC §5 Phase 5 + Sprint 2 exit)
   test("stdout prints preflight estimate + TL;DR + resume hint", async () => {
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
       revise: reviseOut(),
@@ -360,7 +360,7 @@ describe("samospec new refunds — subscription-auth (SPEC §11)", () => {
   test("runs end-to-end with null usage; calibration cost stored as 0", async () => {
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
       revise: reviseOut(),
@@ -398,7 +398,7 @@ describe("samospec new refunds — lead_terminal on draft (SPEC §7)", () => {
   test("adapter.revise rejection => exit 4, state at lead_terminal, specific message", async () => {
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
       revise: () =>
@@ -428,7 +428,7 @@ describe("samospec new refunds — lead_terminal on draft (SPEC §7)", () => {
   test("schema_fail sub-reason surfaces the specific copy", async () => {
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
       revise: () =>
@@ -466,7 +466,7 @@ describe("samospec new refunds — refuses commits on protected branches (SPEC �
 
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
       revise: reviseOut(),
@@ -494,7 +494,7 @@ describe("samospec new refunds — consent gate (SPEC §5 Phase 1)", () => {
   test("abort consent => exit 5 and no commit", async () => {
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("payments engineer"),
+        personaJson("Payments Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
       revise: reviseOut(),
@@ -526,7 +526,7 @@ describe("samospec new refunds — slug collision still exits 1", () => {
       recursive: true,
     });
     const { adapter } = makeAdapter({
-      answers: [personaJson("payments engineer")],
+      answers: [personaJson("Payments Software Engineer")],
       revise: reviseOut(),
     });
     const result = await runNew(
