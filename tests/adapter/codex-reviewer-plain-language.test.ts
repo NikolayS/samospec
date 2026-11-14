@@ -17,8 +17,10 @@ test("Codex reviewer enforces owner language, technical-note nesting, and reques
   expect(prompt).toContain("idea asked for");
   expect(prompt).toContain("needed for it to work safely");
   expect(prompt).toContain("Do not file missing-requirement findings");
-  expect(prompt).toContain("A bakery site where customers order by phone or email.");
-  expect(prompt).toMatch(/<repo_content_[0-9a-f]{8} /);
+  expect(prompt).toContain(
+    "A bakery site where customers order by phone or email.",
+  );
+  expect(prompt).toMatch(/<repo_content_[0-9a-f]{16,} /);
   expect(prompt).toContain("category `ambiguity`");
 });
 
@@ -29,7 +31,10 @@ test("Codex reviewer honors skipped technical subsections", () => {
     skipSections: ["architecture", "team", "sprints"],
     opts: { effort: "high", timeout: 120_000 },
   });
-  const policy = prompt.slice(prompt.indexOf("Section policy:"), prompt.indexOf("Guidelines:"));
+  const policy = prompt.slice(
+    prompt.indexOf("Section policy:"),
+    prompt.indexOf("Guidelines:"),
+  );
   expect(policy).not.toContain("architecture");
   expect(policy).not.toContain("team of experts");
   expect(policy).not.toContain("sprints");

@@ -666,7 +666,8 @@ export function buildBaselineSectionsBlock(
     {
       name: "sprints",
       instruction:
-        "### Sprints — brief implementation plan with parallelization and ordering.",
+        "### Sprints — brief implementation plan with parallelization and ordering. " +
+        "Format each sprint as a `#### Sprint N: <name>` heading followed by a short bullet list.",
     },
     {
       name: "changelog",
@@ -685,9 +686,13 @@ export function buildBaselineSectionsBlock(
   const sectionLines = mandatory.map((s) => s.instruction).join(" ");
   const includedTechnical = mandatory
     .filter((s) =>
-      ["architecture", "implementation details", "tests", "team", "sprints"].includes(
-        s.name,
-      ),
+      [
+        "architecture",
+        "implementation details",
+        "tests",
+        "team",
+        "sprints",
+      ].includes(s.name),
     )
     .map((s) => s.name);
   const skippedNote =
@@ -722,9 +727,25 @@ export function buildReviewerSectionPolicy(
     "tests/TDD",
     "team of experts",
     "sprints",
-  ].filter((name) => !skipped.has(name === "tests/TDD" ? "tests" : name === "team of experts" ? "team" : name));
-  const required = ["version header", "goal", "at least 3 in-scope user stories"].filter(
-    (name) => !skipped.has(name === "at least 3 in-scope user stories" ? "user stories" : name),
+  ].filter(
+    (name) =>
+      !skipped.has(
+        name === "tests/TDD"
+          ? "tests"
+          : name === "team of experts"
+            ? "team"
+            : name,
+      ),
+  );
+  const required = [
+    "version header",
+    "goal",
+    "at least 3 in-scope user stories",
+  ].filter(
+    (name) =>
+      !skipped.has(
+        name === "at least 3 in-scope user stories" ? "user stories" : name,
+      ),
   );
   if (!skipped.has("changelog")) required.push("embedded changelog");
   return (

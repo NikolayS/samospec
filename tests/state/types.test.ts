@@ -121,6 +121,14 @@ describe("state/types — state.json zod schema (SPEC §5, §7)", () => {
     expect(parsed.persona?.skill).toBe("security");
   });
 
+  test("accepts older input state without a skip list", () => {
+    const parsed = stateSchema.parse({
+      ...minimalState,
+      input: { idea: "an older saved idea" },
+    });
+    expect(parsed.input?.skip_sections ?? []).toEqual([]);
+  });
+
   test("accepts an exit record with reason + round_index", () => {
     const parsed = stateSchema.parse({
       ...minimalState,

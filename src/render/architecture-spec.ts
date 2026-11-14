@@ -41,6 +41,7 @@ const TECHNICAL_NOTES_HEADING_RE = /^##[ \t]+Technical notes[ \t]*$/im;
 export function injectArchitectureBlock(
   spec: string,
   doc: Architecture,
+  options: { readonly skipSections?: readonly string[] } = {},
 ): string {
   const block = renderBlock(doc);
 
@@ -62,6 +63,14 @@ export function injectArchitectureBlock(
     const after = spec.slice(headingEnd);
     const joiner = spec.startsWith("\n", headingEnd) ? "\n\n" : "\n\n";
     return `${before}${joiner}${block}${after.startsWith("\n") ? "" : "\n"}${after}`;
+  }
+
+  if (
+    (options.skipSections ?? []).some(
+      (section) => section.trim().toLowerCase() === "architecture",
+    )
+  ) {
+    return spec;
   }
 
   // Case 3: add Architecture as a subsection of Technical notes.

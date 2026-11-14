@@ -166,6 +166,8 @@ export const stateSchema = z
       .object({
         /** Original --idea string (AUTHORITATIVE per SPEC §7 v0.4.0). */
         idea: z.string().optional(),
+        /** Sections excluded by --skip when the draft was created. */
+        skip_sections: z.array(z.string()).optional(),
       })
       .strict()
       .optional(),

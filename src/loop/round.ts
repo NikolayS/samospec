@@ -249,6 +249,8 @@ export interface RunRoundInput {
    * Passed alongside `idea` into the revise() prompt builder.
    */
   readonly slug?: string;
+  /** Sections excluded when the original draft was created. */
+  readonly skipSections?: readonly string[];
   /**
    * Issue #92: optional getter returning how many wall-clock ms are
    * left in the session. When supplied, the per-call revise timeout is
@@ -644,6 +646,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
           ...(input.signal !== undefined ? { signal: input.signal } : {}),
           // #85: thread idea to Reviewer B for contradiction detection.
           ...(input.idea !== undefined ? { idea: input.idea } : {}),
+          ...(input.skipSections !== undefined
+            ? { skipSections: [...input.skipSections] }
+            : {}),
           // Reviewer context preservation: per-seat prior context.
           ...(priorContextA !== undefined ? { priorContextA } : {}),
           ...(priorContextB !== undefined ? { priorContextB } : {}),
@@ -681,6 +686,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
       ...(input.signal !== undefined ? { signal: input.signal } : {}),
       // #85: thread idea to Reviewer B for contradiction detection.
       ...(input.idea !== undefined ? { idea: input.idea } : {}),
+      ...(input.skipSections !== undefined
+        ? { skipSections: [...input.skipSections] }
+        : {}),
       // Reviewer context preservation: per-seat prior context.
       ...(priorContextA !== undefined ? { priorContextA } : {}),
       ...(priorContextB !== undefined ? { priorContextB } : {}),
@@ -791,6 +799,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
         // #85: thread idea + slug into the revise prompt for AUTHORITATIVE
         // idea framing in every review-round lead call.
         ...(input.idea !== undefined ? { idea: input.idea } : {}),
+        ...(input.skipSections !== undefined
+          ? { skipSections: [...input.skipSections] }
+          : {}),
         ...(input.slug !== undefined ? { slug: input.slug } : {}),
       }),
       effectiveReviseTimeout,
@@ -862,6 +873,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
         guidelinesB: input.guidelinesB ?? "",
         ...(input.signal !== undefined ? { signal: input.signal } : {}),
         ...(input.idea !== undefined ? { idea: input.idea } : {}),
+        ...(input.skipSections !== undefined
+          ? { skipSections: [...input.skipSections] }
+          : {}),
         // Reviewer context preservation: per-seat prior context.
         ...(priorContextA !== undefined ? { priorContextA } : {}),
         ...(priorContextB !== undefined ? { priorContextB } : {}),
@@ -897,6 +911,9 @@ export async function runRound(input: RunRoundInput): Promise<RunRoundOutcome> {
           opts: { effort: leadEffort, timeout: retryTimeout },
           ...(input.idea !== undefined ? { idea: input.idea } : {}),
           ...(input.slug !== undefined ? { slug: input.slug } : {}),
+          ...(input.skipSections !== undefined
+            ? { skipSections: [...input.skipSections] }
+            : {}),
         }),
         retryTimeout,
       );
@@ -1011,6 +1028,7 @@ interface ReviewerParallelInput {
   readonly signal?: AbortSignal;
   /** #85: idea string threaded into both reviewers' critique() calls. */
   readonly idea?: string;
+  readonly skipSections?: readonly string[];
   /**
    * Reviewer context preservation: pre-rendered prior context for
    * Reviewer A (codex), built from its OWN prior critiques + the lead's
@@ -1039,6 +1057,9 @@ async function runReviewersParallel(
         ? { prior_context: input.priorContextA }
         : {}),
       ...(input.idea !== undefined ? { idea: input.idea } : {}),
+      ...(input.skipSections !== undefined
+        ? { skipSections: [...input.skipSections] }
+        : {}),
     })
     .then<SeatOutcome>((critique) => ({
       seat: "reviewer_a",
@@ -1060,6 +1081,9 @@ async function runReviewersParallel(
       // #85: thread the original idea so Reviewer B can detect
       // idea-contradictions against disclaimed classes.
       ...(input.idea !== undefined ? { idea: input.idea } : {}),
+      ...(input.skipSections !== undefined
+        ? { skipSections: [...input.skipSections] }
+        : {}),
       // Reviewer context preservation: Reviewer B sees ONLY its own
       // (claude) prior findings + the lead's decisions.
       ...(input.priorContextB !== undefined

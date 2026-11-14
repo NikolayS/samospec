@@ -235,10 +235,7 @@ function extractMarkdownSection(
   let level = 0;
   for (let i = 0; i < lines.length; i += 1) {
     const parsed = parseHeading(lines[i] ?? "");
-    if (
-      parsed !== null &&
-      normalizeHeading(parsed.text) === wanted
-    ) {
+    if (parsed !== null && normalizeHeading(parsed.text) === wanted) {
       start = i + 1;
       heading = parsed.text;
       level = parsed.level;
@@ -277,7 +274,32 @@ function extractFirstSprintSection(
       break;
     }
   }
-  if (start === -1) return null;
+  if (start === -1) {
+    const sprintItem = /^\s*(?:[-*+] |\d+[.)]\s+)Sprint\s+1\s*:?[ \t]*(.*)$/i;
+    let itemIndex = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      const match = sprintItem.exec(lines[i] ?? "");
+      if (match !== null) {
+        itemIndex = i;
+        heading = `Sprint 1${match[1]?.trim() ? `: ${match[1].trim()}` : ""}`;
+        break;
+      }
+    }
+    if (itemIndex === -1) return null;
+    let itemEnd = lines.length;
+    const anySprintItem = /^\s*(?:[-*+] |\d+[.)]\s+)Sprint\s+\d+\b/i;
+    for (let i = itemIndex + 1; i < lines.length; i += 1) {
+      if (anySprintItem.test(lines[i] ?? "")) {
+        itemEnd = i;
+        break;
+      }
+    }
+    const body = lines
+      .slice(itemIndex + 1, itemEnd)
+      .map((line) => line.replace(/^\s{2,}/, ""))
+      .join("\n");
+    return { heading, body, level };
+  }
 
   let end = lines.length;
   for (let i = start; i < lines.length; i += 1) {

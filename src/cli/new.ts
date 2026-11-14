@@ -464,7 +464,14 @@ export async function runNew(
     // thread it into prompt builders even if new is interrupted early.
     let state = {
       ...newState({ slug: input.slug, now: input.now }),
-      ...(input.idea.trim().length > 0 ? { input: { idea: input.idea } } : {}),
+      ...(input.idea.trim().length > 0 || input.skipSections !== undefined
+        ? {
+            input: {
+              ...(input.idea.trim().length > 0 ? { idea: input.idea } : {}),
+              skip_sections: [...(input.skipSections ?? [])],
+            },
+          }
+        : {}),
     };
     const statePath = path.join(slugDir, "state.json");
     writeState(statePath, state);
@@ -684,6 +691,7 @@ export async function runNew(
     const specWithArchitecture = injectArchitectureBlock(
       ensureTrailingNewline(draft.spec),
       readArchitectureOrEmpty(architecturePath),
+      { skipSections: state.input?.skip_sections ?? [] },
     );
     writeFileSync(
       specPath,
