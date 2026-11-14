@@ -32,6 +32,7 @@ export const ARCHITECTURE_END_SENTINEL = "<!-- architecture:end -->";
 // the wild use `## Architecture`, `## 3. Architecture`, `### System
 // architecture`, etc.
 const ARCHITECTURE_HEADING_RE = /^(#{2,6})\s+.*architecture\b.*$/im;
+const TECHNICAL_NOTES_HEADING_RE = /^##[ \t]+Technical notes[ \t]*$/im;
 
 /**
  * Replace or inject the architecture block in `spec`. Returns a new
@@ -63,12 +64,20 @@ export function injectArchitectureBlock(
     return `${before}${joiner}${block}${after.startsWith("\n") ? "" : "\n"}${after}`;
   }
 
-  // Case 3: no heading either — append a new `## Architecture` section
-  // at the end of the document. Additive: existing text is preserved
-  // verbatim.
-  const trailingNewline = spec.endsWith("\n") ? "" : "\n";
-  const section = `## Architecture\n\n${block}\n`;
-  return `${spec}${trailingNewline}\n${section}`;
+  // Case 3: add Architecture as a subsection of Technical notes.
+  const technicalNotes = TECHNICAL_NOTES_HEADING_RE.exec(spec);
+  if (technicalNotes !== null) {
+    const headingEnd = technicalNotes.index + technicalNotes[0].length;
+    const after = spec.slice(headingEnd).replace(/^\n+/, "");
+    return `${spec.slice(0, headingEnd)}\n\n### Architecture\n\n${block}\n\n${after}`;
+  }
+
+  // Case 4: create Technical notes before the final changelog when present.
+  const changelog = /^##\s+(?:Embedded )?Changelog\b.*$/im.exec(spec);
+  const insertion = changelog?.index ?? spec.length;
+  const before = spec.slice(0, insertion).replace(/\n*$/, "\n\n");
+  const after = spec.slice(insertion);
+  return `${before}## Technical notes\n\n### Architecture\n\n${block}\n\n${after}`;
 }
 
 /**

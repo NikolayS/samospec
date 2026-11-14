@@ -48,12 +48,9 @@ import { type CritiqueInput, type CritiqueOutput } from "./types.ts";
 export const REVIEWER_B_PERSONA_PREFIX =
   "Focus especially on ambiguity, contradiction, and weak-testing. " +
   "You may surface findings in other categories when warranted, but " +
-  "weight your effort toward these. " +
-  "Check for the version header, goal, at least 3 in-scope user stories, and " +
-  "embedded changelog. Architecture, implementation details, tests/TDD, " +
-  "team of experts, and sprints must be brief subsections inside one short " +
-  "final `## Technical notes` section, not top-level sections. File a finding " +
-  "for jargon outside Technical notes. Do not file missing-requirement " +
+  "weight your effort toward these. Apply the dynamic `## Technical notes` " +
+  "section policy below. File jargon outside Technical notes under `ambiguity`. " +
+  "Do not file missing-requirement " +
   "findings that would add features, pages, or policies the idea did not ask " +
   "for; only require what the idea asked for or what is needed for it to work safely.";
 
@@ -73,7 +70,7 @@ export const REVIEWER_B_CONTRADICTION_DIRECTIVE =
  * Build the full critique prompt for Reviewer B, incorporating:
  * 1. The persona prefix (taxonomy weighting + baseline section check).
  * 2. If `input.idea` is present: the contradiction-detection directive
- *    + the idea string under a labelled header.
+ *    (the base builder safely envelopes the idea as untrusted data).
  * 3. The caller's guidelines (if any).
  * 4. The standard critique prompt structure (schema + spec text).
  *
@@ -84,7 +81,7 @@ export function buildCritiquePromptForReviewerB(input: CritiqueInput): string {
   // directive + caller guidelines.
   const ideaSection =
     input.idea !== undefined && input.idea.trim().length > 0
-      ? `${REVIEWER_B_CONTRADICTION_DIRECTIVE}\n\n## Original idea\n${input.idea}\n`
+      ? REVIEWER_B_CONTRADICTION_DIRECTIVE
       : "";
 
   const composedGuidelines = [
@@ -122,7 +119,7 @@ export class ClaudeReviewerBAdapter extends ClaudeAdapter {
     const composedGuidelines = [
       REVIEWER_B_PERSONA_PREFIX,
       input.idea !== undefined && input.idea.trim().length > 0
-        ? `${REVIEWER_B_CONTRADICTION_DIRECTIVE}\n\n## Original idea\n${input.idea}`
+        ? REVIEWER_B_CONTRADICTION_DIRECTIVE
         : "",
       input.guidelines,
     ]

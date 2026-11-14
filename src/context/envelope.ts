@@ -1,5 +1,7 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
+import { createHash } from "node:crypto";
+
 /**
  * SPEC §7 — untrusted-data envelope.
  *
@@ -41,6 +43,12 @@ export function wrap(args: WrapArgs): string {
     `sha="${args.blobSha}">`;
   const close = `</repo_content_${sha8}>`;
   return `${open}\n${args.content}\n${close}\n${ENVELOPE_SYSTEM_NOTE}\n`;
+}
+
+/** Wrap arbitrary prompt data using a delimiter derived from its contents. */
+export function wrapUntrustedText(path: string, content: string): string {
+  const blobSha = createHash("sha256").update(content).digest("hex");
+  return wrap({ path, content, blobSha });
 }
 
 /**

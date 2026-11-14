@@ -59,6 +59,21 @@ describe("buildCritiquePromptForReviewerB — idea-contradiction directive (#85)
     };
     const prompt = buildCritiquePromptForReviewerB(input);
     expect(prompt).toContain(idea);
+    expect(prompt).toMatch(/<repo_content_[0-9a-f]{8} /);
+    expect(prompt).toMatch(/<\/repo_content_[0-9a-f]{8}>/);
+  });
+
+  test("honors skipped technical subsections", () => {
+    const prompt = buildCritiquePromptForReviewerB({
+      spec: "# Spec",
+      guidelines: "",
+      opts: OPTS,
+      skipSections: ["architecture", "team", "sprints"],
+    });
+    const policy = prompt.slice(prompt.indexOf("Section policy:"), prompt.indexOf("Guidelines:"));
+    expect(policy).not.toContain("architecture");
+    expect(policy).not.toContain("team of experts");
+    expect(policy).not.toContain("sprints");
   });
 
   test('prompt instructs reviewer B to flag "contradiction" for disclaimed classes', () => {

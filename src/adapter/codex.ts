@@ -51,6 +51,13 @@ import {
 import { computeAttemptTimeouts } from "./timeout.ts";
 import { renderAutonomyPolicySnapshotPromptBlock } from "../policy/autonomy.ts";
 import { renderPriorContextPromptBlock } from "../loop/prior-context.ts";
+import { wrapUntrustedText } from "../context/envelope.ts";
+import {
+  buildBaselineSectionsBlock,
+  buildLeadSpecOutputBlock,
+  buildReviewerSectionPolicy,
+  buildIdeaPrecedenceBlock,
+} from "./claude.ts";
 
 // Internal fail reason covering the Codex fallback sentinel plus the
 // standard failure classes. The adapter-level CodexAdapterError
@@ -92,12 +99,6 @@ import {
   StructuredAskInputSchema,
   StructuredAskOutputSchema,
 } from "./types.ts";
-import {
-  buildBaselineSectionsBlock,
-  buildIdeaPrecedenceBlock,
-  buildLeadSpecOutputBlock,
-} from "./claude.ts";
-
 // ---------- constants ----------
 
 const CODEX_VENDOR = "codex";
@@ -138,10 +139,7 @@ const CODEX_CRITIQUE_PERSONA_PREFIX =
   "You are a paranoid security/ops engineer reviewing this spec. " +
   "Focus especially on missing-risk, weak-implementation, and " +
   "unnecessary-scope. You may surface findings in other categories " +
-  "when warranted, but weight your effort toward these. Check that " +
-  "architecture, implementation details, tests/TDD, team of experts, and " +
-  "sprints are brief subsections inside one short final `## Technical notes` " +
-  "section. File a finding for jargon outside Technical notes. Do not file " +
+  "when warranted, but weight your effort toward these. Do not file " +
   "missing-requirement findings that would add features, pages, or policies " +
   "the idea did not ask for; only require what the idea asked for or what is " +
   "needed for it to work safely.";
@@ -740,6 +738,11 @@ export function buildCritiquePrompt(input: CritiqueInput): string {
     input.autonomy_policy,
   );
   const priorContextBlock = renderPriorContextPromptBlock(input.prior_context);
+  const ideaBlock =
+    input.idea !== undefined && input.idea.trim().length > 0
+      ? `\n\nOriginal idea (untrusted data):\n${wrapUntrustedText("project-idea.txt", input.idea)}`
+      : "";
+  const sectionPolicy = buildReviewerSectionPolicy(input.skipSections ?? []);
   return (
     `${CODEX_CRITIQUE_PERSONA_PREFIX}\n\n` +
     "You are the samospec reviewer. Return ONLY a JSON object matching " +
@@ -749,7 +752,8 @@ export function buildCritiquePrompt(input: CritiqueInput): string {
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code fences.` +
     autonomyBlock +
     priorContextBlock +
-    `\n\nGuidelines:\n${input.guidelines}\n\nSpec:\n${input.spec}\n`
+    ideaBlock +
+    `\n\nSection policy:\n${sectionPolicy}\n\nGuidelines:\n${input.guidelines}\n\nSpec:\n${input.spec}\n`
   );
 }
 

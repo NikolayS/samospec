@@ -174,6 +174,14 @@ describe("renderBrief — content-forward sections (not process meta)", () => {
 });
 
 describe("renderBrief — diagrams and code preserved verbatim", () => {
+  test("classifies Technical notes containing Architecture as architecture", () => {
+    const spec = "# T\n\n## Goal\n\ng\n\n## Technical notes\n\n### Architecture\n\n```text\nA -> B\n```\n";
+    const out = renderBrief(baseInput({ spec }));
+    expect(out).toContain('class="brief-section brief-section-architecture"');
+    expect(out).toContain(">Architecture<");
+    expect(out).toContain("A -&gt; B");
+  });
+
   test("preserves fenced ```text``` ASCII diagrams inside their section", () => {
     const out = renderBrief(baseInput());
     expect(out).toContain("[user] → [API] → [state machine] → [ledger]");

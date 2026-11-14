@@ -109,6 +109,7 @@ export function planFirstSprintIssues(
         ownerHint: task.ownerHint,
         team,
         sprintHeading: firstSprint.heading,
+        sectionAnchor: firstSprint.anchor,
       }),
     };
   });
@@ -133,10 +134,13 @@ interface SprintTask {
 interface FirstSprintSection {
   readonly heading: string;
   readonly tasks: readonly SprintTask[];
+  readonly anchor: string;
 }
 
 function extractTeam(specBody: string): readonly string[] {
-  const section = extractMarkdownSection(specBody, "team", 2);
+  const section =
+    extractMarkdownSection(specBody, "team") ??
+    extractMarkdownSection(specBody, "team of experts");
   if (section === null) return [];
   return collectBulletBlocks(section.body).map((bullet) => {
     const role = /Veteran\s+"[^"]+"\s+expert/.exec(bullet);
@@ -145,10 +149,14 @@ function extractTeam(specBody: string): readonly string[] {
 }
 
 function extractFirstSprint(specBody: string): FirstSprintSection {
-  const section = extractMarkdownSection(specBody, "implementation plan", 2);
-  if (section === null) return { heading: "Sprint 1", tasks: [] };
-  const sprint = extractFirstSprintSection(section.body);
-  if (sprint === null) return { heading: "Sprint 1", tasks: [] };
+  const section =
+    extractMarkdownSection(specBody, "implementation plan") ??
+    extractMarkdownSection(specBody, "sprints");
+  if (section === null)
+    return { heading: "Sprint 1", tasks: [], anchor: "implementation-plan" };
+  const sprint = extractFirstSprintSection(section.body, section.level + 1);
+  if (sprint === null)
+    return { heading: "Sprint 1", tasks: [], anchor: slugify(section.heading) };
   const tasks = collectBulletBlocks(sprint.body).map((bullet) => {
     const owner = /^\[([^\]]+)\]\s*/.exec(bullet);
     const text = owner === null ? bullet : bullet.slice(owner[0].length);
@@ -157,7 +165,7 @@ function extractFirstSprint(specBody: string): FirstSprintSection {
       ownerHint: owner?.[1] ?? null,
     };
   });
-  return { heading: sprint.heading, tasks };
+  return { heading: sprint.heading, tasks, anchor: slugify(section.heading) };
 }
 
 function buildIssueBody(input: {
@@ -168,6 +176,7 @@ function buildIssueBody(input: {
   readonly ownerHint: string | null;
   readonly team: readonly string[];
   readonly sprintHeading: string;
+  readonly sectionAnchor: string;
 }): string {
   const out: string[] = [];
   out.push(`<!-- ${input.marker} -->`);
@@ -179,7 +188,7 @@ function buildIssueBody(input: {
   out.push(
     `- Source: \`${input.source.specPath}\` at \`${input.source.sourceRef}\``,
   );
-  out.push(`- Spec section: ${input.source.specPath}#implementation-plan`);
+  out.push(`- Spec section: ${input.source.specPath}#${input.sectionAnchor}`);
   out.push(`- Sprint: ${input.sprintHeading}`);
   out.push("");
   out.push("## Task");
@@ -212,15 +221,48 @@ function buildIssueBody(input: {
 interface MarkdownSection {
   readonly heading: string;
   readonly body: string;
+  readonly level: number;
 }
 
 function extractMarkdownSection(
   markdown: string,
   wantedHeading: string,
-  level: number,
 ): MarkdownSection | null {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   const wanted = normalizeHeading(wantedHeading);
+  let start = -1;
+  let heading = "";
+  let level = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const parsed = parseHeading(lines[i] ?? "");
+    if (
+      parsed !== null &&
+      normalizeHeading(parsed.text) === wanted
+    ) {
+      start = i + 1;
+      heading = parsed.text;
+      level = parsed.level;
+      break;
+    }
+  }
+  if (start === -1) return null;
+
+  let end = lines.length;
+  for (let i = start; i < lines.length; i += 1) {
+    const parsed = parseHeading(lines[i] ?? "");
+    if (parsed !== null && parsed.level <= level) {
+      end = i;
+      break;
+    }
+  }
+  return { heading, body: lines.slice(start, end).join("\n"), level };
+}
+
+function extractFirstSprintSection(
+  markdown: string,
+  level: number,
+): MarkdownSection | null {
+  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
   let start = -1;
   let heading = "";
   for (let i = 0; i < lines.length; i += 1) {
@@ -228,7 +270,7 @@ function extractMarkdownSection(
     if (
       parsed !== null &&
       parsed.level === level &&
-      normalizeHeading(parsed.text) === wanted
+      /^Sprint\s+1\b/i.test(parsed.text)
     ) {
       start = i + 1;
       heading = parsed.text;
@@ -245,36 +287,7 @@ function extractMarkdownSection(
       break;
     }
   }
-  return { heading, body: lines.slice(start, end).join("\n") };
-}
-
-function extractFirstSprintSection(markdown: string): MarkdownSection | null {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
-  let start = -1;
-  let heading = "";
-  for (let i = 0; i < lines.length; i += 1) {
-    const parsed = parseHeading(lines[i] ?? "");
-    if (
-      parsed !== null &&
-      parsed.level === 3 &&
-      /^Sprint\s+1\b/i.test(parsed.text)
-    ) {
-      start = i + 1;
-      heading = parsed.text;
-      break;
-    }
-  }
-  if (start === -1) return null;
-
-  let end = lines.length;
-  for (let i = start; i < lines.length; i += 1) {
-    const parsed = parseHeading(lines[i] ?? "");
-    if (parsed !== null && parsed.level <= 3) {
-      end = i;
-      break;
-    }
-  }
-  return { heading, body: lines.slice(start, end).join("\n") };
+  return { heading, body: lines.slice(start, end).join("\n"), level };
 }
 
 function collectBulletBlocks(markdown: string): readonly string[] {

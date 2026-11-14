@@ -115,7 +115,15 @@ describe("injectArchitectureBlock — inject sentinels when absent", () => {
     expect(out).toContain(END);
     expect(out).toContain("Body.");
     // The added section's heading carries "Architecture".
-    expect(out).toMatch(/^##\s+.*Architecture/im);
+    expect(out).toContain("## Technical notes\n\n### Architecture");
+  });
+
+  test("adds Architecture beneath an existing Technical notes heading", () => {
+    const spec = "# demo\n\n## Technical notes\n\n### Tests / TDD\n\n- test\n";
+    const out = injectArchitectureBlock(spec, trivialArch());
+    expect(out).toContain("## Technical notes\n\n### Architecture");
+    expect(out).toContain("### Tests / TDD");
+    expect(out).not.toMatch(/^## Architecture$/m);
   });
 
   test("does not mutate a spec that has neither sentinels nor Architecture section, when scan-only is requested", () => {

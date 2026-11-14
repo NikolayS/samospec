@@ -96,7 +96,8 @@ describe("buildRevisePrompt — idea-precedence framing (#85)", () => {
     const prompt = buildRevisePrompt(makeReviseInputWithIdea());
     expect(prompt).toContain("non-technical owner");
     expect(prompt).toContain("plain everyday words");
-    expect(prompt).toContain("ONLY in one short final `## Technical notes`");
+    expect(prompt).toContain("ONLY in one short `## Technical notes`");
+    expect(prompt).toContain("embedded Changelog last");
   });
 
   test("when no idea/slug provided, prompt still works (no crash)", () => {

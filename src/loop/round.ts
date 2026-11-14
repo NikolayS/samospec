@@ -240,7 +240,7 @@ export interface RunRoundInput {
   readonly signal?: AbortSignal;
   /**
    * #85 (v0.4.0): original --idea string. When present, threaded into
-   * Reviewer B's critique() call so it can flag idea-contradictions, and
+   * both reviewers' critique() calls so they can judge requested scope, and
    * into the lead's revise() call so the AUTHORITATIVE framing appears.
    */
   readonly idea?: string;
@@ -1009,7 +1009,7 @@ interface ReviewerParallelInput {
   readonly guidelinesA: string;
   readonly guidelinesB: string;
   readonly signal?: AbortSignal;
-  /** #85: idea string threaded into Reviewer B's critique() call. */
+  /** #85: idea string threaded into both reviewers' critique() calls. */
   readonly idea?: string;
   /**
    * Reviewer context preservation: pre-rendered prior context for
@@ -1038,6 +1038,7 @@ async function runReviewersParallel(
       ...(input.priorContextA !== undefined
         ? { prior_context: input.priorContextA }
         : {}),
+      ...(input.idea !== undefined ? { idea: input.idea } : {}),
     })
     .then<SeatOutcome>((critique) => ({
       seat: "reviewer_a",

@@ -173,6 +173,8 @@ export const CritiqueInputSchema = z.object({
    * contradiction findings when the spec reintroduces a disclaimed class.
    */
   idea: z.string().optional(),
+  /** Baseline sections explicitly disabled by --skip. */
+  skipSections: z.array(z.string()).optional(),
   autonomy_policy: autonomyPolicySnapshotSchema.optional(),
   /**
    * Reviewer context preservation: a pre-rendered block carrying THIS
