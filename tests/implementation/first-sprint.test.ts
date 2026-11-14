@@ -17,6 +17,10 @@ const FIXTURE = readFileSync(
   path.join(import.meta.dir, "..", "fixtures", "implementation", "SPEC.md"),
   "utf8",
 );
+const NEW_FIXTURE = readFileSync(
+  path.join(import.meta.dir, "..", "fixtures", "implementation", "SPEC-new.md"),
+  "utf8",
+);
 
 const SOURCE = {
   slug: "backlog-creator",
@@ -26,6 +30,42 @@ const SOURCE = {
 };
 
 describe("first sprint issue planning", () => {
+  test("extracts old top-level Team and Implementation plan fixtures", () => {
+    expect(
+      planFirstSprintIssues({ specBody: FIXTURE, source: SOURCE }),
+    ).toHaveLength(3);
+  });
+
+  test("extracts nested Team of experts and Sprints fixtures", () => {
+    const planned = planFirstSprintIssues({
+      specBody: NEW_FIXTURE,
+      source: SOURCE,
+    });
+    expect(planned).toHaveLength(2);
+    expect(planned[0]?.title).toContain("Parse the nested first sprint");
+    expect(planned[0]?.body).toContain(
+      'Veteran "TypeScript CLI engineer" expert',
+    );
+    expect(planned[0]?.body).toContain("SPEC.md#sprints");
+  });
+
+  test("extracts a heading-form first sprint under Sprints", () => {
+    const spec =
+      "# Spec\n\n## Technical notes\n\n### Sprints\n\n#### Sprint 1: Foundation\n\n- Build the base\n";
+    expect(
+      planFirstSprintIssues({ specBody: spec, source: SOURCE })[0]?.title,
+    ).toContain("Build the base");
+  });
+
+  test("extracts bullet and numbered-list sprint forms under Sprints", () => {
+    for (const sprint of ["- Sprint 1: Foundation", "1. Sprint 1 Foundation"]) {
+      const spec = `# Spec\n\n## Technical notes\n\n### Sprints\n\n${sprint}\n  - Build the base\n- Sprint 2: Later\n  - Ship it\n`;
+      const planned = planFirstSprintIssues({ specBody: spec, source: SOURCE });
+      expect(planned).toHaveLength(1);
+      expect(planned[0]?.title).toContain("Build the base");
+    }
+  });
+
   test("extracts deterministic first-sprint issues from fixture SPEC.md", () => {
     const planned = planFirstSprintIssues({
       specBody: FIXTURE,

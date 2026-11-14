@@ -59,6 +59,51 @@ describe("buildCritiquePromptForReviewerB — idea-contradiction directive (#85)
     };
     const prompt = buildCritiquePromptForReviewerB(input);
     expect(prompt).toContain(idea);
+    expect(prompt).toMatch(/<repo_content_[0-9a-f]{16,} /);
+    expect(prompt).toMatch(/<\/repo_content_[0-9a-f]{16,}>/);
+  });
+
+  test("honors skipped technical subsections", () => {
+    const prompt = buildCritiquePromptForReviewerB({
+      spec: "# Spec",
+      guidelines: "",
+      opts: OPTS,
+      skipSections: ["architecture", "team", "sprints"],
+    });
+    const policy = prompt.slice(
+      prompt.indexOf("Section policy:"),
+      prompt.indexOf("Guidelines:"),
+    );
+    expect(prompt.indexOf("Section policy:")).toBeGreaterThanOrEqual(0);
+    expect(prompt.indexOf("Guidelines:")).toBeGreaterThan(
+      prompt.indexOf("Section policy:"),
+    );
+    expect(policy).toContain("version header");
+    expect(policy).not.toContain("architecture");
+    expect(policy).not.toContain("team of experts");
+    expect(policy).not.toContain("sprints");
+  });
+
+  test("references the enveloped idea above and the spec copy explicitly", () => {
+    const prompt = buildCritiquePromptForReviewerB({
+      spec: "# Spec\n\n## Original idea\nwrong copy",
+      guidelines: "",
+      opts: OPTS,
+      idea: "authoritative copy",
+    });
+    const envelope = prompt.indexOf("Original idea (untrusted data):");
+    const directive = prompt.indexOf("IDEA-CONTRADICTION CHECK:");
+    const policy = prompt.indexOf("Section policy:");
+    const persona = prompt.indexOf(
+      "`Section policy:` block that appears before",
+    );
+    expect(envelope).toBeGreaterThanOrEqual(0);
+    expect(directive).toBeGreaterThan(envelope);
+    expect(prompt).toContain(
+      "spec's own `## Original idea` section must match",
+    );
+    expect(prompt).not.toContain("provided below under '## Original idea'");
+    expect(policy).toBeLessThan(persona);
   });
 
   test('prompt instructs reviewer B to flag "contradiction" for disclaimed classes', () => {

@@ -287,7 +287,11 @@ function parseSectionRegion(
 
   return {
     heading,
-    kind: classifyHeading(heading),
+    kind:
+      /^technical notes$/i.test(heading.trim()) &&
+      subsections.some((name) => /\barchitecture\b/i.test(name))
+        ? "architecture"
+        : classifyHeading(heading),
     paragraphs,
     bullets: firstBullets,
     totalBullets,

@@ -95,7 +95,7 @@ At every step: `bunx samospec status <slug>` prints phase, current version, next
 - **Reviewer B** = second `claude` session with a **QA / testability** persona: ambiguity, contradiction, weak-testing. Same pin as the lead (`claude-opus-4-8`). Also checks the spec's mandatory baseline sections and verifies it stays faithful to your original idea.
 - Adapters share a coupled-fallback rule (lead and Reviewer B use the same vendor, so a Claude outage fails them together rather than running an uneven panel).
 
-Every generated `SPEC.md` gets nine mandatory sections by default (goal & why, user stories, architecture, implementation details, tests plan with red/green TDD, team of veteran experts, sprint plan, embedded changelog, version header). Pass `--skip` to opt out.
+Every generated `SPEC.md` gets a version header, owner-facing goal and user stories, a short `Possible later additions` section when needed, and one brief `Technical notes` section containing Architecture, Implementation details, Tests/TDD, Team of experts, and Sprints subsections. The embedded Changelog is last. Pass `--skip` to opt out of individual baseline items.
 
 Every spec also ships a machine-readable `.samo/spec/<slug>/architecture.json` (Zod-validated; nodes/edges/groups/notes) and an auto-rendered 80-column ASCII diagram embedded in SPEC.md between `<!-- architecture:begin -->` / `<!-- architecture:end -->` sentinels. `iterate` re-renders the block from `architecture.json` on every round, so the diagram stays in lockstep with the schema.
 

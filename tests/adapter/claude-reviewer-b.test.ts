@@ -143,6 +143,10 @@ describe("ClaudeReviewerBAdapter — persona prefix (SPEC §3, §7)", () => {
       "You may surface findings in other categories when warranted, but " +
         "weight your effort toward these.",
     );
+    expect(REVIEWER_B_PERSONA_PREFIX).toContain("## Technical notes");
+    expect(REVIEWER_B_PERSONA_PREFIX).toContain("jargon outside");
+    expect(REVIEWER_B_PERSONA_PREFIX).toContain("idea asked for");
+    expect(REVIEWER_B_PERSONA_PREFIX).toContain("needed for it to work safely");
   });
 
   test("critique() forwards persona prefix to the CLI via stdin", async () => {

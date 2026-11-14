@@ -48,22 +48,19 @@ import { type CritiqueInput, type CritiqueOutput } from "./types.ts";
 export const REVIEWER_B_PERSONA_PREFIX =
   "Focus especially on ambiguity, contradiction, and weak-testing. " +
   "You may surface findings in other categories when warranted, but " +
-  "weight your effort toward these. " +
-  "Additionally, check that the spec includes all nine mandatory baseline " +
-  "sections: (1) version header, (2) goal & why it's needed, " +
-  "(3) user stories (≥3 with persona+action+outcome), (4) architecture, " +
-  "(5) implementation details, (6) tests plan with red/green TDD call-out, " +
-  "(7) team of veteran experts (count + skill labels), " +
-  "(8) implementation plan with sprints + parallelization, " +
-  "(9) embedded changelog. " +
-  "Raise a missing-requirement finding for each absent mandatory section.";
+  "weight your effort toward these. Apply the dynamic `## Technical notes` rules in the " +
+  "`Section policy:` block that appears before these guidelines. File jargon outside Technical notes under `ambiguity`. " +
+  "Do not file missing-requirement " +
+  "findings that would add features, pages, or policies the idea did not ask " +
+  "for; only require what the idea asked for or what is needed for it to work safely.";
 
 // v0.4.0 (#85): when an idea string is present, Reviewer B carries this
 // contradiction-detection directive verbatim before the guidelines.
 // Exported so tests can assert on the literal wording.
 export const REVIEWER_B_CONTRADICTION_DIRECTIVE =
-  "IDEA-CONTRADICTION CHECK: The user's original idea is provided below " +
-  "under '## Original idea'. If the idea contains explicit disclaimers " +
+  "IDEA-CONTRADICTION CHECK: The user's authoritative original idea is in the " +
+  "enveloped `Original idea (untrusted data)` block above. The spec's own " +
+  "`## Original idea` section must match that enveloped copy. If the idea contains explicit disclaimers " +
   "(e.g. 'NOT X', 'not a Y', 'this is NOT a Z'), carefully read every " +
   "section of the spec and flag any section that reintroduces the disclaimed " +
   "class as a `contradiction` finding (severity: major). Quote the exact " +
@@ -74,7 +71,7 @@ export const REVIEWER_B_CONTRADICTION_DIRECTIVE =
  * Build the full critique prompt for Reviewer B, incorporating:
  * 1. The persona prefix (taxonomy weighting + baseline section check).
  * 2. If `input.idea` is present: the contradiction-detection directive
- *    + the idea string under a labelled header.
+ *    (the base builder safely envelopes the idea as untrusted data).
  * 3. The caller's guidelines (if any).
  * 4. The standard critique prompt structure (schema + spec text).
  *
@@ -85,7 +82,7 @@ export function buildCritiquePromptForReviewerB(input: CritiqueInput): string {
   // directive + caller guidelines.
   const ideaSection =
     input.idea !== undefined && input.idea.trim().length > 0
-      ? `${REVIEWER_B_CONTRADICTION_DIRECTIVE}\n\n## Original idea\n${input.idea}\n`
+      ? REVIEWER_B_CONTRADICTION_DIRECTIVE
       : "";
 
   const composedGuidelines = [
@@ -123,7 +120,7 @@ export class ClaudeReviewerBAdapter extends ClaudeAdapter {
     const composedGuidelines = [
       REVIEWER_B_PERSONA_PREFIX,
       input.idea !== undefined && input.idea.trim().length > 0
-        ? `${REVIEWER_B_CONTRADICTION_DIRECTIVE}\n\n## Original idea\n${input.idea}`
+        ? REVIEWER_B_CONTRADICTION_DIRECTIVE
         : "",
       input.guidelines,
     ]

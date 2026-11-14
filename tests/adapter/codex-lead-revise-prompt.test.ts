@@ -91,4 +91,16 @@ describe("Codex full-lead revise prompt", () => {
       missingSections,
     }).toEqual({ mandatoryFraming: true, missingSections: [] });
   });
+
+  test("uses plain owner language, confines technical detail, and prevents scope invention", () => {
+    const prompt = buildRevisePrompt(leadInput());
+    expect(prompt).toContain("non-technical owner");
+    expect(prompt).toContain("plain everyday words");
+    expect(prompt).toContain("## Technical notes");
+    expect(prompt).toContain("### Architecture");
+    expect(prompt).toContain("Possible later additions");
+    expect(prompt).toContain(
+      "Do not add features, pages or policies the idea did not ask for",
+    );
+  });
 });

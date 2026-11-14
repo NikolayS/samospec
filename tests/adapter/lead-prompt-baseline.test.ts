@@ -72,6 +72,23 @@ describe("buildRevisePrompt — baseline sections", () => {
       prompt.includes("3 or more") ||
       prompt.includes("minimum 3");
     expect(hasCount).toBe(true);
+    expect(prompt.toLowerCase()).toContain("within the requested scope");
+  });
+
+  test("puts brief technical subsections inside one final Technical notes section", () => {
+    const prompt = buildRevisePrompt(makeReviseInput());
+    expect(prompt).toContain("## Technical notes");
+    for (const heading of [
+      "### Architecture",
+      "### Implementation details",
+      "### Tests / TDD",
+      "### Team of experts",
+      "### Sprints",
+    ]) {
+      expect(prompt).toContain(heading);
+    }
+    expect(prompt.toLowerCase()).toContain("one short `## technical notes`");
+    expect(prompt.toLowerCase()).toContain("embedded changelog last");
   });
 
   test("team instruction mentions veteran experts", () => {
@@ -116,6 +133,26 @@ describe("buildRevisePrompt — baseline sections", () => {
     );
     // The prompt with skips should differ from the one without
     expect(promptSkip).not.toEqual(promptWith);
+  });
+
+  test("--skip removes technical topics from the trailing nesting rule", () => {
+    const prompt = buildRevisePrompt(
+      makeReviseInput({ skipSections: ["architecture", "team", "sprints"] }),
+    );
+    const mandatory = prompt.slice(prompt.indexOf("MANDATORY BASELINE SECTIONS"));
+    expect(mandatory).not.toContain("### Architecture");
+    expect(mandatory).not.toContain("### Team of experts");
+    expect(mandatory).not.toContain("### Sprints");
+    expect(mandatory).toContain("implementation details, tests");
+  });
+
+  test("states the exact tail order and brief technical-language exception", () => {
+    const prompt = buildRevisePrompt(makeReviseInput());
+    expect(prompt).toContain("owner-facing sections first");
+    expect(prompt).toContain("Possible later additions");
+    expect(prompt).toContain("Technical notes");
+    expect(prompt).toContain("embedded Changelog last");
+    expect(prompt).toContain("may use technical terms but must stay brief");
   });
 
   test("empty skipSections has same mandatory list as undefined", () => {

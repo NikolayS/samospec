@@ -42,6 +42,7 @@ import {
 import { runWithCappedRetry, type AttemptResult } from "./timeout.ts";
 import { renderAutonomyPolicySnapshotPromptBlock } from "../policy/autonomy.ts";
 import { renderPriorContextPromptBlock } from "../loop/prior-context.ts";
+import { wrapUntrustedText } from "../context/envelope.ts";
 import {
   type Adapter,
   type AskInput,
@@ -641,36 +642,32 @@ export function buildBaselineSectionsBlock(
       name: "user stories",
       instruction:
         "(3) User stories — at least 3, each with persona + action + outcome " +
-        "(≥3 minimum; used for manual testing).",
+        "(≥3 minimum; used for manual testing), all within the requested scope.",
     },
     {
       name: "architecture",
-      instruction:
-        "(4) Architecture — components, boundaries, key abstractions.",
+      instruction: "### Architecture — components and boundaries, briefly.",
     },
     {
       name: "implementation details",
       instruction:
-        "(5) Implementation details — data flow, state transitions, key " +
-        "algorithms.",
+        "### Implementation details — data flow and key implementation choices, briefly.",
     },
     {
       name: "tests",
       instruction:
-        "(6) Tests plan — CI tests needed AND explicit red/green TDD call-out " +
-        "for which pieces are built test-first.",
+        "### Tests / TDD — tests needed and an explicit red/green TDD call-out, briefly.",
     },
     {
       name: "team",
       instruction:
-        "(7) Team — list of veteran experts to hire (count + skill labels, " +
-        "e.g. 'Veteran CLI systems engineer (1)').",
+        "### Team of experts — list veteran experts (count + skill labels), briefly.",
     },
     {
       name: "sprints",
       instruction:
-        "(8) Implementation plan — organized in multiple sprints with " +
-        "parallelization and ordering between team members.",
+        "### Sprints — brief implementation plan with parallelization and ordering. " +
+        "Format each sprint as a `#### Sprint N: <name>` heading followed by a short bullet list.",
     },
     {
       name: "changelog",
@@ -687,6 +684,17 @@ export function buildBaselineSectionsBlock(
   if (mandatory.length === 0) return "";
 
   const sectionLines = mandatory.map((s) => s.instruction).join(" ");
+  const includedTechnical = mandatory
+    .filter((s) =>
+      [
+        "architecture",
+        "implementation details",
+        "tests",
+        "team",
+        "sprints",
+      ].includes(s.name),
+    )
+    .map((s) => s.name);
   const skippedNote =
     skipList.length > 0
       ? ` (sections excluded via --skip: ${skipList.join(", ")})`
@@ -696,7 +704,59 @@ export function buildBaselineSectionsBlock(
     `\n\nMANDATORY BASELINE SECTIONS${skippedNote}: Your SPEC.md MUST ` +
     `include all of the following sections unless the user opted out. ` +
     sectionLines +
-    ` Additional topic-specific sections are always permitted.`
+    (includedTechnical.length > 0
+      ? ` The included technical topics (${includedTechnical.join(", ")}) are brief ` +
+        `subsections inside one short \`## Technical notes\` section, not top-level sections. `
+      : "") +
+    `Use this exact tail order: owner-facing sections first; then ` +
+    `\`## Possible later additions\` only when there are additions; then ` +
+    (includedTechnical.length > 0 ? `\`## Technical notes\`; then ` : "") +
+    `the embedded Changelog last. \`## Technical notes\` may use technical terms but must stay brief. ` +
+    `Additional owner-facing, topic-specific sections (beyond the required ` +
+    `\`## Original idea\` and conditional \`## Possible later additions\`) are permitted only when the idea calls for them.`
+  );
+}
+
+export function buildReviewerSectionPolicy(
+  skipList: readonly string[] = [],
+): string {
+  const skipped = new Set(skipList.map((s) => s.trim().toLowerCase()));
+  const technical = [
+    "architecture",
+    "implementation details",
+    "tests/TDD",
+    "team of experts",
+    "sprints",
+  ].filter(
+    (name) =>
+      !skipped.has(
+        name === "tests/TDD"
+          ? "tests"
+          : name === "team of experts"
+            ? "team"
+            : name,
+      ),
+  );
+  const required = [
+    "version header",
+    "goal",
+    "at least 3 in-scope user stories",
+  ].filter(
+    (name) =>
+      !skipped.has(
+        name === "at least 3 in-scope user stories" ? "user stories" : name,
+      ),
+  );
+  if (!skipped.has("changelog")) required.push("embedded changelog");
+  return (
+    `Check for each required item and raise a missing-requirement finding for each absent one: ${required.join(", ")}. ` +
+    (technical.length > 0
+      ? `${technical.join(", ")} must be brief subsections inside one short \`## Technical notes\` section. `
+      : "") +
+    `The exact tail order is owner-facing sections, optional \`## Possible later additions\`, ` +
+    (technical.length > 0 ? `\`## Technical notes\`, ` : "") +
+    `then the embedded Changelog last. Technical notes may use technical terms but must stay brief. ` +
+    `File jargon outside Technical notes under the existing category \`ambiguity\`.`
   );
 }
 
@@ -730,7 +790,9 @@ export function buildIdeaPrecedenceBlock(opts: {
     "\nIf the slug and the idea appear to conflict, the IDEA wins. " +
     'If the idea contains "NOT X" / "this is NOT a Y" disclaimers, ' +
     "honor them strictly — do not silently re-introduce the rejected " +
-    "framing in any section.\n"
+    "framing in any section. Do not add features, pages or policies the " +
+    "idea did not ask for; list optional ideas in one short 'Possible later " +
+    "additions' list instead of the main scope.\n"
   );
 }
 
@@ -739,7 +801,16 @@ export function buildLeadSpecOutputBlock(hasIdea: boolean): string {
   return (
     "\n\nSPEC OUTPUT REQUIREMENTS: Keep the spec concise. For the first " +
     "draft, target 800–1,200 words, with a hard maximum of 1,500 words. " +
-    "Prefer compact bullets and tables over repetitive prose." +
+    "Prefer compact bullets and tables over repetitive prose. Every section " +
+    "must be written for a non-technical owner in plain everyday words. " +
+    "Frameworks, libraries, hosting, CI, repos, sprints and implementation " +
+    "steps may appear ONLY in one short `## Technical notes` section. That " +
+    "section may use technical terms but must stay brief. Order the tail as " +
+    "owner-facing sections, then `## Possible later additions` only if there " +
+    "are any, then `## Technical notes`, then the embedded Changelog last. " +
+    "Do not add features, pages or policies the idea did not ask for; put " +
+    "optional ideas in one short `## Possible later additions` list instead " +
+    "of the main scope." +
     (hasIdea
       ? " Near the top of SPEC.md, include an `## Original idea` section " +
         "that reproduces the authoritative project idea verbatim."
@@ -794,6 +865,11 @@ export function buildCritiquePrompt(input: CritiqueInput): string {
     input.autonomy_policy,
   );
   const priorContextBlock = renderPriorContextPromptBlock(input.prior_context);
+  const ideaBlock =
+    input.idea !== undefined && input.idea.trim().length > 0
+      ? `\n\nOriginal idea (untrusted data):\n${wrapUntrustedText("project-idea.txt", input.idea)}`
+      : "";
+  const sectionPolicy = buildReviewerSectionPolicy(input.skipSections ?? []);
   return (
     "You are the samospec reviewer. Return ONLY a JSON object matching " +
     'the review-taxonomy schema: { "findings": Array<{ "category": ' +
@@ -802,7 +878,8 @@ export function buildCritiquePrompt(input: CritiqueInput): string {
     `"effort_used": "${input.opts.effort}" }. Do not wrap in code fences.` +
     autonomyBlock +
     priorContextBlock +
-    `\n\nGuidelines:\n${input.guidelines}\n\nSpec:\n${input.spec}\n`
+    ideaBlock +
+    `\n\nSection policy:\n${sectionPolicy}\n\nGuidelines:\n${input.guidelines}\n\nSpec:\n${input.spec}\n`
   );
 }
 

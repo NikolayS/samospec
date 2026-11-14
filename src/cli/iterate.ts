@@ -621,7 +621,8 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
         // #85: thread the original idea from state.input.idea into the
         // round so Reviewer B can detect idea-contradictions and the
         // lead's revise() prompt carries the AUTHORITATIVE framing.
-        const ideaForRound = state.input?.idea;
+        const ideaForRound = currentState.input?.idea;
+        const skipSectionsForRound = currentState.input?.skip_sections ?? [];
 
         // Issue #101: announce the round and wrap each adapter so its
         // critique/revise call emits start/complete progress lines +
@@ -701,6 +702,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             ...(ideaForRound !== undefined
               ? { idea: ideaForRound, slug: input.slug }
               : {}),
+            skipSections: skipSectionsForRound,
             ...(reuseForThisRound !== undefined
               ? { reusedCritiques: reuseForThisRound }
               : {}),
@@ -835,6 +837,7 @@ export async function runIterate(input: IterateInput): Promise<IterateResult> {
             injectArchitectureBlock(
               ensureTrailingNewline(roundOutcome.revisedSpec),
               architecture,
+              { skipSections: skipSectionsForRound },
             ),
           );
           writeFileSync(paths.specPath, newSpec, "utf8");

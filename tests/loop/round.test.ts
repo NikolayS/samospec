@@ -72,6 +72,57 @@ const READY_REVISE = {
 // ---------- tests: happy path ----------
 
 describe("loop/round — happy-path runRound (SPEC §7)", () => {
+  test("threads skipped sections to both critiques and the lead revision", async () => {
+    const seen: Array<{ kind: string; skipSections?: readonly string[] }> = [];
+    const lead = createFakeAdapter({ revise: READY_REVISE });
+    const revA = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+    const revB = createFakeAdapter({ critique: SAMPLE_CRITIQUE });
+    const recordingLead: Adapter = {
+      ...lead,
+      revise: (input) => {
+        seen.push({
+          kind: "revise",
+          ...(input.skipSections !== undefined
+            ? { skipSections: input.skipSections }
+            : {}),
+        });
+        return lead.revise(input);
+      },
+    };
+    const recordingReviewer = (kind: string, adapter: Adapter): Adapter => ({
+      ...adapter,
+      critique: (input) => {
+        seen.push({
+          kind,
+          ...(input.skipSections !== undefined
+            ? { skipSections: input.skipSections }
+            : {}),
+        });
+        return adapter.critique(input);
+      },
+    });
+
+    await runRound({
+      now: "2026-04-19T12:00:00Z",
+      roundNumber: 1,
+      dirs: roundDirsFor(tmp, 1),
+      specText: "# SPEC",
+      decisionsHistory: [],
+      skipSections: ["architecture", "team"],
+      adapters: {
+        lead: recordingLead,
+        reviewerA: recordingReviewer("reviewer_a", revA),
+        reviewerB: recordingReviewer("reviewer_b", revB),
+      },
+    });
+
+    expect(seen).toEqual([
+      { kind: "reviewer_a", skipSections: ["architecture", "team"] },
+      { kind: "reviewer_b", skipSections: ["architecture", "team"] },
+      { kind: "revise", skipSections: ["architecture", "team"] },
+    ]);
+  });
+
   test("writes round.json, critique files, and returns revised spec", async () => {
     const lead = createFakeAdapter({ revise: READY_REVISE });
     const revA = createFakeAdapter({ critique: SAMPLE_CRITIQUE });

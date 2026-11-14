@@ -383,6 +383,7 @@ export async function runResume(
             interview,
             contextChunks: chunks,
             explain: input.explain ?? false,
+            skipSections: nextState.input?.skip_sections ?? [],
             ...(input.leadEffort !== undefined
               ? { effort: input.leadEffort }
               : {}),
@@ -422,6 +423,7 @@ export async function runResume(
       const specWithArchitecture = injectArchitectureBlock(
         ensureTrailingNewline(draft.spec),
         architectureForDraft,
+        { skipSections: nextState.input?.skip_sections ?? [] },
       );
       writeFileSync(
         paths.specPath,
