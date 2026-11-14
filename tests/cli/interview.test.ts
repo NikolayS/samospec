@@ -318,6 +318,31 @@ describe("runInterview — persona + explain wiring (SPEC §7)", () => {
     expect(first.prompt).toContain('Veteran "CLI software engineer" expert');
   });
 
+  test("includes the idea as authoritative data and forbids already-answered questions", async () => {
+    const idea = "Customers order by phone or email; there are no online payments.";
+    const adapter = makeScriptedAskAdapter([
+      makeQuestionsJson([{ id: "q1", text: "What is missing?" }]),
+    ]);
+    await runInterview(
+      {
+        slug: "bakery",
+        persona: 'Veteran "small-business product" expert',
+        explain: false,
+        subscriptionAuth: false,
+        idea,
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    const prompt = adapter.asks[0]!.prompt;
+    expect(prompt).toContain("## Project idea (AUTHORITATIVE");
+    expect(prompt).toContain(idea);
+    expect(prompt).toContain("Do not ask about anything the idea already answers");
+    expect(prompt).toContain(
+      "ask only about what is genuinely missing for building the first version",
+    );
+  });
+
   test("explain=true adds a plain-English preamble to the prompt", async () => {
     const qs = [{ id: "q1", text: "something?" }];
     const adapter = makeScriptedAskAdapter([makeQuestionsJson(qs)]);

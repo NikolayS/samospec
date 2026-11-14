@@ -72,6 +72,22 @@ describe("buildRevisePrompt — baseline sections", () => {
       prompt.includes("3 or more") ||
       prompt.includes("minimum 3");
     expect(hasCount).toBe(true);
+    expect(prompt.toLowerCase()).toContain("within the requested scope");
+  });
+
+  test("puts brief technical subsections inside one final Technical notes section", () => {
+    const prompt = buildRevisePrompt(makeReviseInput());
+    expect(prompt).toContain("## Technical notes");
+    for (const heading of [
+      "### Architecture",
+      "### Implementation details",
+      "### Tests / TDD",
+      "### Team of experts",
+      "### Sprints",
+    ]) {
+      expect(prompt).toContain(heading);
+    }
+    expect(prompt.toLowerCase()).toContain("one short final");
   });
 
   test("team instruction mentions veteran experts", () => {

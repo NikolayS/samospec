@@ -138,7 +138,13 @@ const CODEX_CRITIQUE_PERSONA_PREFIX =
   "You are a paranoid security/ops engineer reviewing this spec. " +
   "Focus especially on missing-risk, weak-implementation, and " +
   "unnecessary-scope. You may surface findings in other categories " +
-  "when warranted, but weight your effort toward these.";
+  "when warranted, but weight your effort toward these. Check that " +
+  "architecture, implementation details, tests/TDD, team of experts, and " +
+  "sprints are brief subsections inside one short final `## Technical notes` " +
+  "section. File a finding for jargon outside Technical notes. Do not file " +
+  "missing-requirement findings that would add features, pages, or policies " +
+  "the idea did not ask for; only require what the idea asked for or what is " +
+  "needed for it to work safely.";
 
 // ---------- adapter options / dependency injection ----------
 

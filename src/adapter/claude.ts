@@ -641,36 +641,31 @@ export function buildBaselineSectionsBlock(
       name: "user stories",
       instruction:
         "(3) User stories — at least 3, each with persona + action + outcome " +
-        "(≥3 minimum; used for manual testing).",
+        "(≥3 minimum; used for manual testing), all within the requested scope.",
     },
     {
       name: "architecture",
-      instruction:
-        "(4) Architecture — components, boundaries, key abstractions.",
+      instruction: "### Architecture — components and boundaries, briefly.",
     },
     {
       name: "implementation details",
       instruction:
-        "(5) Implementation details — data flow, state transitions, key " +
-        "algorithms.",
+        "### Implementation details — data flow and key implementation choices, briefly.",
     },
     {
       name: "tests",
       instruction:
-        "(6) Tests plan — CI tests needed AND explicit red/green TDD call-out " +
-        "for which pieces are built test-first.",
+        "### Tests / TDD — tests needed and an explicit red/green TDD call-out, briefly.",
     },
     {
       name: "team",
       instruction:
-        "(7) Team — list of veteran experts to hire (count + skill labels, " +
-        "e.g. 'Veteran CLI systems engineer (1)').",
+        "### Team of experts — list veteran experts (count + skill labels), briefly.",
     },
     {
       name: "sprints",
       instruction:
-        "(8) Implementation plan — organized in multiple sprints with " +
-        "parallelization and ordering between team members.",
+        "### Sprints — brief implementation plan with parallelization and ordering.",
     },
     {
       name: "changelog",
@@ -696,7 +691,10 @@ export function buildBaselineSectionsBlock(
     `\n\nMANDATORY BASELINE SECTIONS${skippedNote}: Your SPEC.md MUST ` +
     `include all of the following sections unless the user opted out. ` +
     sectionLines +
-    ` Additional topic-specific sections are always permitted.`
+    ` Architecture, implementation details, tests, team, and sprints are ` +
+    `brief subsections inside one short final \`## Technical notes\` section, ` +
+    `not top-level sections. Additional owner-facing, topic-specific sections ` +
+    `are permitted only when the idea calls for them.`
   );
 }
 
@@ -730,7 +728,9 @@ export function buildIdeaPrecedenceBlock(opts: {
     "\nIf the slug and the idea appear to conflict, the IDEA wins. " +
     'If the idea contains "NOT X" / "this is NOT a Y" disclaimers, ' +
     "honor them strictly — do not silently re-introduce the rejected " +
-    "framing in any section.\n"
+    "framing in any section. Do not add features, pages or policies the " +
+    "idea did not ask for; list optional ideas in one short 'Possible later " +
+    "additions' list instead of the main scope.\n"
   );
 }
 
@@ -739,7 +739,13 @@ export function buildLeadSpecOutputBlock(hasIdea: boolean): string {
   return (
     "\n\nSPEC OUTPUT REQUIREMENTS: Keep the spec concise. For the first " +
     "draft, target 800–1,200 words, with a hard maximum of 1,500 words. " +
-    "Prefer compact bullets and tables over repetitive prose." +
+    "Prefer compact bullets and tables over repetitive prose. Every section " +
+    "must be written for a non-technical owner in plain everyday words. " +
+    "Frameworks, libraries, hosting, CI, repos, sprints and implementation " +
+    "steps may appear ONLY in one short final `## Technical notes` section. " +
+    "Do not add features, pages or policies the idea did not ask for; put " +
+    "optional ideas in one short `## Possible later additions` list instead " +
+    "of the main scope." +
     (hasIdea
       ? " Near the top of SPEC.md, include an `## Original idea` section " +
         "that reproduces the authoritative project idea verbatim."

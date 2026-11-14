@@ -84,6 +84,21 @@ describe("buildRevisePrompt — idea-precedence framing (#85)", () => {
     expect(prompt).toContain("NOT X");
   });
 
+  test("forbids unrequested scope and moves optional ideas out of the main scope", () => {
+    const prompt = buildRevisePrompt(makeReviseInputWithIdea());
+    expect(prompt).toContain(
+      "Do not add features, pages or policies the idea did not ask for",
+    );
+    expect(prompt).toContain("Possible later additions");
+  });
+
+  test("requires plain owner-facing language outside Technical notes", () => {
+    const prompt = buildRevisePrompt(makeReviseInputWithIdea());
+    expect(prompt).toContain("non-technical owner");
+    expect(prompt).toContain("plain everyday words");
+    expect(prompt).toContain("ONLY in one short final `## Technical notes`");
+  });
+
   test("when no idea/slug provided, prompt still works (no crash)", () => {
     const input: ReviseInput = {
       spec: "# SPEC\n\nContent.",

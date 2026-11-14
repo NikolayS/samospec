@@ -49,14 +49,13 @@ export const REVIEWER_B_PERSONA_PREFIX =
   "Focus especially on ambiguity, contradiction, and weak-testing. " +
   "You may surface findings in other categories when warranted, but " +
   "weight your effort toward these. " +
-  "Additionally, check that the spec includes all nine mandatory baseline " +
-  "sections: (1) version header, (2) goal & why it's needed, " +
-  "(3) user stories (≥3 with persona+action+outcome), (4) architecture, " +
-  "(5) implementation details, (6) tests plan with red/green TDD call-out, " +
-  "(7) team of veteran experts (count + skill labels), " +
-  "(8) implementation plan with sprints + parallelization, " +
-  "(9) embedded changelog. " +
-  "Raise a missing-requirement finding for each absent mandatory section.";
+  "Check for the version header, goal, at least 3 in-scope user stories, and " +
+  "embedded changelog. Architecture, implementation details, tests/TDD, " +
+  "team of experts, and sprints must be brief subsections inside one short " +
+  "final `## Technical notes` section, not top-level sections. File a finding " +
+  "for jargon outside Technical notes. Do not file missing-requirement " +
+  "findings that would add features, pages, or policies the idea did not ask " +
+  "for; only require what the idea asked for or what is needed for it to work safely.";
 
 // v0.4.0 (#85): when an idea string is present, Reviewer B carries this
 // contradiction-detection directive verbatim before the guidelines.
