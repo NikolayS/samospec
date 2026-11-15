@@ -20,6 +20,7 @@ import {
   SOFTWARE_ROLE_RE,
   PersonaTerminalError,
   SUBSCRIPTION_AUTH_MESSAGE,
+  cleanPersonaRationale,
   coerceSoftwareEngineerPersona,
   proposePersona,
   formatPersonaString,
@@ -114,6 +115,274 @@ describe("persona form regex (SPEC §5 Phase 2)", () => {
 // ---------- happy path ----------
 
 describe("proposePersona — happy path", () => {
+  test("prompt explains customer-facing rationale and field-specific titles", async () => {
+    const adapter = makeScriptedStructuredAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "Bakery Software Engineer" expert',
+        rationale: "They understand bakery operations and can build the site.",
+      }),
+    ]);
+    await proposePersona(
+      {
+        idea: "a neighbourhood bakery website",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+
+    const prompt = adapter.structuredAsks[0].prompt;
+    expect(prompt).toContain("shown to the customer");
+    expect(prompt).toContain("personal training studio");
+    expect(prompt).toContain("Fitness Studio Software Engineer");
+    expect(prompt).toContain("neighbourhood bakery");
+    expect(prompt).toContain("Bakery Software Engineer");
+    expect(prompt).toContain("BAD rationale");
+    expect(prompt).toContain("GOOD rationale");
+    expect(prompt).toContain("Fitness Web Developer");
+    expect(prompt).not.toContain("such as Web Developer");
+    for (const generic of [
+      "Small Business",
+      "Local Business",
+      "Website",
+      "Brochure Site",
+      "Marketing",
+    ]) {
+      expect(prompt).toContain(generic);
+    }
+  });
+
+  test("removes title-rule talk from the production rationale", () => {
+    expect(
+      cleanPersonaRationale(
+        "They can translate a personal trainer's needs into a useful studio website. The title is a 4-word Title Case noun phrase ending in the person-noun 'Developer', matching the required shape.",
+        "Small Business Web Developer",
+      ),
+    ).toBe(
+      "They can translate a personal trainer's needs into a useful studio website.",
+    );
+  });
+
+  const rationaleTitle = "Small Business Web Software Engineer";
+
+  test.each([
+    "It uses Title Case.",
+    "It uses Title-Case.",
+    "It is a noun phrase.",
+    "It is a noun-phrase.",
+    "Developer is the person-noun.",
+    "This has the required shape.",
+    "This follows the required format.",
+    "This is matching the required wording.",
+    "It is a 4-word title.",
+    "It ends in the noun Developer.",
+    "It ends with the person-noun Developer.",
+    "This is the business-card title.",
+    "This is per the rules.",
+    "This is per the instructions.",
+    "This is per the prompt.",
+    "This is matching the required title.",
+    "Return a JSON object.",
+    "Use the JSON schema.",
+    "The schema defines the required title.",
+    "The prompt asks for this.",
+    "The prompt requires this.",
+    "The prompt says this.",
+    "As the rules require, it is concise.",
+    "As instructions require, it is concise.",
+    "These instructions demand it.",
+    "The above instructions demand it.",
+    "My instructions demand it.",
+    "This title is concise, as required.",
+    "This title is concise per the guidelines.",
+  ])("drops rationale rule-talk trigger %j", (ruleTalk) => {
+    expect(
+      cleanPersonaRationale(
+        `Useful domain context. ${ruleTalk} More useful context.`,
+        rationaleTitle,
+      ),
+    ).toBe("Useful domain context. More useful context.");
+  });
+
+  test.each(["", "   \n\t "])(
+    "uses a neutral rationale fallback for %j",
+    (text) => {
+      expect(cleanPersonaRationale(text, rationaleTitle)).toBe(
+        `A ${rationaleTitle} who will plan and build this with you.`,
+      );
+    },
+  );
+
+  test.each([
+    ["Artisan Bakery Software Engineer", "An"],
+    ["Enterprise Software Engineer", "An"],
+    ["Online Shop Software Engineer", "An"],
+    ["ICU Software Engineer", "An"],
+    ["FBI Software Engineer", "An"],
+    ["UX Software Engineer", "A"],
+    ["UI Software Engineer", "A"],
+    ["Unicorn Software Engineer", "A"],
+    ["User Research Software Engineer", "A"],
+    ["Fitness Software Engineer", "A"],
+  ])("uses %s's correct fallback article", (title, article) => {
+    expect(cleanPersonaRationale("", title)).toBe(
+      `${article} ${title} who will plan and build this with you.`,
+    );
+  });
+
+  test("drops an 'As required,' title sentence", () => {
+    expect(
+      cleanPersonaRationale(
+        "Useful context. As required, the title describes a software engineer. More context.",
+        rationaleTitle,
+      ),
+    ).toBe("Useful context. More context.");
+  });
+
+  test("leaves a normal two-sentence rationale unchanged", () => {
+    const text =
+      "They understand local service businesses. They can build an accessible booking journey.";
+    expect(cleanPersonaRationale(text, rationaleTitle)).toBe(text);
+  });
+
+  test.each([
+    "They prompt replies to reservation requests and keep guests informed.",
+    "They write care instructions pages for every service.",
+    "They consume a JSON feed of listings from the property system.",
+    "They designed the data schema for a booking app.",
+    "They retain consent records as required by GDPR.",
+    "They respond promptly when a customer needs help.",
+    "They turn schematic drawings into accessible product pages.",
+    "Their instructions for editors make publishing safer.",
+    "The prompt replies shown in the inbox reduce response time.",
+    "A JSON feed keeps availability synchronized across channels.",
+    "A schema migration preserves existing reservation data.",
+    "Updates are recorded as required by the regulator.",
+  ])("preserves legitimate rationale language: %s", (text) => {
+    expect(cleanPersonaRationale(text, rationaleTitle)).toBe(text);
+  });
+
+  test("replaces an old title after the persona guard rewrites it", () => {
+    expect(
+      cleanPersonaRationale(
+        "A Bakery Owner understands this market.",
+        "Bakery Software Engineer",
+        "Bakery Owner",
+      ),
+    ).toBe("A Bakery Software Engineer understands this market.");
+  });
+
+  test("replaces only a whole old-title phrase, case-insensitively", () => {
+    expect(
+      cleanPersonaRationale(
+        "A bakery owner understands this market.",
+        "Bakery Software Engineer",
+        "Bakery Owner",
+      ),
+    ).toBe("A Bakery Software Engineer understands this market.");
+    expect(
+      cleanPersonaRationale(
+        "Coaching clients need clear plans.",
+        "Fitness Software Engineering",
+        "Coaching",
+      ),
+    ).toBe("Coaching clients need clear plans.");
+    expect(
+      cleanPersonaRationale(
+        "Coaching clients need clear plans.",
+        "Fitness Software Engineering",
+        "Coaching clients",
+      ),
+    ).toBe("Fitness Software Engineering need clear plans.");
+  });
+
+  test("does not replace a short common title or one contained in the new title", () => {
+    expect(
+      cleanPersonaRationale(
+        "Owners need simple reports.",
+        "Website Software Engineers",
+        "Owner",
+      ),
+    ).toBe("Owners need simple reports.");
+    const text = "Bakery teams need online ordering.";
+    expect(
+      cleanPersonaRationale(text, "Bakery Software Engineer", "Bakery"),
+    ).toBe(text);
+    expect(
+      cleanPersonaRationale(
+        "A Bakery Software Engineer understands ordering.",
+        "Bakery Software Engineer",
+        "Bakery Owner",
+      ),
+    ).toBe("A Bakery Software Engineer understands ordering.");
+  });
+
+  test("rationale cleaning is idempotent", () => {
+    const once = cleanPersonaRationale(
+      "Strong fit. The title is a 3-word noun phrase. Practical delivery experience.",
+      rationaleTitle,
+    );
+    expect(cleanPersonaRationale(once, rationaleTitle)).toBe(once);
+  });
+
+  test("caps rationale at three sentences and 400 code points", () => {
+    expect(
+      cleanPersonaRationale("One. Two. Three. Four.", rationaleTitle),
+    ).toBe("One. Two. Three.");
+    const long = `${"a".repeat(390)}. Too long to fit inside the limit.`;
+    expect(cleanPersonaRationale(long, rationaleTitle)).toBe(
+      `${"a".repeat(390)}.`,
+    );
+  });
+
+  test("does not split rationale at abbreviations or decimals", () => {
+    const text =
+      "Dr. Lee builds U.S. booking tools, e.g. for salons, i.e. appointment-led businesses. They support version 2.5 vs. older systems. Mr. Khan validates delivery.";
+    expect(cleanPersonaRationale(text, rationaleTitle)).toBe(text);
+  });
+
+  test("truncates overlong rationale text with an ellipsis", () => {
+    const longSentence = `They understand ${"customer booking workflows ".repeat(25)}well.`;
+    const result = cleanPersonaRationale(longSentence, rationaleTitle);
+    expect(result.length).toBeLessThanOrEqual(400);
+    expect(result.endsWith("…")).toBe(true);
+    expect(result).not.toContain(`A ${rationaleTitle}`);
+
+    const chinese = "他们了解预约流程和客户需求".repeat(40);
+    const chineseResult = cleanPersonaRationale(chinese, rationaleTitle);
+    expect(chineseResult.length).toBeLessThanOrEqual(400);
+    expect(chineseResult.endsWith("…")).toBe(true);
+  });
+
+  test("does not split a surrogate pair when truncating rationale", () => {
+    const result = cleanPersonaRationale(
+      `Intro ${"😀".repeat(410)} trailing`,
+      rationaleTitle,
+    );
+    expect(Array.from(result).length).toBeLessThanOrEqual(400);
+    expect(result.endsWith("…")).toBe(true);
+    expect(result).not.toMatch(
+      /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u,
+    );
+  });
+
+  test("only treats conditional wording as rule talk when title is present", () => {
+    const legitimate =
+      "Records are retained as required. Changes are made per the guidelines.";
+    expect(cleanPersonaRationale(legitimate, rationaleTitle)).toBe(legitimate);
+  });
+
+  test.each([
+    "1-word ".repeat(28_572).slice(0, 200_000),
+    "title ".repeat(33_334).slice(0, 200_000),
+    "a".repeat(200_000),
+  ])("handles 200 kB punctuation-free input in under 100 ms", (text) => {
+    const started = performance.now();
+    cleanPersonaRationale(text, rationaleTitle);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
+
   test("returns { persona, rationale } when lead returns canonical form + rationale", async () => {
     const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
@@ -248,6 +517,137 @@ describe("proposePersona — confirm / edit / replace", () => {
 // ---------- schema repair + terminal path ----------
 
 describe("proposePersona — schema repair + lead_terminal", () => {
+  test("a generic field gets exactly one repair and accepts a specific field", async () => {
+    const adapter = makeScriptedStructuredAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "Small Business Web Developer" expert',
+        rationale: "Builds websites for businesses.",
+      }),
+      JSON.stringify({
+        persona: 'Veteran "Fitness Studio Software Engineer" expert',
+        rationale: "They understand personal-training studio workflows.",
+      }),
+    ]);
+
+    const result = await proposePersona(
+      {
+        idea: "a website for my personal-training studio",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+
+    expect(result.skill).toBe("Fitness Studio Software Engineer");
+    expect(adapter.structuredAsks).toHaveLength(2);
+  });
+
+  test.each([
+    ["Senior Web Developer", "a fitness coaching app"],
+    ["Senior Website Software Engineer", "a fitness coaching app"],
+    ["Small-Business Software Engineer", "a fitness coaching app"],
+    ["Small Businesses Software Engineer", "a fitness coaching app"],
+  ])("repairs generic field variant %s", async (title, idea) => {
+    const answer = JSON.stringify({
+      persona: formatPersonaString(title),
+      rationale: "r",
+    });
+    const adapter = makeScriptedStructuredAskAdapter([answer, answer]);
+    await proposePersona(
+      {
+        idea,
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+    expect(adapter.structuredAsks).toHaveLength(2);
+  });
+
+  test.each([
+    ["a fitness coaching website", "Website Software Engineer", 2],
+    [
+      "a website for my small business, a personal training studio",
+      "Small Business Web Developer",
+      2,
+    ],
+    ["a web app for booking sessions at my gym", "Web Developer", 2],
+    ["a brochure site for my bakery", "Brochure Site Software Engineer", 2],
+    [
+      "my company sells cakes; I need an online shop",
+      "Company Software Engineer",
+      2,
+    ],
+    ["a marketing agency website", "Marketing Software Engineer", 1],
+    ["a fitness coaching website", "Marketing Software Engineer", 2],
+  ])(
+    "idea-aware generic field repair for %s with %s",
+    async (idea, title, expectedCalls) => {
+      const answer = JSON.stringify({
+        persona: formatPersonaString(title),
+        rationale: "r",
+      });
+      const adapter = makeScriptedStructuredAskAdapter([answer, answer]);
+      await proposePersona(
+        {
+          idea,
+          explain: false,
+          subscriptionAuth: false,
+          choice: { kind: "accept" },
+        },
+        adapter,
+      );
+      expect(adapter.structuredAsks).toHaveLength(expectedCalls);
+    },
+  );
+
+  test("a bare Web Developer with a real idea costs one repair call", async () => {
+    const answer = JSON.stringify({
+      persona: 'Veteran "Web Developer" expert',
+      rationale: "r",
+    });
+    const adapter = makeScriptedStructuredAskAdapter([answer, answer]);
+    await proposePersona(
+      {
+        idea: "a fitness coaching app",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+    expect(adapter.structuredAsks).toHaveLength(2);
+  });
+
+  test("a still-generic repair keeps the guarded result without a third call", async () => {
+    const adapter = makeScriptedStructuredAskAdapter([
+      JSON.stringify({
+        persona: 'Veteran "Small Business Web Developer" expert',
+        rationale: "First rationale.",
+      }),
+      JSON.stringify({
+        persona: 'Veteran "Local Business Software Engineer" expert',
+        rationale: "Repair rationale.",
+      }),
+    ]);
+
+    const result = await proposePersona(
+      {
+        idea: "a website for my personal-training studio",
+        explain: false,
+        subscriptionAuth: false,
+        choice: { kind: "accept" },
+      },
+      adapter,
+    );
+
+    expect(result.skill).toBe("Small Business Web Developer");
+    expect(result.rationale).toBe("First rationale.");
+    expect(adapter.structuredAsks).toHaveLength(2);
+  });
+
   test("valid practitioner then malformed repair coerces the first answer", async () => {
     const adapter = makeScriptedStructuredAskAdapter([
       JSON.stringify({
@@ -434,23 +834,23 @@ describe("proposePersona — schema repair + lead_terminal", () => {
   });
 
   test("accepted app-side engineer variants need no repair", async () => {
-    const titles = [
-      "Web Developer",
-      "Full-Stack Developer",
-      "Front-End Engineer",
-      "Backend Engineer",
-      "Mobile App Developer",
-      "CLI Engineer",
-      "Software Developer",
-      "App Developer",
-    ];
-    for (const title of titles) {
+    const cases = [
+      ["Fitness Web Developer", "a fitness coaching app"],
+      ["Bakery Full-Stack Developer", "a neighbourhood bakery website"],
+      ["Fitness Front-End Engineer", "a fitness coaching app"],
+      ["Bakery Backend Engineer", "a bakery ordering platform"],
+      ["Fitness Mobile App Developer", "a fitness coaching app"],
+      ["CLI Engineer", "a CLI tool for database backups"],
+      ["Software Developer", "a fitness coaching app"],
+      ["App Developer", "a fitness coaching app"],
+    ] as const;
+    for (const [title, idea] of cases) {
       const adapter = makeScriptedStructuredAskAdapter([
         JSON.stringify({ persona: formatPersonaString(title), rationale: "r" }),
       ]);
       const result = await proposePersona(
         {
-          idea: "idea",
+          idea,
           explain: false,
           subscriptionAuth: false,
           choice: { kind: "accept" },
@@ -804,7 +1204,7 @@ describe("proposePersona — job-title shape guidance (#367)", () => {
       adapter,
     );
     const prompt = adapter.structuredAsks[0].prompt;
-    expect(prompt).toContain("<Domain> Software Engineer");
+    expect(prompt).toContain("<Field> Software Engineer");
     expect(prompt).toMatch(
       /software engineer who (?:specialises|specializes)/i,
     );
