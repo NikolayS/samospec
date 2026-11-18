@@ -58,7 +58,7 @@ export function wrapUntrustedText(
     throw new Error("envelope: nonce must be >=16 hex chars");
   }
   const close = `</repo_content_${nonce}>`;
-  const safeContent = content.replaceAll(close, `&lt;${close.slice(1)}`);
+  const safeContent = content.replace(/<(\/?repo_content_)/gi, "&lt;$1");
   const contentSha = createHash("sha256").update(content).digest("hex");
   const open =
     `<repo_content_${nonce} ` +
