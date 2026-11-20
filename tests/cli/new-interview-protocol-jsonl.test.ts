@@ -139,6 +139,45 @@ describe("buildJsonlProtocolResolvers — unit (v0.7.0)", () => {
     expect(a.choice).toBe("Vue");
   });
 
+  test("question event carries optional select only when the question has one", async () => {
+    const out: string[] = [];
+    const answers = [
+      JSON.stringify({ type: "answer", v: 1, id: "q1", choice: "One page" }),
+      JSON.stringify({ type: "answer", v: 1, id: "q2", choice: "Menu" }),
+      JSON.stringify({ type: "answer", v: 1, id: "q3", choice: "Locals" }),
+    ];
+    const opts: JsonlProtocolOptions = {
+      writeLine: (line) => out.push(line),
+      nextLine: () => Promise.resolve(answers.shift() ?? ""),
+    };
+    const resolvers = buildJsonlProtocolResolvers(opts);
+    await resolvers.question({
+      id: "q1",
+      text: "One page or several?",
+      options: ["One page", "Several pages"],
+      select: "one",
+    });
+    await resolvers.question({
+      id: "q2",
+      text: "Which pages?",
+      options: ["Menu", "Contact"],
+      select: "many",
+    });
+    await resolvers.question({
+      id: "q3",
+      text: "Who visits?",
+      options: ["Locals", "Tourists"],
+    });
+
+    const events = out.map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(events[0]?.["select"]).toBe("one");
+    expect(events[1]?.["select"]).toBe("many");
+    // Absent stays absent: old consumers see exactly the v1 shape.
+    expect(Object.keys(events[2] ?? {}).sort()).toEqual(
+      ["id", "options", "text", "type", "v"].sort(),
+    );
+  });
+
   test("question resolves 'custom' with free-text", async () => {
     const out: string[] = [];
     const pendingLine = deferred<string>();

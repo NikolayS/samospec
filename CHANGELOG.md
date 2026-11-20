@@ -7,6 +7,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Interview questions say whether they take one answer or several.**
+  The lead now marks each interview question with an optional
+  `select`: `"one"` when the options exclude each other (either/or),
+  `"many"` when several can apply. It is stored in `interview.json`
+  and sent on the `--interview-protocol jsonl` `question` event as an
+  optional field (protocol stays `v: 1`; the field is omitted when the
+  lead does not state it or sends an unknown value). Lets UI wrappers
+  show a pick-one control for either/or questions instead of "pick all
+  that apply". The answer contract is unchanged.
+- **Rollback note:** `interview.json` may now contain `select` on a
+  question. samospec versions before this change validate
+  `interview.json` with a strict schema and cannot `resume` a file that
+  contains it, so do not roll back across this change while interviews
+  are in progress.
+
 ## [0.9.0] - 2026-05-29
 
 ### Added

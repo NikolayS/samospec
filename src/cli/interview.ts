@@ -12,6 +12,11 @@
 //   - The caller owns interactive prompt UI via `onQuestion`. The
 //     callback resolves one of: { choice: "<option>" } or
 //     { choice: "custom", custom: "<free text>" }.
+//   - Each question MAY carry `select`: "one" when its options exclude
+//     each other, "many" when several can apply. The lead chooses it;
+//     a missing or unknown value is dropped (no `select` key), so
+//     callers that ignore the field keep their old behavior. The
+//     answer contract is unchanged: one `choice` string.
 //   - interview.json schema is zod-validated on both write and read.
 //
 // Scope guard: this module does NOT commit to git and does NOT move
@@ -52,6 +57,18 @@ export const INTERVIEW_ESCAPE_HATCHES: readonly string[] = [
   "custom",
 ] as const;
 
+/**
+ * Whether a question takes one answer or several. "one": the options
+ * exclude each other (either/or). "many": several options can apply
+ * at once. Optional everywhere; absent means "not stated".
+ */
+export const INTERVIEW_SELECT_MODES = ["one", "many"] as const;
+export type InterviewSelect = (typeof INTERVIEW_SELECT_MODES)[number];
+
+function normalizeSelect(raw: unknown): InterviewSelect | undefined {
+  return raw === "one" || raw === "many" ? raw : undefined;
+}
+
 const ISO_TS_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
 
 // ---------- zod schemas ----------
@@ -61,6 +78,7 @@ const QuestionSchema = z
     id: z.string().min(1),
     text: z.string().min(1),
     options: z.array(z.string().min(1)),
+    select: z.enum(INTERVIEW_SELECT_MODES).optional(),
   })
   .strict();
 
@@ -92,11 +110,14 @@ export type InterviewAnswer = z.infer<typeof AnswerSchema>;
 
 // The shape the lead returns. `options` is optional so we tolerate
 // bare-question responses (we always splice in escape hatches).
+// `select` is read leniently: an unknown value is dropped by
+// normalizeSelect rather than failing the whole interview.
 const LeadQuestionSchema = z
   .object({
     id: z.string().min(1),
     text: z.string().min(1),
     options: z.array(z.string().min(1)).optional(),
+    select: z.unknown().optional(),
   })
   .passthrough();
 
@@ -112,6 +133,8 @@ export type OnQuestionCallback = (q: {
   readonly id: string;
   readonly text: string;
   readonly options: readonly string[];
+  /** Present only when the lead stated it (see InterviewSelect). */
+  readonly select?: InterviewSelect;
 }) => Promise<{
   readonly choice: string;
   readonly custom?: string;
@@ -250,12 +273,21 @@ function buildInterviewPrompt(input: {
     "paraphrase of any other question in this same set — each must " +
     "explore a different aspect of the user's idea (different topic, " +
     "different decision, different axis). Repeats are unacceptable.\n\n" +
-    "Each question has an `id` (slug), `text` (one sentence), and " +
+    "Each question has an `id` (slug), `text` (one sentence), " +
     "`options` (2-6 concrete choices the persona thinks are the most " +
-    "likely answers).\n\n" +
+    "likely answers), and `select`.\n\n" +
+    // Wrapper UIs could not tell an either/or question from a "pick
+    // all that apply" one, so the lead states it per question.
+    '`select` is "one" when the options exclude each other and the ' +
+    'user can pick only one (either/or: "free or paid?", "launch ' +
+    'now or later?"). It is "many" when several options can be true ' +
+    "together (which features, which platforms, which kinds of " +
+    "users). Write each question's text and options to match its " +
+    "`select`.\n\n" +
     "Respond ONLY with a JSON object:\n" +
     '  { "questions": [ { "id": "...", "text": "...", "options": ' +
-    '["...", "..."] }, ... ] }\n' +
+    '["...", "..."], "select": "one" }, { "id": "...", "text": "...", ' +
+    '"options": ["...", "..."], "select": "many" }, ... ] }\n' +
     "Do not wrap in code fences.\n"
   );
 }
@@ -435,10 +467,12 @@ export async function runInterview(
         seen.add(hatch);
       }
     }
+    const select = normalizeSelect(q.select);
     return {
       id: q.id,
       text: q.text,
       options: composed,
+      ...(select !== undefined ? { select } : {}),
     };
   });
 
@@ -448,6 +482,7 @@ export async function runInterview(
       id: q.id,
       text: q.text,
       options: q.options,
+      ...(q.select !== undefined ? { select: q.select } : {}),
     });
     if (resp.choice === "custom") {
       if (typeof resp.custom !== "string" || resp.custom.trim().length === 0) {
