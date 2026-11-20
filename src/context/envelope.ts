@@ -1,5 +1,7 @@
 // Copyright 2026 Nikolay Samokhvalov.
 
+import { createHash, randomBytes } from "node:crypto";
+
 /**
  * SPEC §7 — untrusted-data envelope.
  *
@@ -41,6 +43,29 @@ export function wrap(args: WrapArgs): string {
     `sha="${args.blobSha}">`;
   const close = `</repo_content_${sha8}>`;
   return `${open}\n${args.content}\n${close}\n${ENVELOPE_SYSTEM_NOTE}\n`;
+}
+
+/** Wrap arbitrary prompt data with a nonce that cannot be predicted by it. */
+export function wrapUntrustedText(
+  path: string,
+  content: string,
+  options: { readonly nonce?: string } = {},
+): string {
+  const nonce = (
+    options.nonce ?? randomBytes(16).toString("hex")
+  ).toLowerCase();
+  if (!/^[0-9a-f]{16,}$/i.test(nonce)) {
+    throw new Error("envelope: nonce must be >=16 hex chars");
+  }
+  const close = `</repo_content_${nonce}>`;
+  const safeContent = content.replace(/<(\/?repo_content_)/gi, "&lt;$1");
+  const contentSha = createHash("sha256").update(content).digest("hex");
+  const open =
+    `<repo_content_${nonce} ` +
+    `trusted="false" ` +
+    `path="${xmlEscape(path)}" ` +
+    `sha="${contentSha}">`;
+  return `${open}\n${safeContent}\n${close}\n${ENVELOPE_SYSTEM_NOTE}\n`;
 }
 
 /**
