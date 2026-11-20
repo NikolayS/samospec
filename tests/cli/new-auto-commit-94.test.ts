@@ -149,7 +149,7 @@ describe("samospec new — auto-commits initial draft (#94)", () => {
 
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("test engineer"),
+        personaJson("Testing Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
     });
@@ -264,7 +264,7 @@ describe("samospec new — auto-commits initial draft (#94)", () => {
 
     const { adapter } = makeAdapter({
       answers: [
-        personaJson("test engineer"),
+        personaJson("Testing Software Engineer"),
         questionsJson([{ id: "q1", text: "framework?" }]),
       ],
     });

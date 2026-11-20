@@ -39,7 +39,7 @@ function structuredAskOut(rawJson: string): StructuredAskOutput {
 
 function personaJson(): string {
   return JSON.stringify({
-    persona: 'Veteran "architecture diagram" expert',
+    persona: 'Veteran "Architecture Software Engineer" expert',
     rationale: "matches the idea",
   });
 }

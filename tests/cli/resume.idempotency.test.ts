@@ -162,7 +162,7 @@ describe("resume idempotency — kill mid-interview", () => {
       },
       makeAdapter({
         answers: [
-          personaJson("payments engineer"),
+          personaJson("Payments Software Engineer"),
           questionsJson([{ id: "q1", text: "framework?" }]),
         ],
       }),
@@ -231,7 +231,7 @@ describe("resume idempotency — kill mid-interview", () => {
         },
         makeAdapter({
           answers: [
-            personaJson("payments engineer"),
+            personaJson("Payments Software Engineer"),
             questionsJson([
               { id: "q1", text: "framework?" },
               { id: "q2", text: "auth?" },
@@ -253,7 +253,7 @@ describe("resume idempotency — kill mid-interview", () => {
         },
         makeAdapter({
           answers: [
-            personaJson("payments engineer"),
+            personaJson("Payments Software Engineer"),
             questionsJson([{ id: "q1", text: "framework?" }]),
           ],
         }),
@@ -335,7 +335,7 @@ describe("resume idempotency — kill between interview and draft write", () => 
       },
       makeAdapter({
         answers: [
-          personaJson("payments engineer"),
+          personaJson("Payments Software Engineer"),
           questionsJson([{ id: "q1", text: "framework?" }]),
         ],
       }),
@@ -373,7 +373,7 @@ describe("resume idempotency — lead_terminal is absorbing", () => {
       },
       makeAdapter({
         answers: [
-          personaJson("payments engineer"),
+          personaJson("Payments Software Engineer"),
           questionsJson([{ id: "q1", text: "framework?" }]),
         ],
         revise: () => Promise.reject(new Error("model refused the draft")),
@@ -410,7 +410,7 @@ describe("resume idempotency — committed state is stable", () => {
       },
       makeAdapter({
         answers: [
-          personaJson("payments engineer"),
+          personaJson("Payments Software Engineer"),
           questionsJson([{ id: "q1", text: "framework?" }]),
         ],
       }),
