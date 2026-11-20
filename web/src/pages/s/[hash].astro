@@ -1,0 +1,134 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import { sql, type SpecRow } from "../../lib/db";
+import { renderMarkdown } from "../../lib/markdown";
+import { verifyCode, HASH_REGEX } from "../../lib/codes";
+import { signSessionCookie, verifySessionCookie } from "../../lib/session";
+import { isSameOriginPost } from "../../lib/auth";
+import {
+  checkLocked,
+  recordFailure,
+  recordSuccess,
+} from "../../lib/rate-limit";
+
+const { hash } = Astro.params;
+if (!hash || !HASH_REGEX.test(hash)) return Astro.redirect("/404");
+
+const rows = await sql<SpecRow[]>`
+  select hash, title, body_md, code_hash, code_salt, byte_size, view_count,
+         created_at, updated_at, last_viewed_at
+    from specs
+   where hash = ${hash}
+   limit 1
+`;
+const spec = rows[0];
+if (!spec) return new Response("Not found", { status: 404 });
+
+let needsCode = !!spec.code_hash;
+let badCode = false;
+let lockoutSec = 0;
+
+if (needsCode) {
+  const cookie = Astro.cookies.get(`spec_${spec.hash}`)?.value ?? "";
+  if (
+    cookie &&
+    spec.code_hash &&
+    (await verifySessionCookie(cookie, spec.hash, spec.code_hash))
+  ) {
+    needsCode = false;
+  } else if (Astro.request.method === "POST") {
+    if (!isSameOriginPost(Astro.request)) {
+      return new Response("Forbidden", { status: 403 });
+    }
+    const lock = await checkLocked(spec.hash);
+    if (!lock.ok) {
+      lockoutSec = lock.retryAfterSec;
+    } else {
+      const form = await Astro.request.formData();
+      const submitted = String(form.get("code") ?? "")
+        .trim()
+        .toUpperCase();
+      if (
+        submitted &&
+        spec.code_salt &&
+        spec.code_hash &&
+        (await verifyCode(submitted, spec.code_salt, spec.code_hash))
+      ) {
+        const sig = await signSessionCookie(spec.hash, spec.code_hash);
+        Astro.cookies.set(`spec_${spec.hash}`, sig, {
+          path: `/s/${spec.hash}`,
+          httpOnly: true,
+          sameSite: "lax",
+          secure: Astro.url.protocol === "https:",
+          maxAge: 60 * 60 * 24 * 7,
+        });
+        await recordSuccess(spec.hash);
+        needsCode = false;
+      } else {
+        await recordFailure(spec.hash);
+        badCode = true;
+      }
+    }
+  }
+}
+
+if (!needsCode) {
+  // Throttle the view counter: at most once per 5 s per spec. Stops a
+  // scripted reload loop from inflating counts or hammering the row.
+  await sql`
+    update specs
+       set view_count = view_count + 1,
+           last_viewed_at = now()
+     where hash = ${spec.hash}
+       and (last_viewed_at is null
+            or last_viewed_at < now() - interval '5 seconds')
+  `;
+}
+
+const html = !needsCode ? renderMarkdown(spec.body_md) : "";
+const created = spec.created_at.toISOString().slice(0, 10);
+---
+
+{
+  needsCode ? (
+    <Layout title="Enter access code — SamoSpec">
+      <form class="gate" method="POST">
+        <h1>Access code required</h1>
+        <p>This spec is gated. Enter the 6-character code to view it.</p>
+        <input
+          name="code"
+          autocomplete="off"
+          autofocus
+          maxlength="6"
+          spellcheck="false"
+          placeholder="XXXXXX"
+          disabled={lockoutSec > 0}
+        />
+        {lockoutSec > 0 && (
+          <div class="error">
+            Too many attempts. Try again in {lockoutSec} second
+            {lockoutSec === 1 ? "" : "s"}.
+          </div>
+        )}
+        {badCode && lockoutSec === 0 && (
+          <div class="error">Incorrect code. Try again.</div>
+        )}
+        <button type="submit" disabled={lockoutSec > 0}>
+          View spec
+        </button>
+      </form>
+    </Layout>
+  ) : (
+    <Layout title={`${spec.title} — SamoSpec`}>
+      <article>
+        <h1>{spec.title}</h1>
+        <div class="spec-meta">
+          <span>published {created}</span>
+          <span>{Math.ceil(spec.byte_size / 1024)} KiB</span>
+          <span>hash {spec.hash}</span>
+        </div>
+        <div class="spec-body" set:html={html} />
+      </article>
+    </Layout>
+  )
+}

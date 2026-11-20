@@ -93,6 +93,7 @@ describe("reconcileRemote — happy path (FF / up-to-date)", () => {
     const clonedir = join(scratch, "clone");
     runGit(["config", "user.name", "Samospec Test"], clonedir);
     runGit(["config", "user.email", "test@example.invalid"], clonedir);
+    runGit(["config", "commit.gpgsign", "false"], clonedir);
     runGit(["checkout", branch], clonedir);
     writeFileSync(join(clonedir, "from-remote.txt"), "added remotely\n");
     runGit(["add", "from-remote.txt"], clonedir);
@@ -140,6 +141,7 @@ describe("reconcileRemote — non-FF divergence halts with exit 2", () => {
     const clonedir = join(scratch, "clone");
     runGit(["config", "user.name", "Samospec Test"], clonedir);
     runGit(["config", "user.email", "test@example.invalid"], clonedir);
+    runGit(["config", "commit.gpgsign", "false"], clonedir);
     runGit(["checkout", branch], clonedir);
     writeFileSync(join(clonedir, "remote-change.txt"), "remote\n");
     runGit(["add", "remote-change.txt"], clonedir);

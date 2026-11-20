@@ -1,0 +1,42 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+}
+const {
+  title,
+  description = "Turn a rough idea into a reviewed, versioned specification.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">SamoSpec</a>
+      <nav>
+        <a href="https://github.com/NikolayS/samospec">GitHub</a>
+        <a href="https://www.npmjs.com/package/samospec">npm</a>
+      </nav>
+    </header>
+    <main><slot /></main>
+    <footer class="site-footer">
+      <span>Copyright 2026 Nikolay Samokhvalov</span>
+      <span>
+        <a href="https://github.com/NikolayS/samospec/blob/main/LICENSE"
+          >Apache-2.0</a
+        >
+      </span>
+    </footer>
+    <style is:global>
+      @import "../styles/global.css";
+    </style>
+  </body>
+</html>
