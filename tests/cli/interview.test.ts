@@ -914,3 +914,157 @@ function makeQuestionsJsonExact(
     })),
   });
 }
+
+// ---------- one answer vs several answers (`select`) ----------
+//
+// Wrapper UIs showed either/or questions ("free or paid?") with
+// checkboxes and "pick all that apply" because the question carried no
+// signal about whether its options exclude each other. The
+// lead now marks each question with an optional `select` of "one"
+// (options exclude each other) or "many" (several may apply). The
+// field is optional end to end: when the lead omits it (or sends an
+// unknown value) the question carries no `select`, so wrappers keep
+// their existing behavior.
+
+describe("runInterview — select: one answer or several", () => {
+  function questionsWithSelect(
+    items: readonly { readonly id: string; readonly select?: unknown }[],
+  ): string {
+    return JSON.stringify({
+      questions: items.map((it) => ({
+        id: it.id,
+        text: `question ${it.id}?`,
+        options: [`A for ${it.id}`, `B for ${it.id}`],
+        ...(it.select !== undefined ? { select: it.select } : {}),
+      })),
+    });
+  }
+
+  test("prompt asks the lead to mark each question one or many", async () => {
+    const adapter = makeScriptedAskAdapter([
+      questionsWithSelect([{ id: "q1" }]),
+    ]);
+    await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        onQuestion: (_q) => Promise.resolve({ choice: "decide for me" }),
+      },
+      adapter,
+    );
+    const prompt = adapter.asks[0]?.prompt ?? "";
+    expect(prompt).toContain("`select`");
+    expect(prompt).toContain('"one"');
+    expect(prompt).toContain('"many"');
+    // The response example shows both values so the lead is not
+    // nudged towards one of them.
+    expect(prompt).toContain('"select": "one"');
+    expect(prompt).toContain('"select": "many"');
+  });
+
+  test("passes select one/many through to onQuestion and the result", async () => {
+    const adapter = makeScriptedAskAdapter([
+      questionsWithSelect([
+        { id: "q1", select: "one" },
+        { id: "q2", select: "many" },
+      ]),
+    ]);
+    const seen: { id: string; select?: string }[] = [];
+    const out = await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        onQuestion: (q) => {
+          seen.push({
+            id: q.id,
+            ...(q.select !== undefined ? { select: q.select } : {}),
+          });
+          return Promise.resolve({ choice: "decide for me" });
+        },
+      },
+      adapter,
+    );
+    expect(seen).toEqual([
+      { id: "q1", select: "one" },
+      { id: "q2", select: "many" },
+    ]);
+    expect(out.questions[0]?.select).toBe("one");
+    expect(out.questions[1]?.select).toBe("many");
+  });
+
+  test("missing or unknown select is left out (old behavior, no failure)", async () => {
+    const adapter = makeScriptedAskAdapter([
+      questionsWithSelect([
+        { id: "q1" },
+        { id: "q2", select: "single" },
+        { id: "q3", select: true },
+      ]),
+    ]);
+    const seen: Record<string, unknown>[] = [];
+    const out = await runInterview(
+      {
+        slug: "test",
+        persona: 'Veteran "CLI engineer" expert',
+        explain: false,
+        subscriptionAuth: false,
+        onQuestion: (q) => {
+          seen.push({ ...q });
+          return Promise.resolve({ choice: "decide for me" });
+        },
+      },
+      adapter,
+    );
+    expect(seen.length).toBe(3);
+    for (const q of seen) expect("select" in q).toBe(false);
+    for (const q of out.questions) expect("select" in q).toBe(false);
+  });
+
+  test("interview.json keeps select and still reads files without it", () => {
+    const tmp = mkdtempSync(path.join(tmpdir(), "samospec-interview-sel-"));
+    try {
+      const file = path.join(tmp, "interview.json");
+      writeInterview(file, {
+        slug: "demo",
+        persona: 'Veteran "CLI engineer" expert',
+        generated_at: "2026-11-20T10:00:00Z",
+        questions: [
+          {
+            id: "q1",
+            text: "One page or several?",
+            options: ["One", "Several"],
+            select: "one",
+          },
+          {
+            id: "q2",
+            text: "Which pages?",
+            options: ["Menu", "Contact"],
+            select: "many",
+          },
+          { id: "q3", text: "Who visits?", options: ["Locals", "Tourists"] },
+        ],
+        answers: [],
+      });
+      const reloaded = readInterview(file);
+      expect(reloaded?.questions[0]?.select).toBe("one");
+      expect(reloaded?.questions[1]?.select).toBe("many");
+      expect(reloaded?.questions[2] && "select" in reloaded.questions[2]).toBe(
+        false,
+      );
+      expect(() =>
+        InterviewFileSchema.parse({
+          slug: "demo",
+          persona: 'Veteran "CLI engineer" expert',
+          generated_at: "2026-11-20T10:00:00Z",
+          questions: [{ id: "q1", text: "x?", options: ["a"], select: "few" }],
+          answers: [],
+        }),
+      ).toThrow();
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

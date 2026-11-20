@@ -337,7 +337,7 @@ const USAGE =
   "  --interview-protocol jsonl\n" +
   "      Drive the interview over stdin/stdout using line-delimited JSON\n" +
   "      events. Stdout emits one JSON object per line:\n" +
-  '      `{"type":"persona-proposal"…}`, `{"type":"question","id","text","options"}`, `{"type":"complete"}`.\n' +
+  '      `{"type":"persona-proposal"…}`, `{"type":"question","id","text","options","select"?}`, `{"type":"complete"}`.\n' +
   '      Stdin consumes `{"type":"persona-answer","kind":"accept"|"edit"|"replace"}`\n' +
   '      and `{"type":"answer","id","choice","custom"?}`. Human-facing\n' +
   "      status messages route to stderr. Bypasses the non-TTY refusal\n" +

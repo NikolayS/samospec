@@ -31,6 +31,7 @@
 
 import { readFileSync } from "node:fs";
 
+import type { InterviewSelect } from "./interview.ts";
 import type { ChoiceResolvers } from "./new.ts";
 import type { PersonaChoice, PersonaProposal } from "./persona.ts";
 
@@ -277,6 +278,13 @@ export interface QuestionEvent {
   readonly id: string;
   readonly text: string;
   readonly options: readonly string[];
+  /**
+   * Optional, additive within v1: "one" when the options exclude each
+   * other, "many" when several can apply. Omitted when the lead did not
+   * state it; consumers must treat absence as "not stated". The answer
+   * is still a single `choice` string either way.
+   */
+  readonly select?: InterviewSelect;
 }
 
 export interface CompleteEvent {
@@ -294,7 +302,8 @@ export type ProtocolOutEvent =
  *
  *   Stdout (one JSON object per line, stdout is protocol-ONLY):
  *     {"type":"persona-proposal","persona":"…","skill":"…","rationale":"…"}
- *     {"type":"question","id":"q1","text":"…","options":["…", …]}
+ *     {"type":"question","id":"q1","text":"…","options":["…", …],
+ *       "select"?:"one"|"many"}
  *     {"type":"complete"}
  *
  *   Stdin (one JSON object per line):
@@ -407,6 +416,7 @@ export function buildJsonlProtocolResolvers(
     readonly id: string;
     readonly text: string;
     readonly options: readonly string[];
+    readonly select?: InterviewSelect;
   }): Promise<{ readonly choice: string; readonly custom?: string }> => {
     emit({
       type: "question",
@@ -414,6 +424,7 @@ export function buildJsonlProtocolResolvers(
       id: q.id,
       text: q.text,
       options: [...q.options],
+      ...(q.select !== undefined ? { select: q.select } : {}),
     });
     const obj = await readNextObject();
     if (obj["type"] !== "answer") {
